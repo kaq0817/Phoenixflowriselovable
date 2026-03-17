@@ -1,0 +1,532 @@
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Zap, Loader2, CheckCircle, AlertTriangle, TrendingUp, XCircle,
+  ShoppingBag, Store, Image as ImageIcon, Sparkles, ChevronDown, ChevronUp,
+  Wrench, Check, ArrowRight, Copy
+} from "lucide-react";
+import { copyAllFields } from "@/components/CopyButton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+
+interface ShopifyProduct {
+  id: number;
+  title: string;
+  body_html: string;
+  product_type: string;
+  vendor: string;
+  tags: string;
+  variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string }[];
+  images: { src: string; alt?: string }[];
+  handle: string;
+}
+
+interface EtsyListing {
+  listing_id: number;
+  title: string;
+  description: string;
+  tags: string[];
+  materials: string[];
+  taxonomy_path?: string;
+  images?: { url_170x135?: string; url_570xN?: string }[];
+}
+
+interface SEOScore {
+  total: number;
+  title: boolean;
+  titleLength: boolean;
+  altText: boolean;
+  description: boolean;
+  descriptionLength: boolean;
+  tags: boolean;
+  variants: boolean;
+  images: boolean;
+  issues: string[];
+  suggestions: string[];
+}
+
+interface Fix {
+  title?: string;
+  description?: string;
+  body_html?: string;
+  tags?: string | string[];
+  materials?: string[];
+  product_type?: string;
+  seo_title?: string;
+  seo_description?: string;
+  reasoning?: string;
+}
+
+type Platform = "shopify" | "etsy";
+
+function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
+  const issues: string[] = [];
+  const suggestions: string[] = [];
+  let points = 0;
+  const maxPoints = 8;
+  const title = p.title?.trim() || "";
+  const hasTitle = title.length > 0;
+  const titleLength = title.length >= 10 && title.length <= 70;
+  if (hasTitle) points++; else issues.push("Missing product title");
+  if (titleLength) points++; else if (hasTitle) { issues.push(`Title ${title.length < 10 ? "too short" : "too long"} (${title.length} chars)`); suggestions.push("Aim for 10-70 chars with key attributes"); }
+  const hasImages = (p.images?.length || 0) > 0;
+  const altText = hasImages && p.images.some((img) => img.alt && img.alt.trim().length > 0);
+  if (altText) points++; else if (hasImages) { issues.push("Images missing alt text"); suggestions.push("Add descriptive alt text"); }
+  if (hasImages) points++; else { issues.push("No product images"); suggestions.push("Add at least 3 photos"); }
+  const desc = (p.body_html || "").replace(/<[^>]*>/g, "").trim();
+  const hasDesc = desc.length > 0;
+  const descLength = desc.length >= 50;
+  if (hasDesc) points++; else issues.push("Missing description");
+  if (descLength) points++; else if (hasDesc) { issues.push(`Description too short (${desc.length} chars)`); suggestions.push("Expand with benefits, materials, sizing"); }
+  const hasTags = (p.tags?.trim()?.length || 0) > 0;
+  if (hasTags) points++; else { issues.push("No tags"); suggestions.push("Add relevant tags"); }
+  const hasVariants = (p.variants?.length || 0) > 1;
+  if (hasVariants) points++; else suggestions.push("Consider adding variants");
+  const total = Math.round((points / maxPoints) * 100);
+  return { total, title: hasTitle, titleLength, altText, description: hasDesc, descriptionLength: descLength, tags: hasTags, variants: hasVariants, images: hasImages, issues, suggestions };
+}
+
+function scoreEtsyListing(l: EtsyListing): SEOScore {
+  const issues: string[] = [];
+  const suggestions: string[] = [];
+  let points = 0;
+  const maxPoints = 8;
+  const title = l.title?.trim() || "";
+  const hasTitle = title.length > 0;
+  const titleLength = title.length >= 20 && title.length <= 140;
+  if (hasTitle) points++; else issues.push("Missing title");
+  if (titleLength) points++; else if (hasTitle) { issues.push(`Title: ${title.length} chars (aim 20-140)`); suggestions.push("Front-load keywords"); }
+  const hasImages = (l.images?.length || 0) > 0;
+  if (hasImages) { points++; points++; } else { issues.push("No images"); suggestions.push("Add high-quality photos"); }
+  const desc = l.description?.trim() || "";
+  const hasDesc = desc.length > 0;
+  const descLength = desc.length >= 100;
+  if (hasDesc) points++; else issues.push("Missing description");
+  if (descLength) points++; else if (hasDesc) { issues.push("Description too short"); suggestions.push("Write 200+ chars"); }
+  const tagCount = l.tags?.length || 0;
+  const hasTags = tagCount >= 10;
+  if (hasTags) points++; else { issues.push(`Only ${tagCount}/13 tags`); suggestions.push("Use all 13 tag slots"); }
+  const hasMaterials = (l.materials?.length || 0) > 0;
+  if (hasMaterials) points++; else { issues.push("No materials"); suggestions.push("Add specific materials"); }
+  const total = Math.round((points / maxPoints) * 100);
+  return { total, title: hasTitle, titleLength, altText: false, description: hasDesc, descriptionLength: descLength, tags: hasTags, variants: hasMaterials, images: hasImages, issues, suggestions };
+}
+
+function getScoreColor(score: number) {
+  if (score >= 85) return "text-phoenix-success";
+  if (score >= 60) return "text-phoenix-warning";
+  return "text-destructive";
+}
+function getScoreLabel(score: number) {
+  if (score >= 85) return "Elite";
+  if (score >= 60) return "Good";
+  return "Critical";
+}
+function getScoreBadgeClass(score: number) {
+  if (score >= 85) return "bg-phoenix-success/10 text-phoenix-success border-phoenix-success/30";
+  if (score >= 60) return "bg-phoenix-warning/10 text-phoenix-warning border-phoenix-warning/30";
+  return "bg-destructive/10 text-destructive border-destructive/30";
+}
+function getScoreIcon(score: number) {
+  if (score >= 85) return <CheckCircle className="h-4 w-4 text-phoenix-success" />;
+  if (score >= 60) return <TrendingUp className="h-4 w-4 text-phoenix-warning" />;
+  return <AlertTriangle className="h-4 w-4 text-destructive" />;
+}
+
+export default function PhoenixPage() {
+  const { session } = useAuth();
+  const { toast } = useToast();
+
+  const [platform, setPlatform] = useState<Platform>("shopify");
+  const [connections, setConnections] = useState<Record<Platform, boolean>>({ shopify: false, etsy: false });
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [shopifyProducts, setShopifyProducts] = useState<ShopifyProduct[]>([]);
+  const [etsyListings, setEtsyListings] = useState<EtsyListing[]>([]);
+  const [shopifyScores, setShopifyScores] = useState<Map<number, SEOScore>>(new Map());
+  const [etsyScores, setEtsyScores] = useState<Map<number, SEOScore>>(new Map());
+  const [scanned, setScanned] = useState(false);
+  const [expandedProduct, setExpandedProduct] = useState<number | null>(null);
+
+  // Fix state per product
+  const [fixLoading, setFixLoading] = useState<Set<number>>(new Set());
+  const [fixes, setFixes] = useState<Map<number, Fix>>(new Map());
+  const [applyLoading, setApplyLoading] = useState<Set<number>>(new Set());
+  const [applied, setApplied] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase.from("store_connections").select("platform").eq("user_id", session.user.id);
+      const conn: Record<Platform, boolean> = { shopify: false, etsy: false };
+      data?.forEach((c) => { if (c.platform === "shopify" || c.platform === "etsy") conn[c.platform as Platform] = true; });
+      setConnections(conn);
+      if (!conn.shopify && conn.etsy) setPlatform("etsy");
+      setLoading(false);
+    })();
+  }, [session]);
+
+  const handleScan = async () => {
+    setScanning(true);
+    setScanned(false);
+    setFixes(new Map());
+    setApplied(new Set());
+    try {
+      if (platform === "shopify" && connections.shopify) {
+        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50 } });
+        if (error) throw error;
+        const products: ShopifyProduct[] = data.products || [];
+        setShopifyProducts(products);
+        const scores = new Map<number, SEOScore>();
+        products.forEach((p) => scores.set(p.id, scoreShopifyProduct(p)));
+        setShopifyScores(scores);
+      }
+      if (platform === "etsy" && connections.etsy) {
+        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active" } });
+        if (error) throw error;
+        const listings: EtsyListing[] = data.results || [];
+        setEtsyListings(listings);
+        const scores = new Map<number, SEOScore>();
+        listings.forEach((l) => scores.set(l.listing_id, scoreEtsyListing(l)));
+        setEtsyScores(scores);
+      }
+      setScanned(true);
+    } catch (err: any) {
+      toast({ title: "Scan failed", description: err.message, variant: "destructive" });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  // Generate AI fix for a single product
+  const handleGenerateFix = async (id: number) => {
+    setFixLoading((prev) => new Set(prev).add(id));
+    try {
+      if (platform === "shopify") {
+        const product = shopifyProducts.find((p) => p.id === id);
+        if (!product) return;
+        const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", { body: { product } });
+        if (error) throw error;
+        setFixes((prev) => new Map(prev).set(id, data.suggestions));
+      } else {
+        const listing = etsyListings.find((l) => l.listing_id === id);
+        if (!listing) return;
+        const { data, error } = await supabase.functions.invoke("optimize-etsy-listing", { body: { listing } });
+        if (error) throw error;
+        setFixes((prev) => new Map(prev).set(id, data.suggestions));
+      }
+    } catch (err: any) {
+      toast({ title: "AI fix failed", description: err.message, variant: "destructive" });
+    } finally {
+      setFixLoading((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  // Apply fix to store
+  const handleApplyFix = async (id: number) => {
+    const fix = fixes.get(id);
+    if (!fix) return;
+    setApplyLoading((prev) => new Set(prev).add(id));
+    try {
+      if (platform === "shopify") {
+        const { error } = await supabase.functions.invoke("apply-shopify-changes", { body: { productId: id, optimizedData: fix } });
+        if (error) throw error;
+      } else {
+        const listing = etsyListings.find((l) => l.listing_id === id);
+        const { error } = await supabase.functions.invoke("apply-etsy-changes", {
+          body: { listingId: id, originalData: listing, optimizedData: fix },
+        });
+        if (error) throw error;
+      }
+      setApplied((prev) => new Set(prev).add(id));
+      toast({ title: "✅ Fixed!", description: "Changes pushed to your store." });
+    } catch (err: any) {
+      toast({ title: "Apply failed", description: err.message, variant: "destructive" });
+    } finally {
+      setApplyLoading((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  // Fix all products scoring below threshold
+  const handleFixAll = async () => {
+    const ids: number[] = [];
+    if (platform === "shopify") {
+      shopifyProducts.forEach((p) => {
+        const score = shopifyScores.get(p.id);
+        if (score && score.total < 85) ids.push(p.id);
+      });
+    } else {
+      etsyListings.forEach((l) => {
+        const score = etsyScores.get(l.listing_id);
+        if (score && score.total < 85) ids.push(l.listing_id);
+      });
+    }
+    for (const id of ids) {
+      if (!fixes.has(id)) await handleGenerateFix(id);
+    }
+    toast({ title: "All fixes generated", description: "Review each product and click Apply to push changes." });
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+
+  const noConnections = !connections.shopify && !connections.etsy;
+  const allScores = Array.from(platform === "shopify" ? shopifyScores.values() : etsyScores.values());
+  const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b.total, 0) / allScores.length) : 0;
+  const needAttention = allScores.filter((s) => s.total < 60).length;
+  const productCount = platform === "shopify" ? shopifyProducts.length : etsyListings.length;
+
+  const renderComparisonRow = (label: string, current: string, optimized: string) => (
+    <div className="grid grid-cols-[100px_1fr_auto_1fr] gap-2 items-start text-sm py-2 border-b border-border/10 last:border-0">
+      <span className="text-muted-foreground font-medium">{label}</span>
+      <span className="text-muted-foreground/70 line-through decoration-destructive/40">{current || "—"}</span>
+      <ArrowRight className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+      <span className="text-foreground font-medium">{optimized || "—"}</span>
+    </div>
+  );
+
+  const renderProductCard = (id: number, title: string, imgSrc: string | undefined, score: SEOScore) => {
+    const expanded = expandedProduct === id;
+    const fix = fixes.get(id);
+    const isFixing = fixLoading.has(id);
+    const isApplying = applyLoading.has(id);
+    const isApplied = applied.has(id);
+
+    return (
+      <div key={id} className="rounded-lg border border-border/20 overflow-hidden">
+        <button
+          className="w-full flex items-center gap-3 p-3 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
+          onClick={() => setExpandedProduct(expanded ? null : id)}
+        >
+          {imgSrc ? (
+            <img src={imgSrc} alt={title} className="w-12 h-12 rounded-md object-cover border border-border/20" />
+          ) : (
+            <div className="w-12 h-12 rounded-md bg-muted/50 flex items-center justify-center border border-border/20">
+              <ImageIcon className="h-5 w-5 text-muted-foreground/50" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-sm truncate block">{title}</span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <span>{score.issues.length} issue{score.issues.length !== 1 ? "s" : ""}</span>
+              {isApplied && <Badge className="bg-phoenix-success/10 text-phoenix-success border-phoenix-success/30 border text-[10px] px-1.5">Fixed</Badge>}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge className={`${getScoreBadgeClass(score.total)} border text-xs`}>
+              {score.total}
+            </Badge>
+            {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </div>
+        </button>
+
+        {expanded && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="border-t border-border/20">
+            {/* Issues */}
+            {score.issues.length > 0 && (
+              <div className="p-3 bg-destructive/5 space-y-1">
+                {score.issues.map((issue, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm">
+                    <XCircle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
+                    <span className="text-muted-foreground">{issue}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* AI Fix section */}
+            <div className="p-3 space-y-3">
+              {!fix && !isFixing && (
+                <Button size="sm" onClick={() => handleGenerateFix(id)} className="gradient-phoenix text-primary-foreground">
+                  <Wrench className="h-3.5 w-3.5 mr-1.5" /> Generate AI Fix
+                </Button>
+              )}
+
+              {isFixing && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  AI is writing better SEO for this product...
+                </div>
+              )}
+
+              {fix && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                    <Sparkles className="h-3.5 w-3.5" /> AI-Generated Fix — Review Changes
+                  </div>
+
+                  <div className="rounded-md border border-border/20 bg-muted/10 p-3">
+                    {platform === "shopify" ? (
+                      <>
+                        {fix.title && renderComparisonRow("Title", shopifyProducts.find((p) => p.id === id)?.title || "", fix.title)}
+                        {fix.body_html && renderComparisonRow("Description", (shopifyProducts.find((p) => p.id === id)?.body_html || "").replace(/<[^>]*>/g, "").slice(0, 80) + "...", fix.body_html.replace(/<[^>]*>/g, "").slice(0, 80) + "...")}
+                        {fix.tags && renderComparisonRow("Tags", shopifyProducts.find((p) => p.id === id)?.tags || "", typeof fix.tags === "string" ? fix.tags : fix.tags.join(", "))}
+                        {fix.product_type && renderComparisonRow("Type", shopifyProducts.find((p) => p.id === id)?.product_type || "", fix.product_type)}
+                        {fix.seo_title && renderComparisonRow("SEO Title", "", fix.seo_title)}
+                        {fix.seo_description && renderComparisonRow("SEO Desc", "", fix.seo_description)}
+                      </>
+                    ) : (
+                      <>
+                        {fix.title && renderComparisonRow("Title", etsyListings.find((l) => l.listing_id === id)?.title || "", fix.title)}
+                        {fix.description && renderComparisonRow("Description", (etsyListings.find((l) => l.listing_id === id)?.description || "").slice(0, 80) + "...", fix.description.slice(0, 80) + "...")}
+                        {fix.tags && renderComparisonRow("Tags", (etsyListings.find((l) => l.listing_id === id)?.tags || []).join(", "), Array.isArray(fix.tags) ? fix.tags.join(", ") : fix.tags)}
+                        {fix.materials && renderComparisonRow("Materials", (etsyListings.find((l) => l.listing_id === id)?.materials || []).join(", "), fix.materials.join(", "))}
+                      </>
+                    )}
+                  </div>
+
+                  {fix.reasoning && (
+                    <p className="text-xs text-muted-foreground italic">💡 {fix.reasoning}</p>
+                  )}
+
+                  <div className="flex gap-2">
+                    {platform === "shopify" ? (
+                      !isApplied ? (
+                        <Button size="sm" onClick={() => handleApplyFix(id)} disabled={isApplying} className="bg-phoenix-success hover:bg-phoenix-success/90 text-primary-foreground">
+                          {isApplying ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Applying...</> : <><Check className="h-3.5 w-3.5 mr-1.5" /> Apply Fix to Store</>}
+                        </Button>
+                      ) : (
+                        <Badge className="bg-phoenix-success/10 text-phoenix-success border-phoenix-success/30 border px-3 py-1.5">
+                          <Check className="h-3.5 w-3.5 mr-1" /> Applied ✓
+                        </Badge>
+                      )
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          const listing = etsyListings.find((l) => l.listing_id === id);
+                          const text = copyAllFields([
+                            { label: "Title", value: fix.title || "" },
+                            { label: "Tags", value: Array.isArray(fix.tags) ? fix.tags.join(", ") : (fix.tags || "") },
+                            { label: "Description", value: fix.description || "" },
+                            { label: "Materials", value: fix.materials?.join(", ") || "" },
+                          ]);
+                          await navigator.clipboard.writeText(text);
+                          setApplied((prev) => new Set(prev).add(id));
+                          toast({ title: "Copied!", description: "Paste the optimized content into your Etsy listing." });
+                        }}
+                        className="bg-phoenix-success hover:bg-phoenix-success/90 text-primary-foreground"
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Fix
+                      </Button>
+                    )}
+                    {!isApplied && (
+                      <Button size="sm" variant="ghost" onClick={() => setFixes((prev) => { const m = new Map(prev); m.delete(id); return m; })}>
+                        Dismiss
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Zap className="h-6 w-6 text-primary" /> SEO Scanner
+        </h1>
+        <p className="text-muted-foreground mt-1">Scan → Find issues → Fix with AI → Push to store. All in one place.</p>
+      </motion.div>
+
+      {noConnections ? (
+        <Card className="bg-card/50 border-border/30">
+          <CardContent className="p-8 text-center space-y-4">
+            <Store className="h-12 w-12 text-muted-foreground mx-auto" />
+            <h2 className="text-lg font-semibold">Connect Your Store First</h2>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">Go to Settings → connect your Shopify or Etsy store → come back to scan & fix.</p>
+            <Button onClick={() => window.location.href = "/settings"} className="gradient-phoenix text-primary-foreground">Go to Settings</Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-4 flex items-center gap-3 flex-wrap">
+              <Tabs value={platform} onValueChange={(v) => { setPlatform(v as Platform); setScanned(false); }} className="flex-1">
+                <TabsList className="bg-muted/50">
+                  {connections.shopify && <TabsTrigger value="shopify" className="flex items-center gap-2"><ShoppingBag className="h-4 w-4" /> Shopify</TabsTrigger>}
+                  {connections.etsy && <TabsTrigger value="etsy" className="flex items-center gap-2"><Store className="h-4 w-4" /> Etsy</TabsTrigger>}
+                </TabsList>
+              </Tabs>
+              <Button onClick={handleScan} disabled={scanning} className="gradient-phoenix text-primary-foreground">
+                {scanning ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scanning...</> : <><Zap className="h-4 w-4 mr-2" /> Scan Products</>}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {scanning && (
+            <Card className="bg-card/50 border-border/30">
+              <CardContent className="p-8 flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Pulling your real products and scoring SEO...</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {scanned && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="bg-card/50 border-border/30">
+                  <CardContent className="p-4 text-center">
+                    <p className={`text-3xl font-bold ${getScoreColor(avgScore)}`}>{avgScore}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Avg Score</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/50 border-border/30">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-3xl font-bold text-primary">{productCount}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Scanned</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/50 border-border/30">
+                  <CardContent className="p-4 text-center">
+                    <p className={`text-3xl font-bold ${needAttention > 0 ? "text-destructive" : "text-phoenix-success"}`}>{needAttention}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Need Fixing</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Fix All button */}
+              {needAttention > 0 && (
+                <Button onClick={handleFixAll} className="w-full gradient-phoenix text-primary-foreground" size="lg">
+                  <Wrench className="h-4 w-4 mr-2" /> Generate AI Fixes for All {needAttention > 0 ? `${allScores.filter(s => s.total < 85).length} Products` : "Products"}
+                </Button>
+              )}
+
+              {/* Product cards */}
+              <Card className="bg-card/50 border-border/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Products</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {platform === "shopify" && shopifyProducts.map((p) => {
+                    const score = shopifyScores.get(p.id);
+                    if (!score) return null;
+                    return renderProductCard(p.id, p.title, p.images?.[0]?.src, score);
+                  })}
+                  {platform === "etsy" && etsyListings.map((l) => {
+                    const score = etsyScores.get(l.listing_id);
+                    if (!score) return null;
+                    return renderProductCard(l.listing_id, l.title, l.images?.[0]?.url_170x135 || l.images?.[0]?.url_570xN, score);
+                  })}
+                  {productCount === 0 && <p className="text-center text-muted-foreground py-6">No products found.</p>}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

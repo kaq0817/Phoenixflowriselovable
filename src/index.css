@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 260 20% 5%;
+    --foreground: 270 20% 95%;
+
+    --card: 260 18% 8%;
+    --card-foreground: 270 20% 95%;
+
+    --popover: 260 18% 8%;
+    --popover-foreground: 270 20% 95%;
+
+    --primary: 270 80% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 260 15% 14%;
+    --secondary-foreground: 270 20% 90%;
+
+    --muted: 260 12% 12%;
+    --muted-foreground: 260 10% 55%;
+
+    --accent: 330 80% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 260 15% 15%;
+    --input: 260 15% 15%;
+    --ring: 270 80% 65%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 260 20% 6%;
+    --sidebar-foreground: 260 10% 70%;
+    --sidebar-primary: 270 80% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 260 15% 12%;
+    --sidebar-accent-foreground: 270 20% 90%;
+    --sidebar-border: 260 15% 12%;
+    --sidebar-ring: 270 80% 65%;
+
+    --phoenix-glow: 270 80% 65%;
+    --phoenix-accent: 330 80% 60%;
+    --phoenix-success: 150 60% 45%;
+    --phoenix-warning: 40 90% 55%;
+
+    --spring: 48 90% 55%;
+    --spring-foreground: 48 10% 10%;
+    --spring-muted: 48 40% 85%;
+    --spring-accent: 80 50% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .gradient-phoenix {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+  }
+
+  .gradient-phoenix-text {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.4);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px -5px hsl(var(--accent) / 0.4);
+  }
+
+  .glass-panel {
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+}
