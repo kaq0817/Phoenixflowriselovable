@@ -22,12 +22,18 @@ const mainItems = [
   { title: "Inventory", url: "/inventory", icon: Package },
 ];
 
-const toolsItems = [
-  { title: "Templanator", url: "/templanator", icon: Cpu },
+const etsyToolsItems = [
   { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2 },
   { title: "Listing Scanner", url: "/listing-scan", icon: Scan },
-  { title: "Compliance Audit", url: "/audit", icon: Shield },
+];
+
+const shopifyToolsItems = [
+  { title: "Templanator", url: "/templanator", icon: Cpu },
   { title: "Theme Compliance", url: "/theme-audit", icon: Palette },
+];
+
+const generalToolsItems = [
+  { title: "Compliance Audit", url: "/audit", icon: Shield },
   { title: "AI Bot", url: "/bot", icon: Bot },
   { title: "History", url: "/history", icon: History },
   { title: "Free Radio", url: "/radio", icon: Radio },
@@ -73,6 +79,77 @@ export function AppSidebar() {
     </SidebarGroup>
   );
 
+  const renderToolsGroup = () => (
+    <SidebarGroup>
+      <SidebarGroupLabel className="text-muted-foreground/60 text-xs uppercase tracking-wider">
+        {!collapsed && "Tools"}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {!collapsed && (
+            <li className="px-2 pt-2 text-[11px] font-semibold tracking-wide text-muted-foreground/70">
+              Etsy
+            </li>
+          )}
+          {etsyToolsItems.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton asChild>
+                <NavLink
+                  to={item.url}
+                  className="hover:bg-sidebar-accent/50 transition-colors"
+                  activeClassName="bg-primary/10 text-primary font-semibold border-l-2 border-primary"
+                >
+                  <item.icon className={`mr-2 h-4 w-4 ${isActive(item.url) ? "text-primary" : ""}`} />
+                  {!collapsed && <span>{item.title}</span>}
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+
+          {!collapsed && (
+            <li className="px-2 pt-3 text-[11px] font-semibold tracking-wide text-muted-foreground/70">
+              Shopify
+            </li>
+          )}
+          {shopifyToolsItems.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton asChild>
+                <NavLink
+                  to={item.url}
+                  className="hover:bg-sidebar-accent/50 transition-colors"
+                  activeClassName="bg-primary/10 text-primary font-semibold border-l-2 border-primary"
+                >
+                  <item.icon className={`mr-2 h-4 w-4 ${isActive(item.url) ? "text-primary" : ""}`} />
+                  {!collapsed && <span>{item.title}</span>}
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+
+          {!collapsed && (
+            <li className="px-2 pt-3 text-[11px] font-semibold tracking-wide text-muted-foreground/70">
+              General
+            </li>
+          )}
+          {generalToolsItems.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton asChild>
+                <NavLink
+                  to={item.url}
+                  className="hover:bg-sidebar-accent/50 transition-colors"
+                  activeClassName="bg-primary/10 text-primary font-semibold border-l-2 border-primary"
+                >
+                  <item.icon className={`mr-2 h-4 w-4 ${isActive(item.url) ? "text-primary" : ""}`} />
+                  {!collapsed && <span>{item.title}</span>}
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+
   return (
     <Sidebar collapsible="icon" className="border-r border-border/30">
       <div className="p-4 flex items-center gap-2">
@@ -87,7 +164,7 @@ export function AppSidebar() {
       </div>
       <SidebarContent>
         {renderGroup("Command Center", mainItems)}
-        {renderGroup("Tools", toolsItems)}
+        {renderToolsGroup()}
         {renderGroup("Account", settingsItems)}
         {isAdmin && renderGroup("Admin", [
           { title: "Users", url: "/admin/users", icon: Users },
@@ -96,3 +173,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+

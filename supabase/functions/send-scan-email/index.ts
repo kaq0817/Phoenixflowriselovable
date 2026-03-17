@@ -12,10 +12,9 @@ serve(async (req) => {
   try {
     const { to, summary, listingsWithIssues, totalScanned } = await req.json();
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY not configured");
-    }
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+    const MAIL_FROM = Deno.env.get("MAIL_FROM") || "Phoenix Flow <no-reply@ironphoenixflow.com>";
+    const APP_BASE_URL = Deno.env.get("APP_BASE_URL") || "https://ironphoenixflow.com";
 
     const subject = `🔥 Scan Complete: ${listingsWithIssues} of ${totalScanned} listings need attention`;
 
@@ -49,7 +48,7 @@ serve(async (req) => {
         </div>
 
         <div style="text-align: center;">
-          <a href="https://art-exact-match.lovable.app/listing-scan" 
+          <a href="${APP_BASE_URL}/listing-scan" 
              style="display: inline-block; background: #7c3aed; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
             View Full Report →
           </a>
@@ -60,28 +59,29 @@ serve(async (req) => {
         </p>
       </div>
     `;
+    if (RESEND_API_KEY) {
+      const emailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + RESEND_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: MAIL_FROM,
+          to,
+          subject,
+          html,
+        }),
+      });
 
-    // Use Lovable's email sending
-    const emailRes = await fetch("https://email.lovable.dev/v1/send", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        to,
-        subject,
-        html,
-        purpose: "transactional",
-      }),
-    });
-
-    if (!emailRes.ok) {
-      const errText = await emailRes.text();
-      console.error("Email send failed:", errText);
-      // Non-blocking — scan still succeeded
+      if (!emailRes.ok) {
+        const errText = await emailRes.text();
+        console.error("Email send failed:", errText);
+        // Non-blocking — scan still succeeded
+      }
+    } else {
+      console.warn("RESEND_API_KEY not configured; skipping email send.");
     }
-
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

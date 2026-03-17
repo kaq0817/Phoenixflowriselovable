@@ -199,9 +199,11 @@ serve(async (req) => {
     let listings: any[] = [];
 
     if (conn.platform === "etsy") {
+      const isPublicOnly = (conn.access_token || "").toLowerCase() === "public_only" || (conn.scopes || "") === "public_read";
+
       // Check token expiry and refresh if needed
       let accessToken = conn.access_token;
-      if (conn.token_expires_at && new Date(conn.token_expires_at) < new Date()) {
+      if (!isPublicOnly && (conn.token_expires_at && new Date(conn.token_expires_at) < new Date()) {
         const ETSY_API_KEY = Deno.env.get("ETSY_API_KEY");
         const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
           method: "POST",
@@ -228,21 +230,37 @@ serve(async (req) => {
       const shopId = shopMatch?.[1] || conn.shop_domain;
 
       if (shopId) {
-        const etsyHeaders = { "x-api-key": Deno.env.get("ETSY_API_KEY")!, Authorization: `Bearer ${accessToken}` };
+        const etsyClientId = Deno.env.get("ETSY_API_KEY")!;
+        const etsyHeaders = isPublicOnly
+          ? { "x-api-key": etsyClientId }
+          : { "x-api-key": etsyClientId, Authorization: `Bearer ${accessToken}` };
         const MAX_LISTINGS = 500;
         let offset = 0;
         const PAGE_SIZE = 100;
 
         while (listings.length < MAX_LISTINGS) {
           const listRes = await fetch(
-            `https://openapi.etsy.com/v3/application/shops/${shopId}/listings?state=active&limit=${PAGE_SIZE}&offset=${offset}&includes=Images`,
+            isPublicOnly
+              ? `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/active?limit=${PAGE_SIZE}&offset=${offset}&includes=Images`
+              : `https://openapi.etsy.com/v3/application/shops/${shopId}/listings?state=active&limit=${PAGE_SIZE}&offset=${offset}&includes=Images`,
             { headers: etsyHeaders }
           );
           if (!listRes.ok) break;
           const listData = await listRes.json();
           const page = listData.results || [];
           if (page.length === 0) break;
-          listings.push(...page);
+          for (const l of page) {
+            listings.push({
+              listing_id: l.listing_id,
+              title: l.title || "",
+              description: l.description || "",
+              tags: l.tags || [],
+              materials: l.materials || [],
+              images: l.images || l.Images || [],
+              _platform: "etsy",
+              _mode: isPublicOnly ? "public_only" : "oauth",
+            });
+          }
           offset += PAGE_SIZE;
           if (page.length < PAGE_SIZE) break; // last page
         }
@@ -471,10 +489,9 @@ serve(async (req) => {
     // ─── Send email notification ───
     if (userEmail) {
       try {
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
         const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_URL")?.match(/https:\/\/(.+)\.supabase/)?.[1];
 
-        if (LOVABLE_API_KEY && SUPABASE_PROJECT_ID) {
+        if (SUPABASE_PROJECT_ID) {
           await fetch(`https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/send-scan-email`, {
             method: "POST",
             headers: {
