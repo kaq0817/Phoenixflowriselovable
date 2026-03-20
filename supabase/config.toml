@@ -1,21 +1,24 @@
-project_id = "cxvufjvfptkcuiszwqve"
+project_id = "buikqfepbtwwkkzobpii"
 
-[functions.create-checkout]
+[functions.apply-etsy-changes]
+verify_jwt = false
+
+[functions.apply-shopify-changes]
+verify_jwt = false
+
+[functions.apply-theme-fixes]
 verify_jwt = false
 
 [functions.check-subscription]
 verify_jwt = false
 
+[functions.compliance-scan]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
 [functions.customer-portal]
-verify_jwt = false
-
-[functions.shopify-auth]
-verify_jwt = false
-
-[functions.shopify-callback]
-verify_jwt = false
-
-[functions.store-disconnect]
 verify_jwt = false
 
 [functions.etsy-auth]
@@ -27,20 +30,38 @@ verify_jwt = false
 [functions.fetch-etsy-listings]
 verify_jwt = false
 
-[functions.optimize-etsy-listing]
-verify_jwt = false
-
-[functions.apply-etsy-changes]
-verify_jwt = false
-
-[functions.undo-etsy-changes]
+[functions.fetch-etsy-public-listings]
 verify_jwt = false
 
 [functions.fetch-shopify-products]
 verify_jwt = false
 
+[functions.fetch-shopify-theme]
+verify_jwt = false
+
+[functions.optimize-etsy-listing]
+verify_jwt = false
+
 [functions.optimize-shopify-listing]
 verify_jwt = false
 
-[functions.apply-shopify-changes]
+[functions.push-theme-changes]
+verify_jwt = false
+
+[functions.run-listing-scan]
+verify_jwt = false
+
+[functions.send-scan-email]
+verify_jwt = false
+
+[functions.shopify-manual-connect]
+verify_jwt = false
+
+[functions.store-disconnect]
+verify_jwt = false
+
+[functions.theme-audit]
+verify_jwt = false
+
+[functions.undo-etsy-changes]
 verify_jwt = false

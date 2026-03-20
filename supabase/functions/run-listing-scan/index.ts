@@ -203,7 +203,7 @@ serve(async (req) => {
 
       // Check token expiry and refresh if needed
       let accessToken = conn.access_token;
-      if (!isPublicOnly && (conn.token_expires_at && new Date(conn.token_expires_at) < new Date()) {
+      if (!isPublicOnly && (conn.token_expires_at && new Date(conn.token_expires_at) < new Date())) {
         const ETSY_API_KEY = Deno.env.get("ETSY_API_KEY");
         const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
           method: "POST",
