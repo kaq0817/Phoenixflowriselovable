@@ -1,11 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const SAFE_REWRITE_KEYS = new Set(["sections/footer.liquid"]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -41,67 +43,40 @@ serve(async (req) => {
       supportLocation,
       supportNumber,
       departmentMappings,
-      nichePalette,
     } = businessInfo;
 
-    const systemPrompt = `You are the Phoenix Flow Templanator — an expert Shopify theme engineer.
-You receive raw Liquid/CSS theme files and business configuration data, then output REWRITTEN versions.
+    const footerAsset = assets["sections/footer.liquid"];
+    if (!footerAsset || typeof footerAsset !== "string") {
+      throw new Error("Footer asset not available");
+    }
 
-RULES:
-1. ARCHITECTURE: Rewrite the footer to include a Legal Anchor section that clearly separates the LLC entity from the brand.
-   - Add: "© ${new Date().getFullYear()} ${legalEntityName || "Company"}, ${stateOfIncorporation || "State"}. All rights reserved."
-   - Add navigation links for Privacy Policy, Terms of Service, and Refund Policy pages (link to /policies/privacy-policy, /policies/terms-of-service, /policies/refund-policy)
-   - DO NOT write or modify actual policy content — only add the navigation links
-   - Add support info: "${supportLocation || ""}" and "${supportNumber || ""}"
+    const systemPrompt = `You are the Phoenix Flow Templanator, an expert Shopify theme engineer.
+You must produce a SMALL, SAFE edit to sections/footer.liquid only.
 
-2. SPEED: 
-   - Add loading="lazy" to ALL <img> tags that don't already have it
-   - Add loading="lazy" decoding="async" to images
-   - Remove excessive inline styles and move them to CSS variables
-   - Add rel="preconnect" for external font/CDN domains in theme.liquid head
+Rules:
+1. Keep all existing Liquid logic and structure unless a tiny local edit is required.
+2. You may add a legal/policy links block to the footer.
+3. You may add support text to the footer.
+4. If a form exists inside the footer, you may add a hidden Source_ID field there only.
+5. Do not rewrite the whole file when a small insertion works.
+6. Do not touch performance, scripts, global CSS, layout/theme.liquid, templates, or settings JSON.
+7. Do not modify privacy policy content, terms content, or refund policy content.
+8. Return valid JSON only in the format: { "sections/footer.liquid": "..." }.
+9. If no safe change is needed, return {}.`;
 
-3. SOURCE TRACKING:
-   - Find all <form> tags and inject a hidden field: <input type="hidden" name="contact[Source_ID]" value="phoenix-flow-tracked">
-   - This ensures forwarded form submissions are never "mystery" emails
-
-4. IDENTITY (CSS):
-   - Replace hard-coded hex colors with CSS custom properties where possible
-   - If a niche palette is provided, apply it to --color-primary, --color-secondary, --color-accent variables
-${nichePalette ? `   - Niche Palette: ${nichePalette}` : ""}
-
-5. DEPARTMENT TAGGING:
-${departmentMappings && departmentMappings.length > 0 ? departmentMappings.map((d: any) => `   - Blog/Section "${d.name}" → Department: "${d.department}"`).join("\n") : "   - No department mappings provided"}
-
-6. DO NOT:
-   - Write, modify, or generate privacy policies, terms of service, or refund policies
-   - Remove existing functionality
-   - Break Liquid template syntax
-   - Add JavaScript tracking/analytics scripts
-
-Return a JSON object with keys matching the asset paths, each containing the rewritten file content.
-Only include files that were actually modified. If a file needs no changes, omit it.
-
-Format: { "layout/theme.liquid": "...", "sections/footer.liquid": "...", "assets/base.css": "..." }`;
-
-    const userPrompt = `Here are the current theme files to rewrite:
-
-${Object.entries(assets)
-  .filter(([_, v]) => v)
-  .map(([k, v]) => `=== ${k} ===\n${v}`)
-  .join("\n\n")}
+    const userPrompt = `Current footer file:
+=== sections/footer.liquid ===
+${footerAsset}
 
 Business Configuration:
 - Legal Entity: ${legalEntityName || "N/A"}
 - State: ${stateOfIncorporation || "N/A"}
 - Support Location: ${supportLocation || "N/A"}
 - Support Number: ${supportNumber || "N/A"}
-- Niche Palette: ${nichePalette || "Default"}
+- Department Mappings: ${JSON.stringify(departmentMappings || [])}
+- Fix types requested: ${(fixTypes || ["architecture"]).join(", ")}
 
-Fix types requested: ${(fixTypes || ["architecture", "speed", "tracking", "identity"]).join(", ")}
-
-Return ONLY the JSON object with modified file contents. No markdown, no explanation.`;
-
-    console.log("Calling Gemini for theme rewrite preview...");
+Return ONLY the JSON object.`;
 
     const aiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
@@ -110,11 +85,11 @@ Return ONLY the JSON object with modified file contents. No markdown, no explana
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
-            { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] },
+            { role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] },
           ],
           generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 30000,
+            temperature: 0.1,
+            maxOutputTokens: 12000,
             responseMimeType: "application/json",
           },
         }),
@@ -136,9 +111,10 @@ Return ONLY the JSON object with modified file contents. No markdown, no explana
       }
     }
 
-    console.log(`Preview generated: ${Object.keys(rewrittenFiles).length} files rewritten`);
+    rewrittenFiles = Object.fromEntries(
+      Object.entries(rewrittenFiles).filter(([key, value]) => SAFE_REWRITE_KEYS.has(key) && typeof value === "string" && value.trim().length > 0)
+    );
 
-    // PREVIEW ONLY — do NOT push to Shopify
     return new Response(
       JSON.stringify({
         success: true,

@@ -1,11 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const SAFE_PUSH_KEYS = new Set(["sections/footer.liquid"]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,10 +31,10 @@ serve(async (req) => {
 
     const { connectionId, themeId, approvedFiles } = await req.json();
 
-    if (!connectionId || !themeId || !approvedFiles || typeof approvedFiles !== "object")
+    if (!connectionId || !themeId || !approvedFiles || typeof approvedFiles !== "object") {
       throw new Error("Missing required fields: connectionId, themeId, approvedFiles");
+    }
 
-    // Get store connection
     const { data: conn, error: connErr } = await supabase
       .from("store_connections")
       .select("*")
@@ -46,14 +48,19 @@ serve(async (req) => {
     const shopDomain = conn.shop_domain;
     const accessToken = conn.access_token;
 
+    const safeApprovedFiles = Object.fromEntries(
+      Object.entries(approvedFiles).filter(([key, value]) => SAFE_PUSH_KEYS.has(key) && typeof value === "string" && value.trim().length > 0)
+    );
+
+    if (Object.keys(safeApprovedFiles).length === 0) {
+      throw new Error("No safe files selected for push");
+    }
+
     const appliedFiles: string[] = [];
     const errors: string[] = [];
 
-    for (const [key, value] of Object.entries(approvedFiles)) {
-      if (!value || typeof value !== "string") continue;
-
+    for (const [key, value] of Object.entries(safeApprovedFiles)) {
       try {
-        console.log(`Pushing file: ${key}`);
         const putRes = await fetch(
           `https://${shopDomain}/admin/api/2024-01/themes/${themeId}/assets.json`,
           {
@@ -68,16 +75,12 @@ serve(async (req) => {
 
         if (putRes.ok) {
           appliedFiles.push(key);
-          console.log(`✓ Applied: ${key}`);
         } else {
           const errData = await putRes.json();
-          const errMsg = `${key}: ${JSON.stringify(errData.errors || errData)}`;
-          errors.push(errMsg);
-          console.error(`✗ Failed: ${errMsg}`);
+          errors.push(`${key}: ${JSON.stringify(errData.errors || errData)}`);
         }
       } catch (err: any) {
         errors.push(`${key}: ${err.message}`);
-        console.error(`✗ Error: ${key}: ${err.message}`);
       }
     }
 

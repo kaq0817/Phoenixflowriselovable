@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,6 +32,7 @@ serve(async (req) => {
       });
     }
     const userId = userData.user.id;
+    const userEmail = userData.user.email;
 
     const { url: storeUrl } = await req.json();
     if (!storeUrl) {
@@ -163,116 +164,69 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
 
-    const systemPrompt = `You are a world-class e-commerce compliance auditor. You specialize in Google Merchant Center (GMC) suspension prevention, Etsy seller compliance, and general e-commerce best practices.
+    const systemPrompt = `You are a misrepresentation-risk auditor for e-commerce stores.
 
-You MUST check EVERY item from this official GMC Suspension Checklist. For each item, determine if it passes, fails (critical), or needs attention (warning) based on the website content provided.
+Your job is NOT to decide whether a store is already suspended.
+Your job is to identify evidence of misleading claims, contradictory statements, or trust-damaging gaps that create a realistic RISK of misrepresentation.
 
-## GMC SUSPENSION CHECKLIST
+Core principle:
+- Missing information is usually NOT a critical failure.
+- If something cannot be verified from the provided content, mark it as "info" and explain that manual review is needed.
+- Only use "critical" when there is clear evidence of a misleading, false, deceptive, or materially contradictory claim.
+- Use "warning" when wording, omissions, or inconsistencies create meaningful misrepresentation risk.
+- Use "pass" when the content appears clear and non-misleading.
 
-### 1. SOLID FOUNDATIONS
-- Website loads quickly and isn't clunky
-- Clear, easy to navigate site, no broken links, no gimmicks (e.g. custom cursor graphic)
-- No English mistakes or errors in the website
-- No stock photos used across the entire website
-- No fake reviews or reviews imported relating to other businesses
-- Website has above-average reviews on trusted third-party review sites (TrustPilot, Reviews.io, Yotpo)
-- All apps and plugins functioning correctly
-- Not dropshipping with long delivery fulfilment measured in weeks
+Focus on these areas only:
 
-### 2. CONTACT INFORMATION
-- Physical address on website
-- Customer service telephone number
-- Branded email address matching store domain (@nameofthestore.com, NOT @gmail.com or @outlook.com)
-- Email, address & phone number listed on the contact page AND footer
-- Dedicated Contact page exists
-- Contact form on the Contact page
-- Business contact hours listed on website
-- Estimated response time on Contact page
-- SSL certificate installed (https)
-- Website language appropriate for targeted location
+1. BUSINESS IDENTITY RISK
+- Business identity is unclear, misleading, or contradictory
+- Contact details suggest the store may be hiding who operates it
+- Claims of being official, authorized, certified, or affiliated without visible support
 
-### 3. LEGAL PAGES
-- Terms & Conditions page exists
-- Privacy Policy page exists
-- Terms & Conditions page unique to website (no mentions of other brands/products)
-- Privacy Policy clearly explains how users' browsing data may be used
-- Links to legal pages present in footer
+2. PRODUCT CLAIM RISK
+- Product claims appear exaggerated, absolute, or unsupported
+- Health, performance, safety, or outcome claims lack visible substantiation
+- Product condition, availability, pricing, or key attributes appear misleading
+- Reviews, badges, or trust signals appear misleading or mismatched
 
-### 4. RETURNS & REFUNDS
-- Clearly indicates the process for requesting a refund or returning an item
-- Clearly outlines the process for different circumstances for refunds/returns
-- Clear timeframe for each circumstance of return or refund
-- Clearly outlines the time it takes to receive the refund
-- Indicates the method of return of the refund
-- Indicates the return period (how long before they can no longer return)
-- Language used same as native language of target location
-- Returns & Refund messaging consistent throughout website, no misleading or false claims
+3. SHIPPING / RETURN / REFUND RISK
+- Shipping promises conflict with policy language
+- Refund or return promises conflict across pages
+- Delivery expectations are presented in a way that could mislead shoppers
+- Material refund conditions are hidden, unclear, or contradictory
 
-### 5. SHIPPING
-- Shipping process matches actual shipping process
-- Cost of shipping for each location if applicable
-- Time to ship to each location
-- Courier/postal service details for each location (UPS, FedEx, DHL, etc.)
-- Tracking information clear
-- Instructions for checking order status available on website (not just email)
-- States process for missing items
-- Shipping process is fast (not taking more than 1 week)
-- Shipping messaging consistent throughout website, no misleading or false claims
+4. LEGAL / POLICY RISK
+- Policy links or disclosures are missing where that absence creates shopper confusion
+- Policies contain language that appears copied, inconsistent, or brand-mismatched
+- Privacy, terms, refund, shipping, and contact messaging conflict with each other
 
-### 6. BRANDING & HOMEPAGE
-- High quality logo (not blurry)
-- URL and store name legitimate and non-spammy
-- Brand present on homepage (not just a grid of products)
-- Header navigation includes about and contact pages
-- Footer has all necessary links (Shipping, Return policies, legal pages)
-- Footer has contact information (email, physical address, contact number)
+5. SITE TRUST RISK
+- Trust badges, guarantees, scarcity claims, or social proof appear misleading
+- Important shopper-facing information is obscured, contradictory, or framed deceptively
 
-### 7. PRODUCT PAGES
-- No false or misleading claims; claims backed with evidence
-- Real reviews for each product
-- Product availability clear (in stock, out of stock)
-- Content targeted towards customers with relevant messaging, features & benefits
-- Mix of rich text and image content
-- Products not dangerous
-- Products not counterfeit or infringing trademarks
-- Accurate product condition if selling opened or used items
-- Descriptive product titles (not ambiguous)
-- Accurate pricing
-- Product imagery clear, no watermarks or badges; ideally on white background
-- Tax information detailed on product page or incorporated into final price
+Do NOT treat these alone as critical failures unless there is clear deceptive context:
+- no phone number
+- no physical address
+- no third-party reviews
+- no courier name
+- no explicit business hours
+- incomplete best-practice pages
+- anything that simply cannot be verified from the scraped content
 
-### 8. PRICING & PAYMENT
-- Checkout pages secure with SSL
-- At least one mainstream payment method available
-- Payment methods visible in footer
-- Final price clear with no hidden charges
-- All advertised discounts usable during checkout
-- Discounts accurate
-- Tax information consistent through product, cart, and checkout
-- "Buy Now" payment methods match product page price
-- "Buy Now / Pay Later" options are optional, not default
+Scoring guidance:
+- 90-100: little to no visible misrepresentation risk
+- 70-89: some warnings, but no strong deceptive signals
+- 40-69: meaningful risk signals or multiple contradictions
+- 0-39: clear deceptive, false, or materially misleading claims
 
-### 9. MISLEADING INFORMATION
-- No claims of certified reseller when not the case
-- No extravagant and unlikely claims about brand or products
-- No use of trust stamps without proper affiliation
-- No false statements about identity, qualifications, or products
+Return findings using these severities:
+- critical: clear evidence of false, misleading, deceptive, or materially contradictory claims
+- warning: meaningful misrepresentation risk, ambiguity, or inconsistency
+- info: cannot verify or minor issue worth manual review
+- pass: clearly acceptable / no meaningful risk found
 
-## ETSY COMPLIANCE (if applicable)
-- Intellectual property concerns in listings
-- Prohibited items indicators
-- Handmade/vintage claim accuracy
-- Star Seller requirements gaps
-
-## GENERAL E-COMMERCE
-- Cookie consent / GDPR compliance
-- Accessibility (alt text on images)
-- Mobile responsiveness indicators
-
-For EACH checklist item, report whether it passes, fails, or cannot be determined from available content. Rate findings as "critical" (GMC suspension risk), "warning" (improvement needed), "info" (recommendation), or "pass" (compliant).
-
-Calculate an overall compliance score 0-100 based on checklist coverage.
-
+Keep findings high-signal. Do not pad the report with generic best practices.
+Calculate an overall score based on misrepresentation risk only.
 Use the report_compliance tool to return your analysis.`;
 
     const userPrompt = `Analyze this e-commerce store for compliance:
@@ -384,6 +338,33 @@ ${pageLinks.slice(0, 50).join("\n")}`;
       completed_at: new Date().toISOString(),
     }).eq("id", scan.id);
 
+    if (userEmail) {
+      try {
+        const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_URL")?.match(/https:\/\/(.+)\.supabase/)?.[1];
+
+        if (SUPABASE_PROJECT_ID) {
+          await fetch(`https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/send-scan-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({
+              to: userEmail,
+              reportType: "compliance",
+              storeUrl: formattedUrl,
+              score: report.score,
+              criticalCount,
+              warningCount,
+              pagesAnalyzed: report.pages_analyzed,
+            }),
+          });
+        }
+      } catch (emailError) {
+        console.error("Compliance report email failed (non-blocking):", emailError);
+      }
+    }
+
     return new Response(JSON.stringify({ scanId: scan.id, report }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -394,3 +375,6 @@ ${pageLinks.slice(0, 50).join("\n")}`;
     });
   }
 });
+
+
+

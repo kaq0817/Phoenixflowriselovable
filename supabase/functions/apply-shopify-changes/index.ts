@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,13 +39,15 @@ serve(async (req) => {
       });
     }
 
-    // Get Shopify connection
+    // Get the most recently connected Shopify store so multi-store accounts work.
     const { data: connection, error: connErr } = await supabase
       .from("store_connections")
       .select("*")
       .eq("user_id", user.id)
       .eq("platform", "shopify")
-      .single();
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (connErr || !connection) {
       return new Response(JSON.stringify({ error: "No Shopify connection found" }), {
@@ -131,3 +133,4 @@ serve(async (req) => {
     });
   }
 });
+

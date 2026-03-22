@@ -215,7 +215,7 @@ export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.COMPLIANCE_BUSINESS,
     name: "Compliance Business (Monthly)",
-    price: null,
+    price: 399,
     billing: "monthly",
     description: "25 scans per month (up to 5,000 products), scans reset monthly",
     scans: 25,
@@ -226,7 +226,7 @@ export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.SINGLE_COMPLIANCE,
     name: "Single Compliance Scan",
-    price: null,
+    price: 49,
     billing: "one-time",
     description: "1 compliance scan (up to 500 products), credits never expire",
     scans: 1,
@@ -237,7 +237,7 @@ export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.THREE_SCAN_PACK,
     name: "3 compliance scans",
-    price: null,
+    price: 129,
     billing: "one-time",
     description: "3 compliance scans (up to 500 products each) expires after 1 yr",
     scans: 3,
@@ -248,7 +248,7 @@ export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.TEN_SCAN_PACK,
     name: "10-Compliance Scan Pack",
-    price: null,
+    price: 399,
     billing: "one-time",
     description: "10 compliance scans (up to 2,000 products each), expire 1 yr.",
     scans: 10,
@@ -259,7 +259,7 @@ export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.TWENTY_FIVE_SCAN_PACK,
     name: "25-Scan Pack (Best Value)",
-    price: null,
+    price: 899,
     billing: "one-time",
     description: "25 compliance scans (up to 5,000 products each) expire 1 year",
     scans: 25,
@@ -285,14 +285,14 @@ export const BUNDLE_PRODUCTS: BundleProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.APP_WALKTHROUGH,
     name: "One-Off App Walkthrough",
-    price: null,
+    price: 75,
     description: "",
     category: "bundle",
   },
   {
     stripeId: STRIPE_PRODUCTS.ETSY_BUNDLE,
     name: "Etsy Optimization Bundle",
-    price: null,
+    price: 15,
     description:
       "Includes the 8-Second Narrative Framework for video scripts, noun-first titles, and utilizing all 13 tags with multi-word long-tail phrases.",
     category: "bundle",
@@ -300,7 +300,7 @@ export const BUNDLE_PRODUCTS: BundleProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.SHOPIFY_SEO,
     name: "Shopify SEO Automation",
-    price: null,
+    price: 50,
     description:
       "This covers the 9-Section Optimization Framework, including front-loading focus keywords in titles and enforcing a 900–1,100 character long-form description.",
     category: "bundle",
@@ -315,3 +315,5 @@ export const TOTAL_STRIPE_PRODUCTS =
   SUBSCRIPTION_TIERS.length +
   COMPLIANCE_PRODUCTS.length +
   BUNDLE_PRODUCTS.length;
+
+

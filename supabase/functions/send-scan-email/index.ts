@@ -10,18 +10,78 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { to, summary, listingsWithIssues, totalScanned } = await req.json();
+    const {
+      to,
+      reportType = "listing",
+      summary,
+      listingsWithIssues,
+      totalScanned,
+      storeUrl,
+      score,
+      criticalCount,
+      warningCount,
+      pagesAnalyzed,
+    } = await req.json();
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const MAIL_FROM = Deno.env.get("MAIL_FROM") || "Phoenix Flow <no-reply@ironphoenixflow.com>";
     const APP_BASE_URL = Deno.env.get("APP_BASE_URL") || "https://ironphoenixflow.com";
 
-    const subject = `🔥 Scan Complete: ${listingsWithIssues} of ${totalScanned} listings need attention`;
+    const isComplianceReport = reportType === "compliance";
+    const subject = isComplianceReport
+      ? `Compliance Report Ready: ${storeUrl || "Store"} scored ${score ?? "N/A"}/100`
+      : `?? Scan Complete: ${listingsWithIssues} of ${totalScanned} listings need attention`;
 
-    const html = `
+    const html = isComplianceReport
+      ? `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 32px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="color: #7c3aed; font-size: 24px; margin: 0;">🔥 Phoenix Flow</h1>
+          <h1 style="color: #7c3aed; font-size: 24px; margin: 0;">Phoenix Flow</h1>
+          <p style="color: #6b7280; margin-top: 4px;">Compliance Report Ready</p>
+        </div>
+
+        <div style="background: #f9fafb; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+          <h2 style="margin: 0 0 16px; color: #111827; font-size: 18px;">Audit Summary</h2>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280;">Store</td>
+              <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #111827;">${storeUrl || "N/A"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280;">Compliance Score</td>
+              <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #111827;">${score ?? "N/A"}/100</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280;">Pages Analyzed</td>
+              <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #111827;">${pagesAnalyzed ?? 0}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280;">Critical Issues</td>
+              <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #ef4444;">${criticalCount ?? 0}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280;">Warnings</td>
+              <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #f59e0b;">${warningCount ?? 0}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="text-align: center;">
+          <a href="${APP_BASE_URL}/audit"
+             style="display: inline-block; background: #7c3aed; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            View Full Report ?
+          </a>
+        </div>
+
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 32px;">
+          Phoenix Flow � Autonomous E-Commerce Intelligence
+        </p>
+      </div>
+    `
+      : `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 32px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #7c3aed; font-size: 24px; margin: 0;">?? Phoenix Flow</h1>
           <p style="color: #6b7280; margin-top: 4px;">Listing Scan Complete</p>
         </div>
         
@@ -50,15 +110,16 @@ serve(async (req) => {
         <div style="text-align: center;">
           <a href="${APP_BASE_URL}/listing-scan" 
              style="display: inline-block; background: #7c3aed; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-            View Full Report →
+            View Full Report ?
           </a>
         </div>
 
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 32px;">
-          Phoenix Flow — Autonomous E-Commerce Intelligence
+          Phoenix Flow � Autonomous E-Commerce Intelligence
         </p>
       </div>
     `;
+
     if (RESEND_API_KEY) {
       const emailRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -77,7 +138,6 @@ serve(async (req) => {
       if (!emailRes.ok) {
         const errText = await emailRes.text();
         console.error("Email send failed:", errText);
-        // Non-blocking — scan still succeeded
       }
     } else {
       console.warn("RESEND_API_KEY not configured; skipping email send.");

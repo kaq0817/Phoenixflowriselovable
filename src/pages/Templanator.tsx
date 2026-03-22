@@ -118,22 +118,10 @@ export default function Templanator() {
     }
     setScanning(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-shopify-theme`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ connectionId: selectedConn }),
-        }
-      );
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Failed to fetch theme");
+      const { data: result, error } = await supabase.functions.invoke("fetch-shopify-theme", {
+        body: { connectionId: selectedConn },
+      });
+      if (error) throw error;
 
       setScanResult(result);
 
@@ -159,35 +147,23 @@ export default function Templanator() {
     if (!scanResult) return;
     setGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/apply-theme-fixes`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+      const { data: result, error } = await supabase.functions.invoke("apply-theme-fixes", {
+        body: {
+          connectionId: selectedConn,
+          themeId: scanResult.themeId,
+          assets: scanResult.assets,
+          businessInfo: {
+            legalEntityName,
+            stateOfIncorporation,
+            supportLocation,
+            supportNumber,
+            departmentMappings,
+            nichePalette,
           },
-          body: JSON.stringify({
-            connectionId: selectedConn,
-            themeId: scanResult.themeId,
-            assets: scanResult.assets,
-            businessInfo: {
-              legalEntityName,
-              stateOfIncorporation,
-              supportLocation,
-              supportNumber,
-              departmentMappings,
-              nichePalette,
-            },
-            fixTypes: ["architecture", "speed", "tracking", "identity"],
-          }),
-        }
-      );
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Preview generation failed");
+          fixTypes: ["architecture", "speed", "tracking", "identity"],
+        },
+      });
+      if (error) throw error;
 
       // Build file approval list
       const approvals: FileApproval[] = Object.entries(result.rewrittenFiles).map(
@@ -219,29 +195,17 @@ export default function Templanator() {
     }
     setPushing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-
       const approvedFiles: Record<string, string> = {};
       approved.forEach((f) => { approvedFiles[f.key] = f.rewritten; });
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/push-theme-changes`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            connectionId: selectedConn,
-            themeId: scanResult.themeId,
-            approvedFiles,
-          }),
-        }
-      );
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Push failed");
+      const { data: result, error } = await supabase.functions.invoke("push-theme-changes", {
+        body: {
+          connectionId: selectedConn,
+          themeId: scanResult.themeId,
+          approvedFiles,
+        },
+      });
+      if (error) throw error;
 
       setPushResult(result);
       setStep(4);

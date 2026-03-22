@@ -211,10 +211,10 @@ export default function AuditPage() {
     <div className="space-y-6 max-w-5xl">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Shield className="h-6 w-6 text-primary" /> Compliance Scanner
+          <Shield className="h-6 w-6 text-primary" /> Misrepresentation Risk Scanner
         </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered GMC misrepresentation & e-commerce compliance audit
+          AI-powered misrepresentation risk audit for admin review
         </p>
       </motion.div>
 
@@ -253,7 +253,7 @@ export default function AuditPage() {
                   {scanning ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
                   ) : (
-                    <><Shield className="h-4 w-4" /> Run Full Audit</>
+                    <><Shield className="h-4 w-4" /> Run Risk Audit</>
                   )}
                 </Button>
               </div>
@@ -284,7 +284,7 @@ export default function AuditPage() {
                   <div className="flex flex-col sm:flex-row items-center gap-6">
                     <ScoreRing score={report.score} />
                     <div className="flex-1 text-center sm:text-left">
-                      <h2 className="text-lg font-bold mb-2">Compliance Score</h2>
+                      <h2 className="text-lg font-bold mb-2">Risk Score</h2>
                       <p className="text-sm text-muted-foreground mb-4">{report.summary}</p>
                       <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
                         <div className="flex items-center gap-1.5">
@@ -449,3 +449,4 @@ export default function AuditPage() {
     </div>
   );
 }
+
