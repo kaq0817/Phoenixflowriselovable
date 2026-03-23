@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 
     console.log("Fetching public listings for shop:", cleanShopName);
 
-    const clientId = Deno.env.get("ETSY_API_KEY");
+    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
 
     if (clientId) {
       try {
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
         console.error("Open API path failed, falling back to HTML:", apiError);
       }
     } else {
-      console.warn("ETSY_API_KEY not configured; using HTML fallback.");
+      console.warn("ETSY_CLIENT_ID not configured; using HTML fallback.");
     }
 
     // Fallback path (does not require Etsy API key): scrape public shop page
@@ -194,5 +194,6 @@ Deno.serve(async (req) => {
     );
   }
 });
+
 
 

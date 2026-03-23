@@ -77,9 +77,9 @@ serve(async (req) => {
     }
 
     let accessToken = connection.access_token;
-    const clientId = Deno.env.get("ETSY_API_KEY");
+    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
     if (!clientId) {
-      return new Response(JSON.stringify({ error: "ETSY_API_KEY is not configured" }), {
+      return new Response(JSON.stringify({ error: "ETSY_CLIENT_ID is not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -182,5 +182,6 @@ serve(async (req) => {
     });
   }
 });
+
 
 

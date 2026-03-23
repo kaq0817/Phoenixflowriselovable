@@ -18,6 +18,11 @@ interface StoreConnection {
   created_at: string;
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
@@ -79,62 +84,23 @@ export default function SettingsPage() {
       setShopifyDomain("");
       setShowShopifyForm(false);
       fetchConnections();
-    } catch (err: any) {
-      toast({ title: "Connection failed", description: err.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Connection failed", description: getErrorMessage(error, "Could not connect Shopify store."), variant: "destructive" });
     } finally {
       setConnecting(false);
     }
   };
 
   const handleEtsyConnect = async () => {
-    const name = etsyShopUrl.trim();
-    if (!name) {
-      toast({ title: "Missing shop name", description: "Enter your Etsy shop name or URL", variant: "destructive" });
-      return;
-    }
     setEtsyConnecting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-etsy-public-listings`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ shopName: name, limit: 1 }),
-        }
-      );
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Shop not found");
-
-      const shopId = String(result.shop_id);
-
-      // Check if already connected
-      if (etsyConnections.some((c) => c.shop_domain === shopId)) {
-        toast({ title: "Already connected", description: `Shop "${result.shop_name}" is already linked.`, variant: "destructive" });
-        setEtsyConnecting(false);
-        return;
-      }
-
-      // Insert new connection (not upsert — allow multiple)
-      const { error } = await supabase.from("store_connections").insert({
-        user_id: session.user.id,
-        platform: "etsy",
-        shop_name: result.shop_name,
-        shop_domain: shopId,
-        access_token: "public_only",
-        scopes: "public_read",
-      });
+      const { data, error } = await supabase.functions.invoke("etsy-auth");
       if (error) throw error;
+      if (!data?.url) throw new Error("Etsy authorization URL was not returned");
 
-      toast({ title: "Etsy Connected!", description: `Shop "${result.shop_name}" linked successfully.` });
-      setEtsyShopUrl("");
-      setShowEtsyForm(false);
-      fetchConnections();
-    } catch (err: any) {
-      toast({ title: "Connection failed", description: err.message || "Could not find that shop.", variant: "destructive" });
-    } finally {
+      window.location.href = data.url;
+    } catch (error: unknown) {
+      toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Etsy authorization."), variant: "destructive" });
       setEtsyConnecting(false);
     }
   };
@@ -150,8 +116,8 @@ export default function SettingsPage() {
       if (error) throw error;
       toast({ title: "Disconnected", description: `${platform} store has been disconnected.` });
       fetchConnections();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: getErrorMessage(error, "Could not disconnect store."), variant: "destructive" });
     } finally {
       setDisconnecting(null);
     }
@@ -309,35 +275,24 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4 border border-border/50 rounded-lg p-4">
               <p className="text-sm text-muted-foreground">
-                Enter your Etsy shop name or URL to scan and optimize your listings with AI.
+                Connect your Etsy shop with Etsy OAuth so Phoenix Flow can read and update listings with real account access.
               </p>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Shop Name or URL</label>
-                  <Input
-                    placeholder="MyShopName or etsy.com/shop/MyShopName"
-                    className="bg-muted/50"
-                    value={etsyShopUrl}
-                    onChange={(e) => setEtsyShopUrl(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    className="gradient-phoenix text-primary-foreground flex-1"
-                    disabled={etsyConnecting || !etsyShopUrl.trim()}
-                    onClick={handleEtsyConnect}
-                  >
-                    {etsyConnecting ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
-                    ) : (
-                      <><Store className="h-4 w-4 mr-2" /> Connect Shop</>
-                    )}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setShowEtsyForm(false)}>Cancel</Button>
-                </div>
+              <div className="flex gap-2">
+                <Button
+                  className="gradient-phoenix text-primary-foreground flex-1"
+                  disabled={etsyConnecting}
+                  onClick={handleEtsyConnect}
+                >
+                  {etsyConnecting ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Redirecting to Etsy...</>
+                  ) : (
+                    <><Store className="h-4 w-4 mr-2" /> Connect with Etsy</>
+                  )}
+                </Button>
+                <Button variant="ghost" onClick={() => setShowEtsyForm(false)}>Cancel</Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                We'll read your public listing data — no Etsy app install or OAuth needed.
+                Etsy will ask you to approve access and then send you back here automatically.
               </p>
             </div>
           )}
@@ -362,3 +317,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
+

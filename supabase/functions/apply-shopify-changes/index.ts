@@ -34,22 +34,27 @@ serve(async (req) => {
       });
     }
 
-    const { productId, optimizedData } = await req.json();
+    const { productId, optimizedData, connectionId } = await req.json();
     if (!productId || !optimizedData) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Get the most recently connected Shopify store so multi-store accounts work.
-    const { data: connection, error: connErr } = await supabase
+    let connectionQuery = supabase
       .from("store_connections")
       .select("*")
       .eq("user_id", user.id)
       .eq("platform", "shopify")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
+    if (connectionId) {
+      connectionQuery = connectionQuery.eq("id", connectionId);
+    }
+
+    const { data: connectionRows, error: connErr } = await connectionQuery;
+    const connection = connectionRows?.[0];
 
     if (connErr || !connection) {
       return new Response(JSON.stringify({ error: "No Shopify connection found" }), {
@@ -135,6 +140,8 @@ serve(async (req) => {
     });
   }
 });
+
+
 
 
 

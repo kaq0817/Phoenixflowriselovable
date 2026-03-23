@@ -108,9 +108,9 @@ serve(async (req) => {
     }
 
     let accessToken = connection.access_token;
-    const clientId = Deno.env.get("ETSY_API_KEY");
+    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
     if (!clientId) {
-      return new Response(JSON.stringify({ error: "ETSY_API_KEY is not configured" }), {
+      return new Response(JSON.stringify({ error: "ETSY_CLIENT_ID is not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -179,7 +179,7 @@ serve(async (req) => {
         JSON.stringify({
           error:
             errText.includes("API key not found")
-              ? "Etsy API credentials are invalid. Update ETSY_API_KEY/ETSY_SHARED_SECRET in project secrets."
+              ? "Etsy API credentials are invalid. Update ETSY_CLIENT_ID and Etsy OAuth credentials in project secrets."
               : "Failed to fetch listings from Etsy",
         }),
         {
@@ -209,5 +209,6 @@ serve(async (req) => {
     });
   }
 });
+
 
 

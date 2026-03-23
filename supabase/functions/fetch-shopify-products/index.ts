@@ -34,23 +34,28 @@ serve(async (req) => {
       });
     }
 
-    // Get the most recently connected Shopify store so multi-store accounts work.
-    const { data: connection, error: connErr } = await supabase
+    const { limit = 50, page_info, connectionId } = await req.json().catch(() => ({}));
+
+    let connectionQuery = supabase
       .from("store_connections")
       .select("*")
       .eq("user_id", user.id)
       .eq("platform", "shopify")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
+    if (connectionId) {
+      connectionQuery = connectionQuery.eq("id", connectionId);
+    }
+
+    const { data: connectionRows, error: connErr } = await connectionQuery;
+    const connection = connectionRows?.[0];
 
     if (connErr || !connection) {
       return new Response(JSON.stringify({ error: "No Shopify connection found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const { limit = 50, page_info } = await req.json().catch(() => ({}));
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
 
@@ -94,6 +99,8 @@ serve(async (req) => {
     });
   }
 });
+
+
 
 
 

@@ -64,6 +64,14 @@ interface Fix {
 
 type Platform = "shopify" | "etsy";
 
+interface StoreConnectionOption {
+  id: string;
+  platform: Platform;
+  shop_domain: string | null;
+  shop_name: string | null;
+  created_at: string;
+}
+
 function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const issues: string[] = [];
   const suggestions: string[] = [];
@@ -144,6 +152,9 @@ export default function PhoenixPage() {
 
   const [platform, setPlatform] = useState<Platform>("shopify");
   const [connections, setConnections] = useState<Record<Platform, boolean>>({ shopify: false, etsy: false });
+  const [storeConnections, setStoreConnections] = useState<StoreConnectionOption[]>([]);
+  const [selectedShopifyConnectionId, setSelectedShopifyConnectionId] = useState("");
+  const [selectedEtsyConnectionId, setSelectedEtsyConnectionId] = useState("");
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [shopifyProducts, setShopifyProducts] = useState<ShopifyProduct[]>([]);
@@ -163,10 +174,20 @@ export default function PhoenixPage() {
     if (!session) return;
     (async () => {
       setLoading(true);
-      const { data } = await supabase.from("store_connections").select("platform").eq("user_id", session.user.id);
+      const { data } = await supabase
+        .from("store_connections")
+        .select("id, platform, shop_domain, shop_name, created_at")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+      const rows = (data || []).filter((c) => c.platform === "shopify" || c.platform === "etsy") as StoreConnectionOption[];
       const conn: Record<Platform, boolean> = { shopify: false, etsy: false };
-      data?.forEach((c) => { if (c.platform === "shopify" || c.platform === "etsy") conn[c.platform as Platform] = true; });
+      rows.forEach((c) => { conn[c.platform] = true; });
       setConnections(conn);
+      setStoreConnections(rows);
+      const firstShopify = rows.find((c) => c.platform === "shopify");
+      const firstEtsy = rows.find((c) => c.platform === "etsy");
+      setSelectedShopifyConnectionId(firstShopify?.id || "");
+      setSelectedEtsyConnectionId(firstEtsy?.id || "");
       if (!conn.shopify && conn.etsy) setPlatform("etsy");
       setLoading(false);
     })();
@@ -179,7 +200,7 @@ export default function PhoenixPage() {
     setApplied(new Set());
     try {
       if (platform === "shopify" && connections.shopify) {
-        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50 } });
+        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50, connectionId: selectedShopifyConnectionId || undefined } });
         if (error) throw error;
         const products: ShopifyProduct[] = data.products || [];
         setShopifyProducts(products);
@@ -188,7 +209,7 @@ export default function PhoenixPage() {
         setShopifyScores(scores);
       }
       if (platform === "etsy" && connections.etsy) {
-        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active" } });
+        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active", connectionId: selectedEtsyConnectionId || undefined } });
         if (error) throw error;
         const listings: EtsyListing[] = data.results || [];
         setEtsyListings(listings);
@@ -235,12 +256,12 @@ export default function PhoenixPage() {
     setApplyLoading((prev) => new Set(prev).add(id));
     try {
       if (platform === "shopify") {
-        const { error } = await supabase.functions.invoke("apply-shopify-changes", { body: { productId: id, optimizedData: fix } });
+        const { error } = await supabase.functions.invoke("apply-shopify-changes", { body: { productId: id, optimizedData: fix, connectionId: selectedShopifyConnectionId || undefined } });
         if (error) throw error;
       } else {
         const listing = etsyListings.find((l) => l.listing_id === id);
         const { error } = await supabase.functions.invoke("apply-etsy-changes", {
-          body: { listingId: id, originalData: listing, optimizedData: fix },
+          body: { listingId: id, originalData: listing, optimizedData: fix, connectionId: selectedEtsyConnectionId || undefined },
         });
         if (error) throw error;
       }
@@ -276,6 +297,8 @@ export default function PhoenixPage() {
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   const noConnections = !connections.shopify && !connections.etsy;
+  const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
+  const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
   const allScores = Array.from(platform === "shopify" ? shopifyScores.values() : etsyScores.values());
   const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b.total, 0) / allScores.length) : 0;
   const needAttention = allScores.filter((s) => s.total < 60).length;
@@ -458,6 +481,44 @@ export default function PhoenixPage() {
                   {connections.etsy && <TabsTrigger value="etsy" className="flex items-center gap-2"><Store className="h-4 w-4" /> Etsy</TabsTrigger>}
                 </TabsList>
               </Tabs>
+              {platform === "shopify" && shopifyStoreOptions.length > 0 && (
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedShopifyConnectionId}
+                  onChange={(e) => {
+                    setSelectedShopifyConnectionId(e.target.value);
+                    setScanned(false);
+                    setShopifyProducts([]);
+                    setFixes(new Map());
+                    setApplied(new Set());
+                  }}
+                >
+                  {shopifyStoreOptions.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.shop_name || connection.shop_domain || "Shopify store"}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {platform === "etsy" && etsyStoreOptions.length > 0 && (
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedEtsyConnectionId}
+                  onChange={(e) => {
+                    setSelectedEtsyConnectionId(e.target.value);
+                    setScanned(false);
+                    setEtsyListings([]);
+                    setFixes(new Map());
+                    setApplied(new Set());
+                  }}
+                >
+                  {etsyStoreOptions.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.shop_name || connection.shop_domain || "Etsy shop"}
+                    </option>
+                  ))}
+                </select>
+              )}
               <Button onClick={handleScan} disabled={scanning} className="gradient-phoenix text-primary-foreground">
                 {scanning ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scanning...</> : <><Zap className="h-4 w-4 mr-2" /> Scan Products</>}
               </Button>
@@ -530,3 +591,9 @@ export default function PhoenixPage() {
     </div>
   );
 }
+
+
+
+
+
+

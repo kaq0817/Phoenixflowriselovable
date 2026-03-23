@@ -66,7 +66,7 @@ Current SEO Title: ${product.metafields_global_title_tag || product.title || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
       {
         method: "POST",
         headers: {
@@ -116,12 +116,15 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
       }
       const errText = await response.text();
       console.error("Gemini error:", response.status, errText);
-      throw new Error("AI optimization failed");
+      throw new Error(`AI optimization failed (${response.status}): ${errText.slice(0, 300)}`);
     }
 
     const data = await response.json();
     const functionCall = data.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall);
-    if (!functionCall) throw new Error("No optimization result returned");
+    if (!functionCall) {
+      console.error("Gemini response missing function call:", JSON.stringify(data).slice(0, 2000));
+      throw new Error("AI returned an unexpected format");
+    }
 
     const suggestions = functionCall.functionCall.args;
 
@@ -135,5 +138,7 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
     });
   }
 });
+
+
 
 

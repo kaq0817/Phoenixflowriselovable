@@ -60,12 +60,23 @@ interface EtsySuggestions {
 
 type Platform = "shopify" | "etsy";
 
+interface StoreConnectionOption {
+  id: string;
+  platform: Platform;
+  shop_domain: string | null;
+  shop_name: string | null;
+  created_at: string;
+}
+
 export default function OptimizerPage() {
   const { session } = useAuth();
   const { toast } = useToast();
 
   const [platform, setPlatform] = useState<Platform>("shopify");
   const [connections, setConnections] = useState<Record<Platform, boolean>>({ shopify: false, etsy: false });
+  const [storeConnections, setStoreConnections] = useState<StoreConnectionOption[]>([]);
+  const [selectedShopifyConnectionId, setSelectedShopifyConnectionId] = useState("");
+  const [selectedEtsyConnectionId, setSelectedEtsyConnectionId] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Shopify
@@ -92,11 +103,18 @@ export default function OptimizerPage() {
       setLoading(true);
       const { data } = await supabase
         .from("store_connections")
-        .select("platform")
-        .eq("user_id", session.user.id);
+        .select("id, platform, shop_domain, shop_name, created_at")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+      const rows = (data || []).filter((c) => c.platform === "shopify" || c.platform === "etsy") as StoreConnectionOption[];
       const conn: Record<Platform, boolean> = { shopify: false, etsy: false };
-      data?.forEach((c) => { if (c.platform === "shopify" || c.platform === "etsy") conn[c.platform as Platform] = true; });
+      rows.forEach((c) => { conn[c.platform] = true; });
       setConnections(conn);
+      setStoreConnections(rows);
+      const firstShopify = rows.find((c) => c.platform === "shopify");
+      const firstEtsy = rows.find((c) => c.platform === "etsy");
+      setSelectedShopifyConnectionId(firstShopify?.id || "");
+      setSelectedEtsyConnectionId(firstEtsy?.id || "");
       if (!conn.shopify && conn.etsy) setPlatform("etsy");
       setLoading(false);
     })();
@@ -105,7 +123,7 @@ export default function OptimizerPage() {
   const fetchShopifyProducts = async () => {
     setShopifyLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50 } });
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50, connectionId: selectedShopifyConnectionId || undefined } });
       if (error) throw error;
       setShopifyProducts(data.products || []);
     } catch (err: any) {
@@ -118,7 +136,7 @@ export default function OptimizerPage() {
   const fetchEtsyListings = async () => {
     setEtsyLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active" } });
+      const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active", connectionId: selectedEtsyConnectionId || undefined } });
       if (error) throw error;
       setEtsyListings(data.results || []);
     } catch (err: any) {
@@ -157,7 +175,7 @@ export default function OptimizerPage() {
     setShopifyApplying(true);
     try {
       const { error } = await supabase.functions.invoke("apply-shopify-changes", {
-        body: { productId: selectedProduct.id, optimizedData: shopifySuggestions },
+        body: { productId: selectedProduct.id, optimizedData: shopifySuggestions, connectionId: selectedShopifyConnectionId || undefined },
       });
       if (error) throw error;
       toast({ title: "Done!", description: "Changes applied to your Shopify store." });
@@ -199,6 +217,7 @@ export default function OptimizerPage() {
           listingId: selectedListing.listing_id,
           originalData: { title: selectedListing.title, description: selectedListing.description, tags: selectedListing.tags, materials: selectedListing.materials },
           optimizedData: etsySuggestions,
+          connectionId: selectedEtsyConnectionId || undefined,
         },
       });
       if (error) throw error;
@@ -224,6 +243,8 @@ export default function OptimizerPage() {
   }
 
   const noConnections = !connections.shopify && !connections.etsy;
+  const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
+  const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
 
   // ── Product image component ──
   const ProductImage = ({ src, alt, size = "md" }: { src?: string; alt: string; size?: "sm" | "md" | "lg" }) => {
@@ -309,6 +330,30 @@ export default function OptimizerPage() {
 
           {/* ═══════ SHOPIFY TAB ═══════ */}
           <TabsContent value="shopify" className="space-y-4 mt-4">
+            <Card className="bg-card/50 border-border/30">
+              <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium">Active Shopify store</p>
+                  <p className="text-xs text-muted-foreground">Choose the store this optimizer should read from and write to.</p>
+                </div>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedShopifyConnectionId}
+                  onChange={(e) => {
+                    setSelectedShopifyConnectionId(e.target.value);
+                    setSelectedProduct(null);
+                    setShopifySuggestions(null);
+                    setShopifyProducts([]);
+                  }}
+                >
+                  {shopifyStoreOptions.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.shop_name || connection.shop_domain || "Shopify store"}
+                    </option>
+                  ))}
+                </select>
+              </CardContent>
+            </Card>
             {shopifyLoading ? (
               <div className="flex flex-col items-center justify-center h-40 gap-3">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -467,6 +512,30 @@ export default function OptimizerPage() {
 
           {/* ═══════ ETSY TAB ═══════ */}
           <TabsContent value="etsy" className="space-y-4 mt-4">
+            <Card className="bg-card/50 border-border/30">
+              <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium">Active Etsy shop</p>
+                  <p className="text-xs text-muted-foreground">Choose which Etsy connection this optimizer should use.</p>
+                </div>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedEtsyConnectionId}
+                  onChange={(e) => {
+                    setSelectedEtsyConnectionId(e.target.value);
+                    setSelectedListing(null);
+                    setEtsySuggestions(null);
+                    setEtsyListings([]);
+                  }}
+                >
+                  {etsyStoreOptions.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.shop_name || connection.shop_domain || "Etsy shop"}
+                    </option>
+                  ))}
+                </select>
+              </CardContent>
+            </Card>
             {etsyLoading ? (
               <div className="flex flex-col items-center justify-center h-40 gap-3">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -579,3 +648,10 @@ export default function OptimizerPage() {
     </div>
   );
 }
+
+
+
+
+
+
+

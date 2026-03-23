@@ -42,8 +42,8 @@ serve(async (req) => {
 
     const userId = claimsData.claims.sub;
 
-    const clientId = Deno.env.get("ETSY_API_KEY");
-    if (!clientId) throw new Error("ETSY_API_KEY not configured");
+    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
+    if (!clientId) throw new Error("ETSY_CLIENT_ID not configured");
 
     // Generate PKCE code verifier (plain string, safe chars)
     const codeVerifier = generateCodeVerifier();
@@ -82,5 +82,8 @@ serve(async (req) => {
     });
   }
 });
+
+
+
 
 

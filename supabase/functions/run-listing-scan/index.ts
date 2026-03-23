@@ -206,7 +206,7 @@ serve(async (req) => {
       // Check token expiry and refresh if needed
       let accessToken = conn.access_token;
       if (!isPublicOnly && (conn.token_expires_at && new Date(conn.token_expires_at) < new Date())) {
-        const ETSY_API_KEY = Deno.env.get("ETSY_API_KEY");
+        const ETSY_API_KEY = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
         const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -232,7 +232,7 @@ serve(async (req) => {
       const shopId = shopMatch?.[1] || conn.shop_domain;
 
       if (shopId) {
-        const etsyClientId = Deno.env.get("ETSY_API_KEY")!;
+        const etsyClientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY")!;
         const etsyHeaders = isPublicOnly
           ? { "x-api-key": etsyClientId }
           : { "x-api-key": etsyClientId, Authorization: `Bearer ${accessToken}` };
@@ -523,5 +523,6 @@ serve(async (req) => {
     });
   }
 });
+
 
 

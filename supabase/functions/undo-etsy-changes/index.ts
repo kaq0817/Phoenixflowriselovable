@@ -54,7 +54,7 @@ serve(async (req) => {
 
     const connection = snapshot.store_connections;
     let accessToken = connection.access_token;
-    const clientId = Deno.env.get("ETSY_API_KEY")!;
+    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY")!;
 
     // Refresh token if expired
     if (connection.token_expires_at && new Date(connection.token_expires_at) <= new Date()) {
@@ -133,5 +133,6 @@ serve(async (req) => {
     });
   }
 });
+
 
 

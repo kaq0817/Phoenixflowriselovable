@@ -28,12 +28,12 @@ serve(async (req) => {
       return new Response("Invalid state", { status: 400 });
     }
 
-    const clientId = Deno.env.get("ETSY_API_KEY");
+    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
     if (!clientId) {
       return new Response("Etsy credentials not configured", { status: 500 });
     }
 
-    const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/etsy-callback`;
+    const redirectUri = Deno.env.get("ETSY_REDIRECT_URI") || `${Deno.env.get("SUPABASE_URL")}/functions/v1/etsy-callback`;
 
     // Exchange code for access token
     const tokenRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
@@ -120,3 +120,5 @@ serve(async (req) => {
     return new Response("Internal server error", { status: 500 });
   }
 });
+
+
