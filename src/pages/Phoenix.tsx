@@ -69,7 +69,12 @@ interface StoreConnectionOption {
   platform: Platform;
   shop_domain: string | null;
   shop_name: string | null;
+  scopes: string | null;
   created_at: string;
+}
+
+function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
+  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r:");
 }
 
 function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
@@ -176,12 +181,15 @@ export default function PhoenixPage() {
       setLoading(true);
       const { data } = await supabase
         .from("store_connections")
-        .select("id, platform, shop_domain, shop_name, created_at")
+        .select("id, platform, shop_domain, shop_name, scopes, created_at")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
-      const rows = (data || []).filter((c) => c.platform === "shopify" || c.platform === "etsy") as StoreConnectionOption[];
-      const conn: Record<Platform, boolean> = { shopify: false, etsy: false };
-      rows.forEach((c) => { conn[c.platform] = true; });
+      const allRows = (data || []) as StoreConnectionOption[];
+      const rows = allRows.filter((c) => c.platform === "shopify" || isUsableEtsyConnection(c));
+      const conn: Record<Platform, boolean> = {
+        shopify: rows.some((c) => c.platform === "shopify"),
+        etsy: rows.some((c) => c.platform === "etsy"),
+      };
       setConnections(conn);
       setStoreConnections(rows);
       const firstShopify = rows.find((c) => c.platform === "shopify");

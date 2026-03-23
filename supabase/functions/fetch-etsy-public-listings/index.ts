@@ -33,10 +33,11 @@ function parseFallbackShopData(html: string, cleanShopName: string, limit: numbe
   const titleMatch = html.match(/<title>(.*?)<\/title>/i);
   const shopNameFromTitle = titleMatch?.[1]
     ?.replace(/\s*\|\s*Etsy.*$/i, "")
-    ?.replace(/\s*\-\s*Etsy.*$/i, "")
+    ?.replace(/\s*-\s*Etsy.*$/i, "")
     ?.trim();
 
-  const listingIds = Array.from(html.matchAll(/\/listing\/(\d+)/g))
+  const listingRegex = new RegExp("/listing/(\\d+)", "g");
+  const listingIds = Array.from(html.matchAll(listingRegex))
     .map((m) => Number(m[1]))
     .filter((id) => Number.isFinite(id));
 
@@ -45,7 +46,7 @@ function parseFallbackShopData(html: string, cleanShopName: string, limit: numbe
 
   const results = pagedListingIds.map((listingId) => {
     const anchorRegex = new RegExp(
-      `<a[^>]*href=["'][^"']*\/listing\/${listingId}[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>`,
+      `<a[^>]*href=["'][^"']*/listing/${listingId}[^"']*["'][^>]*>([\\s\\S]*?)<\/a>`,
       "i",
     );
     const anchorMatch = html.match(anchorRegex);
