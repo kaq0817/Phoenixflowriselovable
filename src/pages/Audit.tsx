@@ -185,9 +185,10 @@ export default function AuditPage() {
       setReport(res.data.report);
       toast.success("Compliance scan complete!");
       fetchPastScans();
-    } catch (err: any) {
-      console.error("Scan failed:", err);
-      toast.error(err.message || "Scan failed. Please try again.");
+    } catch (error: unknown) {
+     console.error("Scan failed:", error);
+      const message = error instanceof Error ? error.message : "Scan failed. Please try again.";
+      toast.error(message);
     } finally {
       clearInterval(progressInterval);
       setScanning(false);

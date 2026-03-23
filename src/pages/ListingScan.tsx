@@ -13,12 +13,18 @@ import {
 } from "lucide-react";
 import { exportListingScanPdf, exportListingScanCsv } from "@/lib/reportExports";
 
+interface KeywordResearchItem {
+  keyword: string;
+  searchVolume: number | string;
+  tiktokTrend?: boolean;
+}
+
 interface Finding {
   type: string;
   severity: "critical" | "warning" | "info";
   field: string;
   message: string;
-  data?: any;
+  data?: KeywordResearchItem[];
 }
 
 interface ListingResult {
@@ -28,13 +34,20 @@ interface ListingResult {
   findings: Finding[];
 }
 
+interface ScanSummary {
+  total_listings_scanned?: number;
+  listings_with_issues?: number;
+  warning_count?: number;
+  critical_count?: number;
+}
+
 interface ScanJob {
   id: string;
   status: string;
   total_items: number;
   processed_items: number;
   findings: ListingResult[] | null;
-  summary: any;
+  summary: ScanSummary | null;
   created_at: string;
   completed_at: string | null;
   error_message: string | null;
@@ -82,7 +95,7 @@ export default function ListingScanPage() {
         table: "scan_jobs",
         filter: `id=eq.${currentJob.id}`,
       }, (payload) => {
-        const updated = payload.new as any;
+        const updated = payload.new as Partial<ScanJob>;
         setCurrentJob(prev => prev ? { ...prev, ...updated } : null);
         if (updated.status === "completed") {
           setScanning(false);
@@ -96,7 +109,7 @@ export default function ListingScanPage() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [currentJob?.id, currentJob?.status]);
+  }, [currentJob, toast]);
 
   async function checkConnection() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -111,7 +124,7 @@ export default function ListingScanPage() {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(10);
-    if (data) setPastJobs(data as any[]);
+    if (data) setPastJobs(data as unknown as ScanJob[]);
   }
 
   async function startScan() {
@@ -128,7 +141,7 @@ export default function ListingScanPage() {
         .single();
 
       if (error || !job) throw new Error("Failed to create scan job");
-      setCurrentJob(job as any);
+      setCurrentJob(job as unknown as ScanJob);
 
       // Fire and forget — the edge function runs autonomously
       const res = await fetch(
@@ -148,9 +161,10 @@ export default function ListingScanPage() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Scan failed to start");
       }
-    } catch (e: any) {
+    } catch (error: unknown) {
       setScanning(false);
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Scan failed to start";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   }
 
@@ -168,10 +182,10 @@ export default function ListingScanPage() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <div className="p-2 rounded-xl bg-primary/10"><Scan className="h-6 w-6 text-primary" /></div>
-          Listing Scanner
+          Product Scanner
         </h1>
         <p className="text-muted-foreground mt-1">
-          Autonomous background scan — checks spelling, duplicate keywords, search volume &amp; TikTok trends via SerpAPI.
+          Product opportunity scan for keyword quality, seasonality, and search/trend signals. Separate from Google Merchant Center compliance.
         </p>
       </motion.div>
 
@@ -192,7 +206,7 @@ export default function ListingScanPage() {
             <div>
               <h3 className="font-semibold text-lg">Run Background Scan</h3>
               <p className="text-sm text-muted-foreground">
-                Scans all active listings. You'll get an email when it's done.
+                Scans active listings for opportunity, weak keywords, and trend signals. You'll get an email when it's done.
               </p>
             </div>
             <Button
@@ -238,7 +252,7 @@ export default function ListingScanPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
           {/* Summary cards + download */}
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="font-semibold">Scan Results</h3>
+            <h3 className="font-semibold">Product Opportunity Results</h3>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => exportListingScanPdf(currentJob.findings as ListingResult[], currentJob.summary)}>
                 <Download className="h-3.5 w-3.5 mr-1.5" /> PDF
@@ -336,7 +350,7 @@ export default function ListingScanPage() {
                             <div key={`kw-${i}`} className="mt-3">
                               <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Keyword Research</h4>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {finding.data.map((kw: any, j: number) => (
+                                {finding.data?.map((kw: KeywordResearchItem, j: number) => (
                                   <div key={j} className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm">
                                     <span className="truncate">{kw.keyword}</span>
                                     <div className="flex gap-1.5 items-center">
@@ -415,3 +429,10 @@ export default function ListingScanPage() {
     </div>
   );
 }
+
+
+
+
+
+
+

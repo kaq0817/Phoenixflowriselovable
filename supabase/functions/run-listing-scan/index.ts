@@ -9,6 +9,37 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+interface ListingImage {
+  url_170x135?: string;
+  src?: string;
+}
+
+interface KeywordVerificationResult {
+  keyword: string;
+  searchVolume: string;
+  trending: boolean;
+  tiktokTrend: boolean;
+}
+
+interface ListingFinding {
+  type: string;
+  severity: "critical" | "warning" | "info";
+  field: string;
+  message: string;
+  data?: KeywordVerificationResult[];
+}
+
+interface ListingRecord {
+  listing_id: number;
+  title: string;
+  description: string;
+  tags: string[];
+  materials: string[];
+  images: ListingImage[];
+  _platform: "etsy" | "shopify";
+  _mode?: "public_only" | "oauth";
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 function findSpellingIssues(text: string): string[] {
@@ -77,8 +108,8 @@ function findDuplicateKeywords(tags: string[], title: string): string[] {
 async function verifyKeywordsWithSerpApi(
   keywords: string[],
   serpApiKey: string
-): Promise<{ keyword: string; searchVolume: string; trending: boolean; tiktokTrend: boolean }[]> {
-  const results = [];
+): Promise<KeywordVerificationResult[]> {
+  const results: KeywordVerificationResult[] = [];
 
   for (const keyword of keywords.slice(0, 5)) { // limit to 5 to preserve API credits
     try {
@@ -119,9 +150,19 @@ async function verifyKeywordsWithSerpApi(
   return results;
 }
 
+function calculateListingScore(findings: ListingFinding[]): number {
+  let score = 100;
+  for (const finding of findings) {
+    if (finding.severity === "critical") score -= 15;
+    else if (finding.severity === "warning") score -= 7;
+    else if (finding.severity === "info") score -= 2;
+  }
+  return Math.max(0, score);
+}
+
 // ─── Main handler ───────────────────────────────────────────
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -198,7 +239,7 @@ serve(async (req) => {
     }
 
     // ─── Fetch listings based on platform ───
-    let listings: any[] = [];
+    let listings: ListingRecord[] = [];
 
     if (conn.platform === "etsy") {
       const isPublicOnly = (conn.access_token || "").toLowerCase() === "public_only" || (conn.scopes || "") === "public_read";
@@ -276,7 +317,7 @@ serve(async (req) => {
         // In Etsy API v3, all returned listings from /shops/{id}/listings are already parent-level
         // But we also exclude any that might be duplicated by checking listing_id uniqueness
         const seenIds = new Set<number>();
-        listings = listings.filter((l: any) => {
+        listings = listings.filter((l) => {
           if (seenIds.has(l.listing_id)) return false;
           seenIds.add(l.listing_id);
           return true;
@@ -293,7 +334,7 @@ serve(async (req) => {
         `https://${conn.shop_domain}/admin/api/2024-01/products.json?limit=250&status=active`;
       
       while (url && listings.length < MAX_PRODUCTS) {
-        const shopRes = await fetch(url, {
+        const shopRes: Response = await fetch(url, {
           headers: { "X-Shopify-Access-Token": conn.access_token },
         });
         if (!shopRes.ok) break;
@@ -309,16 +350,17 @@ serve(async (req) => {
             description: product.body_html?.replace(/<[^>]*>/g, " ") || "",
             tags: (product.tags || "").split(",").map((t: string) => t.trim()).filter(Boolean),
             materials: [],
-            images: product.images?.map((img: any) => ({ url_170x135: img.src })) || [],
+            images: product.images?.map((img: { src?: string }) => ({ url_170x135: img.src })) || [],
             _platform: "shopify",
           });
         }
 
         // Pagination via Link header
-        const linkHeader = shopRes.headers.get("Link") || "";
-        const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+        const linkHeader: string = shopRes.headers.get("Link") || "";
+        const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
         url = nextMatch ? nextMatch[1] : null;
       }
+
 
       listings = listings.slice(0, MAX_PRODUCTS);
       console.log(`Fetched ${listings.length} parent Shopify products`);
@@ -343,12 +385,20 @@ serve(async (req) => {
     }).eq("id", scanJobId);
 
     const SERPAPI_KEY = Deno.env.get("SERPAPI_API_KEY");
-    const allFindings: any[] = [];
+    const allFindings: Array<{
+      listing_id: number | string;
+      title: string;
+      image: string | null;
+      findings: ListingFinding[];
+    }> = [];
+    const memoryRows: Record<string, unknown>[] = [];
     let processed = 0;
+    const scannedAt = new Date().toISOString();
+    const storeId = String(conn.shop_domain || conn.id);
 
     // ─── Process each listing autonomously ───
     for (const listing of listings) {
-      const listingFindings: any[] = [];
+      const listingFindings: ListingFinding[] = [];
       const title = listing.title || "";
       const description = listing.description || "";
       const tags = listing.tags || [];
@@ -452,6 +502,17 @@ serve(async (req) => {
         });
       }
 
+      memoryRows.push({
+        user_id: userId,
+        store_type: conn.platform,
+        store_id: storeId,
+        product_id: String(listing.listing_id),
+        product_title: title.slice(0, 255),
+        last_scan_score: calculateListingScore(listingFindings),
+        last_scan_date: scannedAt,
+        optimization_reasons: listingFindings.length > 0 ? listingFindings.map((finding) => finding.type) : null,
+      });
+
       processed++;
       // Update progress every 5 listings
       if (processed % 5 === 0 || processed === listings.length) {
@@ -464,10 +525,10 @@ serve(async (req) => {
     // ─── Compile summary ───
     const totalIssues = allFindings.reduce((sum, l) => sum + l.findings.length, 0);
     const criticalCount = allFindings.reduce(
-      (sum, l) => sum + l.findings.filter((f: any) => f.severity === "critical").length, 0
+      (sum, l) => sum + l.findings.filter((f) => f.severity === "critical").length, 0
     );
     const warningCount = allFindings.reduce(
-      (sum, l) => sum + l.findings.filter((f: any) => f.severity === "warning").length, 0
+      (sum, l) => sum + l.findings.filter((f) => f.severity === "warning").length, 0
     );
 
     const summary = {
@@ -487,6 +548,16 @@ serve(async (req) => {
       summary,
       completed_at: new Date().toISOString(),
     }).eq("id", scanJobId);
+
+    if (memoryRows.length > 0) {
+      const { error: memoryError } = await serviceSupabase
+        .from("product_memory")
+        .upsert(memoryRows, { onConflict: "user_id,store_type,store_id,product_id" });
+
+      if (memoryError) {
+        console.error("product_memory upsert failed:", memoryError);
+      }
+    }
 
     // ─── Send email notification ───
     if (userEmail) {
@@ -523,6 +594,7 @@ serve(async (req) => {
     });
   }
 });
+
 
 
 

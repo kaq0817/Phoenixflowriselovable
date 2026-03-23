@@ -24,7 +24,7 @@ const mainItems = [
 
 const etsyToolsItems = [
   { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2 },
-  { title: "Listing Scanner", url: "/listing-scan", icon: Scan },
+  { title: "Product Scanner", url: "/listing-scan", icon: Scan },
 ];
 
 const shopifyToolsItems = [
@@ -173,4 +173,5 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
 
