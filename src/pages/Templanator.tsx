@@ -59,6 +59,12 @@ interface FileApproval {
   expanded: boolean;
 }
 
+interface PushResult {
+  totalModified: number;
+  appliedFiles?: string[];
+  errors?: string[];
+}
+
 const NICHE_PALETTES = [
   { label: "Nature / Family", value: "nature", desc: "Earthy greens, warm browns, soft golds" },
   { label: "Gaming / Neon", value: "neon", desc: "Electric blue, neon green, deep purple" },
@@ -98,7 +104,7 @@ export default function Templanator() {
 
   // Step 4 — push
   const [pushing, setPushing] = useState(false);
-  const [pushResult, setPushResult] = useState<any>(null);
+  const [pushResult, setPushResult] = useState<PushResult | null>(null);
 
   useEffect(() => {
     const fetchConns = async () => {
@@ -136,8 +142,8 @@ export default function Templanator() {
 
       setStep(2);
       toast({ title: "Theme imported!", description: `${result.scanIssues.length} issues detected.` });
-    } catch (err: any) {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setScanning(false);
     }
@@ -179,8 +185,8 @@ export default function Templanator() {
       setFileApprovals(approvals);
       setStep(3);
       toast({ title: "Preview Ready!", description: `${approvals.length} files rewritten. Review before pushing.` });
-    } catch (err: any) {
-      toast({ title: "Preview failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setGenerating(false);
     }
@@ -207,11 +213,11 @@ export default function Templanator() {
       });
       if (error) throw error;
 
-      setPushResult(result);
+      setPushResult(result as PushResult);
       setStep(4);
       toast({ title: "Theme Updated!", description: `${result.totalModified} files pushed to Shopify.` });
-    } catch (err: any) {
-      toast({ title: "Push failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Push failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setPushing(false);
     }
@@ -658,6 +664,12 @@ function truncateCode(code: string, maxLen: number): string {
   return code.slice(0, maxLen) + "\n\n... (truncated for display)";
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+
+
 function StatBox({ label, value, sub }: { label: string; value: number; sub?: string }) {
   return (
     <div className="p-3 rounded-lg bg-muted/30 text-center">
@@ -667,3 +679,6 @@ function StatBox({ label, value, sub }: { label: string; value: number; sub?: st
     </div>
   );
 }
+
+
+

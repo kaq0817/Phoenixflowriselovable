@@ -278,6 +278,17 @@ export default function RadioPage() {
         </Card>
       </motion.div>
 
+      {/* New License Note Card */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+        <Card className="bg-card/50 border-border/30">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            <p className="font-semibold text-primary mb-1">License Information:</p>
+            <p>Use of up to 8 seconds in ads created through Phoenix Flow. No full-track download, redistribution, resale, sublicensing, or standalone publishing rights granted.</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+
       {/* Track List */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <Card className="bg-card/50 border-border/30">
@@ -327,7 +338,7 @@ export default function RadioPage() {
                       <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
                     </div>
                     <Badge variant="outline" className="text-xs hidden sm:inline-flex">{track.genre}</Badge>
-                    <Badge variant="outline" className="text-xs hidden sm:inline-flex">{track.license_type}</Badge>
+                    {/* Removed license badge to avoid implying commercial rights for listening */}
                     <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={(e) => { e.stopPropagation(); deleteTrack(track); }}>
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                     </Button>

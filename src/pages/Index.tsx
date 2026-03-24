@@ -22,7 +22,7 @@ const toolsItems = [
   { title: "Templanator", description: "Private Shopify repair workflow.", url: "/templanator", icon: Cpu },
   { title: "Theme Compliance", description: "Theme audit and compliance checks.", url: "/theme-audit", icon: Palette },
   { title: "Compliance Audit", description: "Misrepresentation risk scan for admin review.", url: "/audit", icon: Shield },
-  { title: "AI Bot", description: "Assistant tools and guided workflows.", url: "/bot", icon: Bot },
+  { title: "Ad Generator", description: "Create truthful 8-second product ad concepts.", url: "/ads", icon: Bot },
   { title: "History", description: "Review prior actions and results.", url: "/history", icon: History },
   { title: "Free Radio", description: "Music library and playback.", url: "/radio", icon: Radio },
   { title: "Settings", description: "Connect stores and manage account setup.", url: "/settings", icon: Settings },

@@ -52,7 +52,7 @@ const App = () => (
               <Route path="/etsy-optimizer" element={<EtsyOptimizer />} />
               <Route path="/theme-audit" element={<ThemeAudit />} />
               <Route path="/listing-scan" element={<ListingScan />} />
-              <Route path="/bot" element={<BotBuilder />} />
+              <Route path="/bot" element={<BotBuilder />} />              <Route path="/ads" element={<BotBuilder />} />
               <Route path="/history" element={<HistoryLedger />} />
               <Route path="/radio" element={<Radio />} />
               <Route path="/pricing" element={<Pricing />} />

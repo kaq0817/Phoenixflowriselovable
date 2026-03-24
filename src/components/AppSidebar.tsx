@@ -34,7 +34,7 @@ const shopifyToolsItems = [
 
 const generalToolsItems = [
   { title: "Compliance Audit", url: "/audit", icon: Shield },
-  { title: "AI Bot", url: "/bot", icon: Bot },
+  { title: "Ad Generator", url: "/ads", icon: Bot },
   { title: "History", url: "/history", icon: History },
   { title: "Free Radio", url: "/radio", icon: Radio },
 ];

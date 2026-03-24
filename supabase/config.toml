@@ -65,3 +65,7 @@ verify_jwt = false
 
 [functions.undo-etsy-changes]
 verify_jwt = false
+
+[functions.generate-ad-concept]
+verify_jwt = false
+

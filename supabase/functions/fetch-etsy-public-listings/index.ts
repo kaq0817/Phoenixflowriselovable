@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         ...fallbackData,
         warning:
-          "Using public HTML fallback. Read-only listing retrieval is available, but policy/advanced API operations require valid Etsy API credentials.",
+          "Displaying read-only data from Etsy. To enable editing and other features, please connect your Etsy account in the settings.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
