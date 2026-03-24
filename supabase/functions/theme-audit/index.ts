@@ -89,7 +89,7 @@ serve(async (req) => {
 
     const systemPrompt = `You are an expert e-commerce theme auditor specializing in WCAG color compliance, site speed, SEO, and GMC readiness.
 
-Analyze the provided website's theme, colors, structure, and content. Return a comprehensive theme audit covering:
+Analyze the provided website's theme, colors, structure, and content. Return a comprehensive theme audit covering the following categories:
 
 ## COLOR & CONTRAST COMPLIANCE (WCAG 2.1)
 Check all color combinations against WCAG standards:
@@ -137,7 +137,7 @@ Check all color combinations against WCAG standards:
 - Line height and spacing
 - Font pairing harmony
 
-Rate each finding as "critical" (fails WCAG AA or causes GMC issues), "warning" (fails WCAG AAA or best practice miss), "info" (recommendation), or "pass" (compliant).
+Identify and categorize *all* potential issues or areas for improvement. Rate each finding as 'critical' (must be fixed, e.g., fails WCAG AA, major SEO error, or GMC compliance issue), 'warning' (should be addressed, e.g., fails WCAG AAA, significant best practice miss, or minor speed bottleneck), or 'info' (a suggestion for improvement or optimization). *Do not report 'pass' findings; only report actual issues or recommendations.*
 
 Use the report_theme_audit tool to return your analysis.`;
 
@@ -220,7 +220,7 @@ ${links.slice(0, 40).join("\n")}`;
                               type: "string",
                               enum: ["color_contrast", "speed", "seo", "layout", "typography"],
                             },
-                            severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
+                            severity: { type: "string", enum: ["critical", "warning", "info"] }, // 'pass' removed
                             title: { type: "string" },
                             description: { type: "string" },
                             recommendation: { type: "string" },
@@ -265,7 +265,14 @@ ${links.slice(0, 40).join("\n")}`;
     }
 
     const aiData = await aiResponse.json();
-    const functionCall = aiData.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall);
+    
+    interface Part {
+      functionCall?: {
+        name: string;
+        args: Record<string, unknown>;
+      };
+    }
+    const functionCall = aiData.candidates?.[0]?.content?.parts?.find((p: Part) => p.functionCall);
     if (!functionCall) throw new Error("No analysis result returned");
 
     const report = functionCall.functionCall.args;
@@ -280,5 +287,3 @@ ${links.slice(0, 40).join("\n")}`;
     });
   }
 });
-
-

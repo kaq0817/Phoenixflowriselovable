@@ -26,7 +26,7 @@ interface ContrastCheck {
 
 interface Finding {
   category: "color_contrast" | "speed" | "seo" | "layout" | "typography";
-  severity: "critical" | "warning" | "info" | "pass";
+  severity: "critical" | "warning" | "info"; // Removed 'pass' as AI will no longer report it
   title: string;
   description: string;
   recommendation: string;
@@ -202,9 +202,10 @@ export default function ThemeAuditPage() {
       setProgress(100);
       setReport(res.data.report);
       toast.success("Theme audit complete!");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Theme audit failed:", err);
-      toast.error(err.message || "Audit failed. Please try again.");
+      const message = (err instanceof Error && err.message) ? err.message : "Audit failed. Please try again.";
+      toast.error(message);
     } finally {
       clearInterval(progressInterval);
       setScanning(false);
@@ -214,7 +215,6 @@ export default function ThemeAuditPage() {
   const criticals = report?.findings.filter(f => f.severity === "critical") || [];
   const warnings = report?.findings.filter(f => f.severity === "warning") || [];
   const infos = report?.findings.filter(f => f.severity === "info") || [];
-  const passed = report?.findings.filter(f => f.severity === "pass") || [];
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -334,10 +334,6 @@ export default function ThemeAuditPage() {
                     <p className="text-lg font-bold">{criticals.length + warnings.length}</p>
                     <p className="text-[10px] text-muted-foreground">Issues Found</p>
                   </div>
-                  <div className="p-2 rounded-lg bg-secondary/30">
-                    <p className="text-lg font-bold">{passed.length}</p>
-                    <p className="text-[10px] text-muted-foreground">Checks Passed</p>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -395,19 +391,6 @@ export default function ThemeAuditPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {infos.map((f, i) => <FindingCard key={i} finding={f} />)}
-              </CardContent>
-            </Card>
-          )}
-
-          {passed.length > 0 && (
-            <Card className="bg-card/50 border-border/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-phoenix-success flex items-center gap-2 text-base">
-                  <CheckCircle className="h-5 w-5" /> Passed ({passed.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {passed.map((f, i) => <FindingCard key={i} finding={f} />)}
               </CardContent>
             </Card>
           )}
