@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ export default function PricingPage() {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleCheckout = async (stripeProductId: string, mode: "subscription" | "payment") => {
     const priceId = STRIPE_PRICES[stripeProductId];
@@ -56,13 +58,21 @@ export default function PricingPage() {
 
       if (error) throw error;
       if (data?.url) {
-        window.open(data.url, "_blank");
+        window.location.href = data.url;
       }
     } catch (err: any) {
       toast({ title: "Checkout error", description: err.message || "Something went wrong", variant: "destructive" });
     } finally {
       setLoadingId(null);
     }
+  };
+
+  const handleFreeTrial = () => {
+    toast({
+      title: "Free trial ready",
+      description: "Connect and verify your store in Settings to start using the free trial.",
+    });
+    navigate("/settings");
   };
 
   const filteredSubs = SUBSCRIPTION_TIERS.filter((t) => {
@@ -155,7 +165,16 @@ export default function PricingPage() {
                         className={`w-full ${isPopular ? "gradient-phoenix text-primary-foreground" : ""}`}
                         variant={isPopular ? "default" : "secondary"}
                         disabled={isLoading || (!hasPriceId && tier.price > 0)}
-                        onClick={() => tier.stripeId && handleCheckout(tier.stripeId, "subscription")}
+                        onClick={() => {
+                          if (tier.price === 0) {
+                            handleFreeTrial();
+                            return;
+                          }
+
+                          if (tier.stripeId) {
+                            handleCheckout(tier.stripeId, "subscription");
+                          }
+                        }}
                       >
                         {isLoading ? (
                           <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
@@ -284,3 +303,6 @@ export default function PricingPage() {
     </div>
   );
 }
+
+
+
