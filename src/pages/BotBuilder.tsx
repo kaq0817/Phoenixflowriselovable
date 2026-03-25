@@ -25,6 +25,10 @@ interface StoreConnectionOption {
   shop_name: string | null;
   scopes?: string | null;
   created_at: string;
+// Copyright (c) 2026 [Your Name or Company]
+// All rights reserved.
+// This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
+// For licensing inquiries, contact: [your contact email]
 }
 
 interface ShopifyProduct {
