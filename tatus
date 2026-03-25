@@ -1,0 +1,5 @@
+* [33m8f239a0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Refactor error handling in Phoenix and Optimizer pages; improve message clarity for failed operations
+* [33m998ae7b[m Refactor connection query logic to handle specific connectionId; improve clarity in fetching Shopify connections
+* [33m84b1343[m Refactor connection query logic to handle specific connectionId; improve clarity in fetching Shopify connections
+* [33mc80efc8[m Remove unnecessary status filter from Shopify products API request
+* [33m34fc0bb[m Refactor button and toast styles; update severity colors in ListingScan for consistency

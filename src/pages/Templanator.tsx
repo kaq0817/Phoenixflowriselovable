@@ -44,6 +44,12 @@ interface ScanResult {
     hasRefundLink: boolean;
   };
   blogs: string[];
+  detectedBusinessInfo?: {
+    legalEntityName?: string;
+    stateOfIncorporation?: string;
+    supportLocation?: string;
+    supportNumber?: string;
+  };
 }
 
 interface DepartmentMapping {
@@ -130,6 +136,12 @@ export default function Templanator() {
       if (error) throw error;
 
       setScanResult(result);
+
+      const detected = result.detectedBusinessInfo || {};
+      setLegalEntityName((prev) => prev || detected.legalEntityName || "");
+      setStateOfIncorporation((prev) => prev || detected.stateOfIncorporation || "");
+      setSupportLocation((prev) => prev || detected.supportLocation || "");
+      setSupportNumber((prev) => prev || detected.supportNumber || "");
 
       if (result.blogs && result.blogs.length > 0) {
         setDepartmentMappings(
@@ -333,6 +345,11 @@ export default function Templanator() {
             <div>
               <h2 className="font-bold text-lg">Step 2: Configure</h2>
               <p className="text-sm text-muted-foreground">Business info for legal anchors & identity</p>
+              {scanResult?.detectedBusinessInfo?.legalEntityName && (
+                <p className="text-xs text-primary mt-1">
+                  Auto-filled from your live theme where detected. Please review before generating preview.
+                </p>
+              )}
             </div>
           </div>
 

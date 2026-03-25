@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { exportThemePdf, exportThemeCsv } from "@/lib/reportExports";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ContrastCheck {
   pair: string;
@@ -167,9 +168,24 @@ function CategoryScoreBar({ label, score, icon: Icon, color }: { label: string; 
 export default function ThemeAuditPage() {
   const { user } = useAuth();
   const [storeUrl, setStoreUrl] = useState("");
+  const [connectedStores, setConnectedStores] = useState<Array<{ id: string; shop_domain: string | null; shop_name: string | null }>>([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState("");
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [report, setReport] = useState<ThemeReport | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadStores = async () => {
+      const { data } = await supabase
+        .from("store_connections")
+        .select("id, shop_domain, shop_name")
+        .eq("platform", "shopify")
+        .order("created_at", { ascending: false });
+      setConnectedStores(data || []);
+    };
+    loadStores();
+  }, [user]);
 
   const handleScan = async () => {
     if (!storeUrl.trim()) {
@@ -230,6 +246,27 @@ export default function ThemeAuditPage() {
       {/* URL Input */}
       <Card className="bg-card/50 border-border/30">
         <CardContent className="p-6">
+          <div className="mb-3">
+            <Select
+              value={selectedConnectionId}
+              onValueChange={(id) => {
+                setSelectedConnectionId(id);
+                const selected = connectedStores.find((store) => store.id === id);
+                if (selected?.shop_domain) setStoreUrl(selected.shop_domain);
+              }}
+            >
+              <SelectTrigger className="bg-background/50">
+                <SelectValue placeholder="Pick a connected Shopify store or enter URL manually below" />
+              </SelectTrigger>
+              <SelectContent>
+                {connectedStores.map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.shop_name || store.shop_domain || "Shopify Store"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

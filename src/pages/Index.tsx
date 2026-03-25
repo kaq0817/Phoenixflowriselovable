@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,27 +9,46 @@ import {
 import { Link } from "react-router-dom";
 
 const commandCenterItems = [
-  { title: "SEO Scanner", description: "Scan products, find issues, and generate fixes.", url: "/phoenix", icon: Zap },
-  { title: "Optimizer", description: "Open one product and optimize it step by step.", url: "/optimizer", icon: BarChart3 },
-  { title: "Bulk Analyzer", description: "Run larger listing workflows in one place.", url: "/bulk-analyzer", icon: Layers },
-  { title: "Descriptions", description: "Generate product copy and admin content.", url: "/descriptions", icon: FileText },
-  { title: "Media Tools", description: "Image and media utilities.", url: "/media", icon: Image },
-  { title: "Inventory", description: "Review inventory and related store data.", url: "/inventory", icon: Package },
+  { title: "SEO Scanner", description: "Scan products, find issues, and generate fixes.", url: "/phoenix", icon: Zap, platform: "shopify" as const },
+  { title: "Optimizer", description: "Open one product and optimize it step by step.", url: "/optimizer", icon: BarChart3, platform: "shopify" as const },
+  { title: "Bulk Analyzer", description: "Run larger listing workflows in one place.", url: "/bulk-analyzer", icon: Layers, platform: "shopify" as const },
+  { title: "Descriptions", description: "Generate product copy and admin content.", url: "/descriptions", icon: FileText, platform: "shopify" as const },
+  { title: "Media Tools", description: "Image and media utilities.", url: "/media", icon: Image, platform: "shopify" as const },
+  { title: "Inventory", description: "Review inventory and related store data.", url: "/inventory", icon: Package, platform: "shopify" as const },
 ];
 
-const toolsItems = [
-  { title: "Listing Optimizer", description: "Optimize Etsy listings.", url: "/etsy-optimizer", icon: Flower2 },
-  { title: "Listing Scanner", description: "Scan listing issues in bulk.", url: "/listing-scan", icon: Scan },
-  { title: "Templanator", description: "Private Shopify repair workflow.", url: "/templanator", icon: Cpu },
-  { title: "Theme Compliance", description: "Theme audit and compliance checks.", url: "/theme-audit", icon: Palette },
-  { title: "Compliance Audit", description: "Misrepresentation risk scan for admin review.", url: "/audit", icon: Shield },
-  { title: "Ad Generator", description: "Create truthful 8-second product ad concepts.", url: "/ads", icon: Bot },
-  { title: "History", description: "Review prior actions and results.", url: "/history", icon: History },
-  { title: "Free Radio", description: "Music library and playback.", url: "/radio", icon: Radio },
-  { title: "Settings", description: "Connect stores and manage account setup.", url: "/settings", icon: Settings },
+const etsyToolsItems = [
+  { title: "Listing Optimizer", description: "Optimize Etsy listings.", url: "/etsy-optimizer", icon: Flower2, platform: "etsy" as const },
+  { title: "Listing Scanner", description: "Scan listing issues in bulk.", url: "/listing-scan", icon: Scan, platform: "etsy" as const },
+];
+
+const shopifyToolsItems = [
+  { title: "Optimizer", description: "Open one Shopify product and optimize it step by step.", url: "/optimizer", icon: BarChart3, platform: "shopify" as const },
+  { title: "Templanator", description: "Private Shopify repair workflow.", url: "/templanator", icon: Cpu, platform: "shopify" as const },
+  { title: "Theme Compliance", description: "Theme audit and compliance checks.", url: "/theme-audit", icon: Palette, platform: "shopify" as const },
+];
+
+const generalToolsItems = [
+  { title: "Compliance Audit", description: "Misrepresentation risk scan for admin review.", url: "/audit", icon: Shield, platform: "general" as const },
+  { title: "Ad Generator", description: "Create truthful 8-second product ad concepts.", url: "/ads", icon: Bot, platform: "general" as const },
+  { title: "History", description: "Review prior actions and results.", url: "/history", icon: History, platform: "general" as const },
+  { title: "Free Radio", description: "Music library and playback.", url: "/radio", icon: Radio, platform: "general" as const },
+  { title: "Settings", description: "Connect stores and manage account setup.", url: "/settings", icon: Settings, platform: "general" as const },
 ];
 
 const Index = () => {
+  const [toolsFilter, setToolsFilter] = useState<"all" | "shopify" | "etsy" | "general">("shopify");
+  const filteredCommandCenter = useMemo(() => {
+    if (toolsFilter === "all") return commandCenterItems;
+    return commandCenterItems.filter((item) => item.platform === toolsFilter);
+  }, [toolsFilter]);
+  const toolsItems = useMemo(() => {
+    if (toolsFilter === "shopify") return shopifyToolsItems;
+    if (toolsFilter === "etsy") return etsyToolsItems;
+    if (toolsFilter === "general") return generalToolsItems;
+    return [...shopifyToolsItems, ...etsyToolsItems, ...generalToolsItems];
+  }, [toolsFilter]);
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -59,11 +79,20 @@ const Index = () => {
 
       <Card className="bg-card/50 border-border/30">
         <CardHeader>
-          <CardTitle className="text-lg">Command Center</CardTitle>
+          <CardTitle className="text-lg">Choose Platform First</CardTitle>
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button size="sm" variant={toolsFilter === "shopify" ? "default" : "outline"} onClick={() => setToolsFilter("shopify")}>Shopify</Button>
+            <Button size="sm" variant={toolsFilter === "etsy" ? "default" : "outline"} onClick={() => setToolsFilter("etsy")}>Etsy</Button>
+            <Button size="sm" variant={toolsFilter === "general" ? "default" : "outline"} onClick={() => setToolsFilter("general")}>General</Button>
+            <Button size="sm" variant={toolsFilter === "all" ? "default" : "outline"} onClick={() => setToolsFilter("all")}>All</Button>
+          </div>
         </CardHeader>
         <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            Showing <span className="font-semibold text-foreground">{toolsFilter === "all" ? "all sections" : `${toolsFilter} section`}</span> so tools are not mixed.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {commandCenterItems.map((item, i) => (
+            {filteredCommandCenter.map((item, i) => (
               <motion.div key={item.title} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <Card className="h-full bg-background/40 border-border/30 hover:border-primary/40 transition-colors">
                   <CardContent className="p-4 space-y-4">
@@ -80,12 +109,15 @@ const Index = () => {
               </motion.div>
             ))}
           </div>
+          {filteredCommandCenter.length === 0 && (
+            <p className="text-center py-8 text-muted-foreground">No command center cards in this section. Use Tools below.</p>
+          )}
         </CardContent>
       </Card>
 
       <Card className="bg-card/50 border-border/30">
         <CardHeader>
-          <CardTitle className="text-lg">Tools</CardTitle>
+          <CardTitle className="text-lg">{toolsFilter === "all" ? "All Tools" : `${toolsFilter[0].toUpperCase()}${toolsFilter.slice(1)} Tools`}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

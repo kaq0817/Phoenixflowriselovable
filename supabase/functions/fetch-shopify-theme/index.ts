@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 
 const corsHeaders = {
@@ -153,6 +153,22 @@ serve(async (req) => {
       k.startsWith("sections/")
     );
 
+    const footerText = footerLiquid
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const legalEntityMatch =
+      footerText.match(/(?:©|copyright)\s*(?:\d{4}\s*)?(.*?(?:LLC|INC|CORP(?:ORATION)?|LTD|CO\.?))/i) ||
+      footerText.match(/(.*?(?:LLC|INC|CORP(?:ORATION)?|LTD|CO\.?))/i);
+    const stateMatch =
+      footerText.match(/\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/) ||
+      footerText.match(/\b(?:California|New York|Texas|Florida|Wyoming|Washington|Oregon|Colorado)\b/i);
+    const phoneMatch = footerText.match(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
+    const supportLocationMatch = footerText.match(/(?:support|serving|located in|from)\s+([A-Za-z\s]+,\s*[A-Za-z]{2})/i);
+
     return new Response(
       JSON.stringify({
         themeId: mainTheme.id,
@@ -171,6 +187,12 @@ serve(async (req) => {
         },
         blogs: blogMatches,
         sections: sectionFiles,
+        detectedBusinessInfo: {
+          legalEntityName: legalEntityMatch?.[1]?.trim() || conn.shop_name || "",
+          stateOfIncorporation: stateMatch?.[0]?.trim() || "",
+          supportLocation: supportLocationMatch?.[1]?.trim() || "",
+          supportNumber: phoneMatch?.[1]?.trim() || "",
+        },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
