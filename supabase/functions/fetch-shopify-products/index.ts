@@ -59,7 +59,7 @@ serve(async (req) => {
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
 
-    let apiUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${limit}&status=active`;
+    let apiUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${limit}`;
     if (page_info) {
       apiUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${limit}&page_info=${page_info}`;
     }
