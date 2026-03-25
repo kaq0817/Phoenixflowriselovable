@@ -36,16 +36,25 @@ serve(async (req) => {
 
     const { limit = 50, page_info, connectionId } = await req.json().catch(() => ({}));
 
-    let connectionQuery = supabase
-      .from("store_connections")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("platform", "shopify")
-      .order("created_at", { ascending: false })
-      .limit(1);
+    let connectionQuery;
 
     if (connectionId) {
-      connectionQuery = connectionQuery.eq("id", connectionId);
+      // If a specific connectionId is provided, fetch only that one.
+      connectionQuery = supabase
+        .from("store_connections")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("platform", "shopify")
+        .eq("id", connectionId);
+    } else {
+      // If no specific connectionId, fetch the most recently created Shopify connection.
+      connectionQuery = supabase
+        .from("store_connections")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("platform", "shopify")
+        .order("created_at", { ascending: false })
+        .limit(1);
     }
 
     const { data: connectionRows, error: connErr } = await connectionQuery;
@@ -99,8 +108,3 @@ serve(async (req) => {
     });
   }
 });
-
-
-
-
-
