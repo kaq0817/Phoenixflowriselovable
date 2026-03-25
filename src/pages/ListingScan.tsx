@@ -69,7 +69,7 @@ interface StoreConnectionOption {
 }
 
 const SEVERITY_CONFIG = {
-  critical: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", label: "Critical" },
+  critical: { icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/30", label: "Critical" },
   warning: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/30", label: "Warning" },
   info: { icon: Info, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", label: "Info" },
 };
@@ -189,7 +189,7 @@ export default function ListingScanPage() {
       if (error || !job) throw new Error("Failed to create scan job");
       setCurrentJob(job as unknown as ScanJob);
 
-      // Fire and forget — the edge function runs autonomously
+      // Fire and forget â€” the edge function runs autonomously
       const res = await fetch(
         `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/run-listing-scan`,
         {
@@ -357,7 +357,7 @@ export default function ListingScanPage() {
                       </Card>
                       <Card>
                         <CardContent className="p-4 text-center">
-                          <div className="text-2xl font-bold text-red-400">{currentJob.summary?.listings_with_issues || 0}</div>
+                          <div className="text-2xl font-bold text-destructive">{currentJob.summary?.listings_with_issues || 0}</div>
                           <div className="text-xs text-muted-foreground">With Issues</div>
                         </CardContent>
                       </Card>
@@ -369,7 +369,7 @@ export default function ListingScanPage() {
                       </Card>
                       <Card>
                         <CardContent className="p-4 text-center">
-                          <div className="text-2xl font-bold text-red-500">{currentJob.summary?.critical_count || 0}</div>
+                          <div className="text-2xl font-bold text-destructive">{currentJob.summary?.critical_count || 0}</div>
                           <div className="text-xs text-muted-foreground">Critical</div>
                         </CardContent>
                       </Card>
@@ -464,9 +464,9 @@ export default function ListingScanPage() {
 
                 {/* Error state */}
                 {currentJob && currentJob.store_connection_id === selectedConnectionId && currentJob.status === "failed" && (
-                  <Card className="border-red-500/30 bg-red-500/5">
+                  <Card className="border-destructive/30 bg-destructive/5">
                     <CardContent className="p-6 text-center space-y-2">
-                      <AlertTriangle className="h-8 w-8 text-red-400 mx-auto" />
+                      <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
                       <p className="font-medium">Scan Failed</p>
                       <p className="text-sm text-muted-foreground">{currentJob.error_message || "An unknown error occurred."}</p>
                       <Button variant="outline" onClick={startScan} className="mt-2">Retry</Button>
@@ -499,7 +499,7 @@ export default function ListingScanPage() {
               >
                 <div>
                   <span className="text-sm font-medium">
-                    {new Date(job.created_at).toLocaleDateString()} — {new Date(job.created_at).toLocaleTimeString()}
+                    {new Date(job.created_at).toLocaleDateString()} â€” {new Date(job.created_at).toLocaleTimeString()}
                   </span>
                   <div className="flex gap-1.5 mt-1">
                     <Badge variant={job.status === "completed" ? "default" : job.status === "failed" ? "destructive" : "secondary"} className="text-[10px]">
