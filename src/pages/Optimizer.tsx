@@ -25,6 +25,10 @@ interface ShopifyProduct {
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; option3?: string }[];
   images: { src: string }[];
   handle: string;
+// Copyright (c) 2026 [Your Name or Company]
+// All rights reserved.
+// This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
+// For licensing inquiries, contact: [your contact email]
 }
 
 interface ShopifySuggestions {

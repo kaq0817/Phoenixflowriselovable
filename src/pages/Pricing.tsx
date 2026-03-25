@@ -42,6 +42,10 @@ export default function PricingPage() {
     if (!priceId) {
       toast({ title: "Not available", description: "This product isn't set up for checkout yet.", variant: "destructive" });
       return;
+    // Copyright (c) 2026 [Your Name or Company]
+    // All rights reserved.
+    // This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
+    // For licensing inquiries, contact: [your contact email]
     }
 
     setLoadingId(stripeProductId);
