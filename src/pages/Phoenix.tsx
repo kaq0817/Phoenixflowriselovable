@@ -175,6 +175,7 @@ export default function PhoenixPage() {
   const [applyLoading, setApplyLoading] = useState<Set<number>>(new Set());
   const [applied, setApplied] = useState<Set<number>>(new Set());
 
+  // On mount, only load store connections, do NOT auto-trigger scan or product fetch
   useEffect(() => {
     if (!session) return;
     (async () => {
@@ -201,6 +202,7 @@ export default function PhoenixPage() {
     })();
   }, [session]);
 
+  // Only run scan on explicit user action
   const handleScan = async () => {
     setScanning(true);
     setScanned(false);
@@ -208,7 +210,7 @@ export default function PhoenixPage() {
     setApplied(new Set());
     try {
       if (platform === "shopify" && connections.shopify) {
-        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50, connectionId: selectedShopifyConnectionId || undefined } });
+        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 10, connectionId: selectedShopifyConnectionId || undefined } });
         if (error) throw error;
         const products: ShopifyProduct[] = data.products || [];
         setShopifyProducts(products);
@@ -217,7 +219,7 @@ export default function PhoenixPage() {
         setShopifyScores(scores);
       }
       if (platform === "etsy" && connections.etsy) {
-        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active", connectionId: selectedEtsyConnectionId || undefined } });
+        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 10, state: "active", connectionId: selectedEtsyConnectionId || undefined } });
         if (error) throw error;
         const listings: EtsyListing[] = data.results || [];
         setEtsyListings(listings);

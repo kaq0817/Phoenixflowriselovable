@@ -34,39 +34,35 @@ serve(async (req) => {
       });
     }
 
-    const { limit = 50, page_info, connectionId } = await req.json().catch(() => ({}));
+    const { limit = 10, page_info, connectionId } = await req.json().catch(() => ({}));
 
-    let connectionQuery;
+    // Debug log: incoming connectionId
+    console.log('[fetch-shopify-products] incoming connectionId:', connectionId);
 
-    if (connectionId) {
-      // If a specific connectionId is provided, fetch only that one.
-      connectionQuery = supabase
-        .from("store_connections")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("platform", "shopify")
-        .eq("id", connectionId);
-    } else {
-      // If no specific connectionId, fetch the most recently created Shopify connection.
-      connectionQuery = supabase
-        .from("store_connections")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("platform", "shopify")
-        .order("created_at", { ascending: false })
-        .limit(1);
+    if (!connectionId) {
+      return new Response(JSON.stringify({ error: "Missing connectionId" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const { data: connectionRows, error: connErr } = await connectionQuery;
+    // Only allow fetching the specific connectionId for this user
+    const { data: connectionRows, error: connErr } = await supabase
+      .from("store_connections")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("platform", "shopify")
+      .eq("id", connectionId);
     const connection = connectionRows?.[0];
 
     if (connErr || !connection) {
-      return new Response(JSON.stringify({ error: "No Shopify connection found" }), {
+      return new Response(JSON.stringify({ error: "No Shopify connection found for this user and connectionId" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
+    // Debug log: resolved shop domain
+    console.log('[fetch-shopify-products] resolved shop domain:', shop);
 
     let apiUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${limit}`;
     if (page_info) {
@@ -86,6 +82,9 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+
+    // Debug log: number of products returned
+    console.log('[fetch-shopify-products] number of products returned:', Array.isArray(data.products) ? data.products.length : 0);
 
     // Parse pagination link header
     const linkHeader = response.headers.get("Link");
