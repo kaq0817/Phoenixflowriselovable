@@ -235,7 +235,6 @@ export default function BotPage() {
       return {
         title: selectedShopifyProduct.title,
         description: stripHtml(selectedShopifyProduct.body_html || ""),
-        subtitle: [selectedShopifyProduct.vendor, selectedShopifyProduct.product_type].filter(Boolean).join(" � ") || selectedShopifyProduct.handle,
         subtitle: [selectedShopifyProduct.vendor, selectedShopifyProduct.product_type].filter(Boolean).join(" - ") || selectedShopifyProduct.handle,
       };
     }
@@ -244,7 +243,6 @@ export default function BotPage() {
       return {
         title: selectedEtsyListing.title,
         description: selectedEtsyListing.description,
-        subtitle: selectedEtsyListing.taxonomy_path || "Etsy listing",
         subtitle: selectedEtsyListing.taxonomy_path || "Etsy listing", // No change needed here, it's not using the garbled char
       };
     }
@@ -253,7 +251,6 @@ export default function BotPage() {
       title: manualItem.title || "Manual product",
       description: manualItem.description,
       subtitle: [manualItem.vendor, manualItem.productType].filter(Boolean).join(" � ") || "Manual input",
-    };
     }; // Changed to " - " below
   }, [sourceMode, selectedShopifyProduct, selectedEtsyListing, manualItem]);
 

@@ -15,7 +15,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Types ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 interface ShopifyProduct {
   id: number;
   title: string;
@@ -134,8 +133,9 @@ export default function OptimizerPage() {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50, connectionId: selectedShopifyConnectionId } });
       if (error) throw error;
       setShopifyProducts(data.products || []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to fetch products", variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to fetch products";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setShopifyLoading(false);
     }
@@ -151,14 +151,15 @@ export default function OptimizerPage() {
       const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active", connectionId: selectedEtsyConnectionId } });
       if (error) throw error;
       setEtsyListings(data.results || []);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to fetch listings", variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to fetch listings";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setEtsyLoading(false);
     }
   };
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Etsy actions ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+  //  Etsy actions 
   const optimizeEtsy = async (listing: EtsyListing) => {
     setSelectedListing(listing);
     setEtsySuggestions(null);
@@ -169,8 +170,9 @@ export default function OptimizerPage() {
       if (error) throw error;
       setEtsySuggestions(data.suggestions);
       setExpandedSection("title");
-    } catch (err: any) {
-      toast({ title: "Optimization failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Optimization failed";
+      toast({ title: "Optimization failed", description: message, variant: "destructive" });
       setSelectedListing(null);
     } finally {
       setEtsyOptimizing(false);
@@ -194,10 +196,54 @@ export default function OptimizerPage() {
       setSelectedListing(null);
       setEtsySuggestions(null);
       fetchEtsyListings();
-    } catch (err: any) {
-      toast({ title: "Apply failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Apply failed";
+      toast({ title: "Apply failed", description: message, variant: "destructive" });
     } finally {
       setEtsyApplying(false);
+    }
+  };
+
+  const optimizeShopify = async (product: ShopifyProduct) => {
+    setSelectedProduct(product);
+    setShopifySuggestions(null);
+    setShopifyOptimizing(true);
+    setExpandedSection(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", { body: { product } });
+      if (error) throw error;
+      setShopifySuggestions(data.suggestions);
+      setExpandedSection("title");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Optimization failed";
+      toast({ title: "Optimization failed", description: message, variant: "destructive" });
+      setSelectedProduct(null);
+    } finally {
+      setShopifyOptimizing(false);
+    }
+  };
+
+  const applyShopifyChanges = async () => {
+    if (!selectedProduct || !shopifySuggestions) return;
+    setShopifyApplying(true);
+    try {
+      const { error } = await supabase.functions.invoke("apply-shopify-changes", {
+        body: {
+          productId: selectedProduct.id,
+          optimizedData: shopifySuggestions,
+          connectionId: selectedShopifyConnectionId || undefined,
+        },
+      });
+      if (error) throw error;
+      toast({ title: "Done!", description: "Changes applied to your Shopify store." });
+      setSelectedProduct(null);
+      setShopifySuggestions(null);
+      fetchShopifyProducts();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Apply failed";
+      toast({ title: "Apply failed", description: message, variant: "destructive" });
+    } finally {
+      setShopifyApplying(false);
     }
   };
 
@@ -266,7 +312,7 @@ export default function OptimizerPage() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <BarChart3 className="h-6 w-6 text-primary" /> Product Optimizer
         </h1>
-        <p className="text-muted-foreground mt-1">Pick a product ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ AI optimizes ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Apply to your store.</p>
+        <p className="text-muted-foreground mt-1">Pick a product → AI optimizes → Apply to your store.</p>
       </motion.div>
 
       {noConnections ? (
@@ -340,7 +386,7 @@ export default function OptimizerPage() {
                         <div className="flex items-start justify-between gap-2">
                           <h2 className="font-semibold text-base leading-tight">{selectedProduct.title}</h2>
                           <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setSelectedProduct(null); setShopifySuggestions(null); }}>
-                            ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â Back
+                            Back
                           </Button>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
@@ -523,7 +569,7 @@ export default function OptimizerPage() {
                         <div className="flex items-start justify-between gap-2">
                           <h2 className="font-semibold text-base leading-tight">{selectedListing.title}</h2>
                           <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setSelectedListing(null); setEtsySuggestions(null); }}>
-                            ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â Back
+                            Back
                           </Button>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
@@ -619,10 +665,3 @@ export default function OptimizerPage() {
     </div>
   );
 }
-
-
-
-
-
-
-

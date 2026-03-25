@@ -226,8 +226,9 @@ export default function PhoenixPage() {
         setEtsyScores(scores);
       }
       setScanned(true);
-    } catch (err: any) {
-      toast({ title: "Scan failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      toast({ title: "Scan failed", description: message, variant: "destructive" });
     } finally {
       setScanning(false);
     }
@@ -250,8 +251,9 @@ export default function PhoenixPage() {
         if (error) throw error;
         setFixes((prev) => new Map(prev).set(id, data.suggestions));
       }
-    } catch (err: any) {
-      toast({ title: "AI fix failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      toast({ title: "AI fix failed", description: message, variant: "destructive" });
     } finally {
       setFixLoading((prev) => { const s = new Set(prev); s.delete(id); return s; });
     }
@@ -275,8 +277,9 @@ export default function PhoenixPage() {
       }
       setApplied((prev) => new Set(prev).add(id));
       toast({ title: "✅ Fixed!", description: "Changes pushed to your store." });
-    } catch (err: any) {
-      toast({ title: "Apply failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      toast({ title: "Apply failed", description: message, variant: "destructive" });
     } finally {
       setApplyLoading((prev) => { const s = new Set(prev); s.delete(id); return s; });
     }
