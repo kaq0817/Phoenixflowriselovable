@@ -90,10 +90,13 @@ export default function BulkAnalyzerPage() {
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
   const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
 
+  // On mount, only check for connection, do NOT auto-fetch listings or run bulk actions
   useEffect(() => {
     checkConnection();
+    // Do not auto-fetch listings or run bulk actions
   }, []);
 
+  // Only fetch listings on explicit user action
   const checkConnection = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -107,9 +110,10 @@ export default function BulkAnalyzerPage() {
 
     const hasEtsy = !!data && data.length > 0;
     setHasConnection(hasEtsy);
-    if (hasEtsy) fetchListings();
+    // Do not auto-fetch listings here
   };
 
+  // Only fetch listings on explicit user action
   const fetchListings = async () => {
     setLoading(true);
     try {
@@ -123,7 +127,7 @@ export default function BulkAnalyzerPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ limit: 100, offset: 0, state: "active" }),
+          body: JSON.stringify({ limit: 10, offset: 0, state: "active" }),
         }
       );
       const data = await res.json();

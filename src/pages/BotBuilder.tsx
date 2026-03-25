@@ -135,30 +135,26 @@ export default function BotPage() {
   });
   const [result, setResult] = useState<AdConcept | null>(null);
 
+  // On mount, only load store connections, do NOT auto-fetch products or listings
   useEffect(() => {
     if (!session) return;
-
-    void (async () => {
+    (async () => {
       setLoading(true);
       const { data } = await supabase
         .from("store_connections")
         .select("id, platform, shop_domain, shop_name, scopes, created_at")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
-
       const allRows = (data || []) as StoreConnectionOption[];
       const rows = allRows.filter((connection) => connection.platform === "shopify" || isUsableEtsyConnection(connection));
       setStoreConnections(rows);
-
       const firstShopify = rows.find((connection) => connection.platform === "shopify");
       const firstEtsy = rows.find((connection) => connection.platform === "etsy");
       setSelectedShopifyConnectionId(firstShopify?.id || "");
       setSelectedEtsyConnectionId(firstEtsy?.id || "");
-
       if (firstShopify) setSourceMode("shopify");
       else if (firstEtsy) setSourceMode("etsy");
       else setSourceMode("manual");
-
       setLoading(false);
     })();
   }, [session]);
@@ -168,16 +164,15 @@ export default function BotPage() {
   const shopifyConnections = useMemo(() => storeConnections.filter((connection) => connection.platform === "shopify"), [storeConnections]);
   const etsyConnections = useMemo(() => storeConnections.filter((connection) => connection.platform === "etsy"), [storeConnections]);
 
+  // Only fetch products on explicit user action
   const fetchShopifyProducts = async (connectionId = selectedShopifyConnectionId) => {
     if (!connectionId) return;
-
     setShopifyLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 50, connectionId },
+        body: { limit: 10, connectionId },
       });
       if (error) throw error;
-
       const products = (data?.products || []) as ShopifyProduct[];
       setShopifyProducts(products);
       setSelectedShopifyProductId(products[0] ? String(products[0].id) : "");
@@ -189,16 +184,15 @@ export default function BotPage() {
     }
   };
 
+  // Only fetch listings on explicit user action
   const fetchEtsyListings = async (connectionId = selectedEtsyConnectionId) => {
     if (!connectionId) return;
-
     setEtsyLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", {
-        body: { limit: 50, state: "active", connectionId },
+        body: { limit: 10, state: "active", connectionId },
       });
       if (error) throw error;
-
       const listings = (data?.results || []) as EtsyListing[];
       setEtsyListings(listings);
       setSelectedEtsyListingId(listings[0] ? String(listings[0].listing_id) : "");

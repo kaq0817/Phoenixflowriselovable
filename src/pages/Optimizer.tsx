@@ -101,6 +101,7 @@ export default function OptimizerPage() {
 
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
+  // On mount, only load store connections, do NOT auto-fetch products or listings
   useEffect(() => {
     if (!session) return;
     (async () => {
@@ -123,6 +124,7 @@ export default function OptimizerPage() {
     })();
   }, [session]);
 
+  // Only fetch products on explicit user action
   const fetchShopifyProducts = async () => {
     if (!selectedShopifyConnectionId) {
       toast({ title: "Select a store", description: "Choose a Shopify store before loading products." });
@@ -130,7 +132,7 @@ export default function OptimizerPage() {
     }
     setShopifyLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50, connectionId: selectedShopifyConnectionId } });
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 10, connectionId: selectedShopifyConnectionId } });
       if (error) throw error;
       setShopifyProducts(data.products || []);
     } catch (err: unknown) {
@@ -141,6 +143,7 @@ export default function OptimizerPage() {
     }
   };
 
+  // Only fetch listings on explicit user action
   const fetchEtsyListings = async () => {
     if (!selectedEtsyConnectionId) {
       toast({ title: "Select a shop", description: "Choose an Etsy shop before loading listings." });
@@ -148,7 +151,7 @@ export default function OptimizerPage() {
     }
     setEtsyLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active", connectionId: selectedEtsyConnectionId } });
+      const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 10, state: "active", connectionId: selectedEtsyConnectionId } });
       if (error) throw error;
       setEtsyListings(data.results || []);
     } catch (err: unknown) {
