@@ -30,8 +30,8 @@ const shopifyItems = [
 ];
 
 const etsyItems = [
-  { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2 },
-  { title: "Product Scanner", url: "/listing-scan", icon: Scan },
+  { title: "Listing Optimizer (Coming Soon)", url: "/etsy-optimizer", icon: Flower2, comingSoon: true },
+  { title: "Product Scanner (Coming Soon)", url: "/listing-scan", icon: Scan, comingSoon: true },
 ];
 
 const generalItems = [
@@ -74,15 +74,18 @@ export function AppSidebar() {
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
+              <SidebarMenuButton asChild disabled={item.comingSoon}>
                 <NavLink
                   to={item.url}
                   end={item.url === "/"}
-                  className="hover:bg-sidebar-accent/50 transition-colors"
+                  className={`hover:bg-sidebar-accent/50 transition-colors ${item.comingSoon ? 'opacity-50 pointer-events-none' : ''}`}
                   activeClassName="bg-primary/10 text-primary font-semibold border-l-2 border-primary"
                 >
                   <item.icon className={`mr-2 h-4 w-4 ${isActive(item.url) ? "text-primary" : ""}`} />
                   {!collapsed && <span>{item.title}</span>}
+                  {item.comingSoon && !collapsed && (
+                    <span className="ml-2 text-xs text-muted-foreground">(Coming Soon)</span>
+                  )}
                 </NavLink>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -100,16 +103,16 @@ export function AppSidebar() {
       <SidebarGroupContent>
         {!collapsed && (
           <div className="px-2 pb-2 grid grid-cols-2 gap-1">
-            <Button size="sm" variant={toolsFilter === "shopify" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("shopify")}>
+            <Button size="sm" variant={toolsFilter === "shopify" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("shopify")}> 
               Shopify
             </Button>
-            <Button size="sm" variant={toolsFilter === "etsy" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("etsy")}>
-              Etsy
+            <Button size="sm" variant={toolsFilter === "etsy" ? "default" : "outline"} className="h-7 text-xs opacity-50 cursor-not-allowed" disabled>
+              Etsy (Coming Soon)
             </Button>
-            <Button size="sm" variant={toolsFilter === "general" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("general")}>
+            <Button size="sm" variant={toolsFilter === "general" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("general")}> 
               General
             </Button>
-            <Button size="sm" variant={toolsFilter === "all" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("all")}>
+            <Button size="sm" variant={toolsFilter === "all" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("all")}> 
               All
             </Button>
           </div>
