@@ -3687,6 +3687,8 @@
     "https://deno.land/std@0.190.0/async/pool.ts": "f1b8d3df4d7fd3c73f8cbc91cc2e8b8e950910f1eab94230b443944d7584c657",
     "https://deno.land/std@0.190.0/async/retry.ts": "c9248325ec08cc2cceb7618472e77589a51a25cee460e07b6096be34966c2ead",
     "https://deno.land/std@0.190.0/async/tee.ts": "47e42d35f622650b02234d43803d0383a89eb4387e1b83b5a40106d18ae36757",
+    "https://deno.land/std@0.190.0/encoding/base64.ts": "144ae6234c1fbe5b68666c711dc15b1e9ee2aef6d42b3b4345bf9a6c91d70d0d",
+    "https://deno.land/std@0.190.0/encoding/base64url.ts": "2ed4ba122b20fedf226c5d337cf22ee2024fa73a8f85d915d442af7e9ce1fae1",
     "https://deno.land/std@0.190.0/http/server.ts": "1b23463b5b36e4eebc495417f6af47a6f7d52e3294827a1226d2a1aab23d9d20"
   },
   "workspace": {

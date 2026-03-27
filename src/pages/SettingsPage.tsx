@@ -39,7 +39,6 @@ export default function SettingsPage() {
 
   // Etsy form
   const [showEtsyForm, setShowEtsyForm] = useState(false);
-  const [etsyShopUrl, setEtsyShopUrl] = useState("");
   const [etsyConnecting, setEtsyConnecting] = useState(false);
 
   const fetchConnections = async () => {
@@ -56,6 +55,29 @@ export default function SettingsPage() {
 
   const shopifyConnections = connections.filter((c) => c.platform === "shopify");
   const etsyConnections = connections.filter((c) => c.platform === "etsy");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const etsyStatus = params.get("etsy");
+    const etsyMessage = params.get("etsy_message");
+    if (!etsyStatus) return;
+
+    if (etsyStatus === "connected") {
+      toast({ title: "Etsy connected", description: etsyMessage || "Your Etsy OAuth connection is active." });
+      void fetchConnections();
+    } else {
+      toast({
+        title: etsyStatus === "denied" ? "Etsy authorization denied" : "Etsy connection failed",
+        description: etsyMessage || "The Etsy OAuth flow did not complete.",
+        variant: "destructive",
+      });
+    }
+
+    params.delete("etsy");
+    params.delete("etsy_message");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+  }, [toast]);
 
   const handleShopifyConnect = async () => {
     const domain = shopifyDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -98,6 +120,7 @@ export default function SettingsPage() {
       if (error) throw error;
       if (!data?.url) throw new Error("Etsy authorization URL was not returned");
 
+      setShowEtsyForm(false);
       window.location.href = data.url;
     } catch (error: unknown) {
       toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Etsy authorization."), variant: "destructive" });
@@ -275,7 +298,7 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4 border border-border/50 rounded-lg p-4">
               <p className="text-sm text-muted-foreground">
-                Connect your Etsy shop with Etsy OAuth so Phoenix Flow can read and update listings with real account access.
+                Connect your Etsy shop with Etsy OAuth so Phoenix Flow can read listings, write listing updates, and present a cleaner app-review story with minimal scopes.
               </p>
               <div className="flex gap-2">
                 <Button
@@ -292,7 +315,7 @@ export default function SettingsPage() {
                 <Button variant="ghost" onClick={() => setShowEtsyForm(false)}>Cancel</Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Etsy will ask you to approve access and then send you back here automatically.
+                Etsy will ask for `listings_r`, `listings_w`, and `shops_r`, then return here with a signed callback result.
               </p>
             </div>
           )}
@@ -317,6 +340,10 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
+
+
 
 
 

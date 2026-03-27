@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getEtsyApiKeyHeader, getEtsyClientId } from "../_shared/etsy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,13 +27,12 @@ serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    if (claimsError || !claimsData?.claims?.sub) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
     const userId = claimsData.claims.sub;
 
-    const { limit = 25, offset = 0, state: listingState = "active", connectionId } =
-      await req.json().catch(() => ({}));
+    const { limit = 25, offset = 0, state: listingState = "active", connectionId } = await req.json().catch(() => ({}));
 
     let connQuery = supabase
       .from("store_connections")
@@ -50,41 +50,29 @@ serve(async (req) => {
     const connection = connectionRows?.[0];
 
     if (connErr || !connection) {
-      return new Response(
-        JSON.stringify({
-          error: "No Etsy connection found. Please connect an Etsy shop in Settings first.",
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ error: "No Etsy connection found. Please connect an Etsy shop in Settings first." }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Read-only/manual Etsy connection: fetch public listings through fallback function
     if (connection.access_token === "public_only" || !connection.refresh_token) {
       const shopName = connection.shop_name || connection.shop_domain;
       if (!shopName) {
-        return new Response(
-          JSON.stringify({ error: "Connected Etsy store is missing shop identifier." }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ error: "Connected Etsy store is missing shop identifier." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      const publicRes = await fetch(
-        `${Deno.env.get("SUPABASE_URL")}/functions/v1/fetch-etsy-public-listings`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: authHeader,
-          },
-          body: JSON.stringify({ shopName, limit, offset }),
+      const publicRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/fetch-etsy-public-listings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
         },
-      );
+        body: JSON.stringify({ shopName, limit, offset }),
+      });
 
       const publicText = await publicRes.text();
       if (!publicRes.ok) {
@@ -95,28 +83,24 @@ serve(async (req) => {
       }
 
       const publicData = JSON.parse(publicText);
-      return new Response(
-        JSON.stringify({
-          ...publicData,
-          connection_id: connection.id,
-          mode: "public_readonly",
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ ...publicData, connection_id: connection.id, mode: "public_readonly" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     let accessToken = connection.access_token;
-    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
-    if (!clientId) {
+    let clientId: string;
+    let apiKeyHeader: string;
+    try {
+      clientId = getEtsyClientId();
+      apiKeyHeader = getEtsyApiKeyHeader();
+    } catch {
       return new Response(JSON.stringify({ error: "ETSY_CLIENT_ID is not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Check if token is expired and refresh if needed
     if (connection.token_expires_at && new Date(connection.token_expires_at) <= new Date()) {
       const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
         method: "POST",
@@ -138,7 +122,6 @@ serve(async (req) => {
       const refreshData = await refreshRes.json();
       accessToken = refreshData.access_token;
 
-      // Update stored tokens using service role
       const serviceSupabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -163,10 +146,10 @@ serve(async (req) => {
     }
 
     const listingsRes = await fetch(
-      `https://openapi.etsy.com/v3/application/shops/${shopId}/listings?limit=${limit}&offset=${offset}&state=${listingState}&includes=Images`,
+      `https://api.etsy.com/v3/application/shops/${shopId}/listings?limit=${limit}&offset=${offset}&state=${listingState}&includes=Images`,
       {
         headers: {
-          "x-api-key": clientId,
+          "x-api-key": apiKeyHeader,
           Authorization: `Bearer ${accessToken}`,
         },
       },
@@ -177,10 +160,9 @@ serve(async (req) => {
       console.error("Etsy listings fetch failed:", errText);
       return new Response(
         JSON.stringify({
-          error:
-            errText.includes("API key not found")
-              ? "Etsy API credentials are invalid. Update ETSY_CLIENT_ID and Etsy OAuth credentials in project secrets."
-              : "Failed to fetch listings from Etsy",
+          error: errText.includes("API key not found")
+            ? "Etsy API credentials are invalid. Update ETSY_CLIENT_ID and Etsy OAuth credentials in project secrets."
+            : "Failed to fetch listings from Etsy",
         }),
         {
           status: 500,
@@ -190,17 +172,9 @@ serve(async (req) => {
     }
 
     const listingsData = await listingsRes.json();
-
-    return new Response(
-      JSON.stringify({
-        ...listingsData,
-        connection_id: connection.id,
-        mode: "oauth",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return new Response(JSON.stringify({ ...listingsData, connection_id: connection.id, mode: "oauth" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("fetch-etsy-listings error:", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
@@ -209,6 +183,3 @@ serve(async (req) => {
     });
   }
 });
-
-
-

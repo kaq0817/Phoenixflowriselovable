@@ -1,41 +1,53 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
-import { decode as base64urlDecode } from "https://deno.land/std@0.190.0/encoding/base64url.ts";
+import {
+  buildAppRedirect,
+  getEtsyApiKeyHeader,
+  getEtsyClientId,
+  getEtsyRedirectUri,
+  getEtsyScopes,
+  verifySignedOAuthState,
+} from "../_shared/etsy.ts";
 
 serve(async (req) => {
   try {
     const url = new URL(req.url);
-    const code = url.searchParams.get("code");
+    const errorCode = url.searchParams.get("error");
+    const errorDescription = url.searchParams.get("error_description");
     const stateParam = url.searchParams.get("state");
 
+    if (errorCode) {
+      return Response.redirect(
+        buildAppRedirect({
+          status: errorCode === "access_denied" ? "denied" : "error",
+          message: errorDescription || errorCode,
+        }),
+        302,
+      );
+    }
+
+    const code = url.searchParams.get("code");
     if (!code || !stateParam) {
-      return new Response("Missing required parameters", { status: 400 });
+      return Response.redirect(buildAppRedirect({ status: "error", message: "Missing Etsy OAuth parameters." }), 302);
     }
 
-    // Decode URL-safe base64 state
-    let userId: string;
-    let codeVerifier: string;
+    let state: Awaited<ReturnType<typeof verifySignedOAuthState>>;
     try {
-      const stateJson = new TextDecoder().decode(base64urlDecode(stateParam));
-      const parsed = JSON.parse(stateJson);
-      userId = parsed.userId;
-      codeVerifier = parsed.codeVerifier;
-    } catch {
-      return new Response("Invalid state parameter", { status: 400 });
+      state = await verifySignedOAuthState(stateParam);
+    } catch (error) {
+      return Response.redirect(
+        buildAppRedirect({
+          status: "error",
+          message: error instanceof Error ? error.message : "Invalid Etsy OAuth state.",
+        }),
+        302,
+      );
     }
 
-    if (!userId || !codeVerifier) {
-      return new Response("Invalid state", { status: 400 });
-    }
+    const clientId = getEtsyClientId();
+    const redirectUri = getEtsyRedirectUri();
+    const scopes = getEtsyScopes().join(" ");
 
-    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
-    if (!clientId) {
-      return new Response("Etsy credentials not configured", { status: 500 });
-    }
-
-    const redirectUri = Deno.env.get("ETSY_REDIRECT_URI") || `${Deno.env.get("SUPABASE_URL")}/functions/v1/etsy-callback`;
-
-    // Exchange code for access token
     const tokenRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -44,81 +56,80 @@ serve(async (req) => {
         client_id: clientId,
         redirect_uri: redirectUri,
         code,
-        code_verifier: codeVerifier,
+        code_verifier: state.codeVerifier,
       }),
     });
 
     if (!tokenRes.ok) {
-      const errText = await tokenRes.text();
-      console.error("Etsy token exchange failed:", errText);
-      return new Response(`Failed to get access token: ${errText}`, { status: 500 });
+      const tokenError = await tokenRes.text();
+      console.error("Etsy token exchange failed:", tokenError);
+      return Response.redirect(buildAppRedirect({ status: "error", message: "Etsy token exchange failed." }), 302);
     }
 
     const tokenData = await tokenRes.json();
-    const accessToken = tokenData.access_token;
-    const refreshToken = tokenData.refresh_token;
-    const expiresIn = tokenData.expires_in;
+    const accessToken = tokenData.access_token as string;
+    const refreshToken = tokenData.refresh_token as string;
+    const expiresIn = Number(tokenData.expires_in || 3600);
+    const etsyUserId = String(accessToken).split(".")[0];
 
-    // Get shop info
     let shopName = "Etsy Shop";
-    let shopId = null;
-    try {
-      const etsyUserId = accessToken.split(".")[0];
-      const shopRes = await fetch(`https://openapi.etsy.com/v3/application/users/${etsyUserId}/shops`, {
+    let shopId: string | null = null;
+
+    if (etsyUserId) {
+      const shopRes = await fetch(`https://api.etsy.com/v3/application/users/${etsyUserId}/shops`, {
         headers: {
-          "x-api-key": clientId,
-          "Authorization": `Bearer ${accessToken}`,
+          "x-api-key": getEtsyApiKeyHeader(),
+          Authorization: `Bearer ${accessToken}`,
         },
       });
+
       if (shopRes.ok) {
         const shopData = await shopRes.json();
-        if (shopData.results && shopData.results.length > 0) {
-          shopName = shopData.results[0].shop_name;
-          shopId = shopData.results[0].shop_id;
+        if (Array.isArray(shopData.results) && shopData.results[0]) {
+          shopName = shopData.results[0].shop_name || shopName;
+          shopId = shopData.results[0].shop_id ? String(shopData.results[0].shop_id) : null;
         }
       } else {
-        await shopRes.text(); // consume body
+        console.error("Etsy shop lookup failed:", await shopRes.text());
       }
-    } catch (e) {
-      console.error("Failed to fetch Etsy shop info:", e);
     }
 
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     const { error: upsertError } = await supabase.from("store_connections").upsert(
       {
-        user_id: userId,
+        user_id: state.userId,
         platform: "etsy",
-        shop_domain: shopId ? String(shopId) : null,
+        shop_domain: shopId,
         shop_name: shopName,
         access_token: accessToken,
         refresh_token: refreshToken,
         token_expires_at: tokenExpiresAt,
-        scopes: "listings_r listings_w shops_r shops_w",
+        scopes,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,platform,shop_domain" }
+      { onConflict: "user_id,platform,shop_domain" },
     );
 
     if (upsertError) {
-      console.error("Failed to save connection:", upsertError);
-      return new Response("Failed to save connection", { status: 500 });
+      console.error("Failed to save Etsy connection:", upsertError);
+      return Response.redirect(buildAppRedirect({ status: "error", message: "Failed to save Etsy connection." }), 302);
     }
 
-    const redirectUrl = "https://ironphoenixflow.com";
-    return new Response(null, {
-      status: 302,
-      headers: { Location: `${redirectUrl}/settings?etsy=connected` },
-    });
+    return Response.redirect(
+      buildAppRedirect({
+        status: "connected",
+        path: state.returnPath,
+        message: shopName === "Etsy Shop" ? "Etsy OAuth connected." : `Connected ${shopName}.`,
+      }),
+      302,
+    );
   } catch (error) {
     console.error("Etsy callback error:", error);
-    return new Response("Internal server error", { status: 500 });
+    return Response.redirect(buildAppRedirect({ status: "error", message: "Internal Etsy OAuth callback error." }), 302);
   }
 });
-
-

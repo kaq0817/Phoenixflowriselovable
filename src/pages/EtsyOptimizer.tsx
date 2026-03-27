@@ -1,285 +1,54 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
+import { ArrowRight, ShieldCheck, Sparkles, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  export default function EtsyOptimizer() {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <Flower2 className="h-16 w-16 text-spring mb-4" />
-        <h1 className="text-3xl font-bold mb-2">Etsy Integration Coming Soon</h1>
-        <p className="text-muted-foreground text-lg max-w-xl mb-6">
-          We're working hard to bring you full Etsy integration. This feature is not yet available. Please check back soon!
+import { Card, CardContent } from "@/components/ui/card";
+
+export default function EtsyOptimizer() {
+  return (
+    <div className="space-y-6">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Store className="h-6 w-6 text-primary" /> Etsy Optimizer
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Etsy now runs through the main optimizer flow with OAuth-backed connections, listing reads, and direct apply support.
         </p>
-        <Button disabled className="opacity-50 cursor-not-allowed">All Etsy features are disabled</Button>
-      </div>
-    );
-  }
-                    {new Date(snap.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-spring/30 text-spring hover:bg-spring/10 ml-2"
-                  disabled={undoing === snap.id}
-                  onClick={() => handleUndo(snap.id)}
-                >
-                  {undoing === snap.id ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
-                  <span className="ml-1">Undo</span>
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      </motion.div>
 
-      {/* Listings Grid */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Active Listings</h2>
-        <Button size="sm" variant="outline" onClick={fetchListings} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+      <Card className="bg-card/50 border-border/30">
+        <CardContent className="p-8 space-y-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-lg bg-muted/20 p-4">
+              <ShieldCheck className="h-5 w-5 text-primary mb-2" />
+              <p className="font-medium text-sm">Review-friendly OAuth</p>
+              <p className="text-xs text-muted-foreground mt-1">Minimal Etsy scopes, signed state, and clearer callback handling.</p>
+            </div>
+            <div className="rounded-lg bg-muted/20 p-4">
+              <Store className="h-5 w-5 text-primary mb-2" />
+              <p className="font-medium text-sm">Live shop connection</p>
+              <p className="text-xs text-muted-foreground mt-1">Connect Etsy in Settings, then work from the shared optimizer page.</p>
+            </div>
+            <div className="rounded-lg bg-muted/20 p-4">
+              <Sparkles className="h-5 w-5 text-primary mb-2" />
+              <p className="font-medium text-sm">Direct listing workflow</p>
+              <p className="text-xs text-muted-foreground mt-1">Fetch listings, generate suggestions, copy or apply changes, and keep snapshots for undo.</p>
+            </div>
+          </div>
 
-      {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-48 rounded-lg" />
-          ))}
-        </div>
-      ) : listings.length === 0 ? (
-        <Card className="bg-card/50 border-border/30">
-          <CardContent className="p-8 text-center">
-            <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-muted-foreground">No active listings found.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {listings.map((listing) => {
-            const imgUrl = listing.images?.[0]?.url_170x135;
-            const isExpanded = expandedListing === listing.listing_id;
-            return (
-              <motion.div key={listing.listing_id} layout>
-                <Card className="bg-card/50 border-border/30 hover:border-spring/30 transition-colors overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex gap-3">
-                      {imgUrl && (
-                        <img src={imgUrl} alt="" className="h-16 w-16 rounded-md object-cover flex-shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm truncate">{listing.title}</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {listing.tags?.slice(0, 3).map((t) => (
-                            <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {t}
-                            </Badge>
-                          ))}
-                          {(listing.tags?.length || 0) > 3 && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              +{listing.tags.length - 3}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button className="gradient-phoenix text-primary-foreground flex-1" onClick={() => { window.location.href = "/optimizer"; }}>
+              Open Main Optimizer
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => { window.location.href = "/settings"; }}>
+              Review Etsy Connection
+            </Button>
+          </div>
 
-                    <button
-                      onClick={() => setExpandedListing(isExpanded ? null : listing.listing_id)}
-                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-2"
-                    >
-                      {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                      {isExpanded ? "Less" : "Details"}
-                    </button>
-
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <p className="text-xs text-muted-foreground mt-2 line-clamp-4">
-                            {listing.description}
-                          </p>
-                          {listing.materials?.length > 0 && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              <span className="font-medium">Materials:</span> {listing.materials.join(", ")}
-                            </p>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    <Button
-                      size="sm"
-                      className="w-full mt-3 bg-spring text-spring-foreground hover:bg-spring/90"
-                      onClick={() => handleOptimize(listing)}
-                      disabled={optimizing && selectedListing?.listing_id === listing.listing_id}
-                    >
-                      {optimizing && selectedListing?.listing_id === listing.listing_id ? (
-                        <>
-                          <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> Optimizing…
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3 w-3 mr-1" /> Optimize
-                        </>
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Suggestions Panel */}
-      <AnimatePresence>
-        {selectedListing && suggestions && (
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 30 }}
-          >
-            <Card className="border-spring/40 bg-card/60">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-spring" />
-                  AI Suggestions
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">{suggestions.reasoning}</p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Title comparison */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1">
-                    <FileText className="h-3 w-3" /> Title
-                  </h4>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="p-3 rounded-lg bg-muted/30 border border-border/20">
-                      <p className="text-[10px] text-muted-foreground mb-1">Current</p>
-                      <p className="text-sm">{selectedListing.title}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-spring/5 border border-spring/20">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] text-spring">Optimized</p>
-                        <CopyButton text={suggestions.title} label="Title" size="sm" variant="ghost" className="h-6 px-2 text-[10px]" />
-                      </div>
-                      <p className="text-sm">{suggestions.title}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tags comparison */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1">
-                    <Tag className="h-3 w-3" /> Tags
-                  </h4>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="p-3 rounded-lg bg-muted/30 border border-border/20">
-                      <p className="text-[10px] text-muted-foreground mb-1">Current ({selectedListing.tags?.length || 0})</p>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedListing.tags?.map((t) => (
-                          <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-lg bg-spring/5 border border-spring/20">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] text-spring">Optimized ({suggestions.tags.length})</p>
-                        <CopyButton text={suggestions.tags.join(", ")} label="Tags" size="sm" variant="ghost" className="h-6 px-2 text-[10px]" />
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {suggestions.tags.map((t) => (
-                          <Badge key={t} className="text-[10px] bg-spring/10 text-spring border-spring/20">{t}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Description comparison */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1">
-                    <FileText className="h-3 w-3" /> Description
-                  </h4>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="p-3 rounded-lg bg-muted/30 border border-border/20 max-h-40 overflow-y-auto">
-                      <p className="text-[10px] text-muted-foreground mb-1">Current</p>
-                      <p className="text-xs whitespace-pre-wrap">{selectedListing.description?.slice(0, 500)}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-spring/5 border border-spring/20 max-h-40 overflow-y-auto">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] text-spring">Optimized</p>
-                        <CopyButton text={suggestions.description || ""} label="Description" size="sm" variant="ghost" className="h-6 px-2 text-[10px]" />
-                      </div>
-                      <p className="text-xs whitespace-pre-wrap">{suggestions.description?.slice(0, 500)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Materials */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase text-muted-foreground">Materials</h4>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="p-3 rounded-lg bg-muted/30 border border-border/20">
-                      <p className="text-[10px] text-muted-foreground mb-1">Current</p>
-                      <p className="text-xs">{selectedListing.materials?.join(", ") || "None"}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-spring/5 border border-spring/20">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] text-spring">Optimized</p>
-                        <CopyButton text={suggestions.materials.join(", ")} label="Materials" size="sm" variant="ghost" className="h-6 px-2 text-[10px]" />
-                      </div>
-                      <p className="text-xs">{suggestions.materials.join(", ")}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action buttons */}
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    onClick={async () => {
-                      const text = copyAllFields([
-                        { label: "Title", value: suggestions.title },
-                        { label: "Tags", value: suggestions.tags.join(", ") },
-                        { label: "Description", value: suggestions.description },
-                        { label: "Materials", value: suggestions.materials.join(", ") },
-                      ]);
-                      await navigator.clipboard.writeText(text);
-                      toast({ title: "All copied!", description: "Paste the optimized content into your Etsy listing." });
-                    }}
-                    className="flex-1 bg-spring text-spring-foreground hover:bg-spring/90"
-                  >
-                    <Copy className="h-4 w-4 mr-2" /> Copy All Changes
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => { setSelectedListing(null); setSuggestions(null); }}
-                    className="border-border/30"
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-
-                <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                  <ArrowRight className="h-3 w-3" />
-                  Copy the optimized content and paste it into your Etsy listing editor.
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <ArrowRight className="h-3 w-3" /> Etsy optimization is no longer a separate broken screen. Use this page as the entry point into the cleaned-up flow.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

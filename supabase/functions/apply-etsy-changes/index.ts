@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getEtsyApiKeyHeader, getEtsyClientId } from "../_shared/etsy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,7 +27,7 @@ serve(async (req: Request) => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    if (claimsError || !claimsData?.claims?.sub) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
     const userId = claimsData.claims.sub;
@@ -39,7 +40,6 @@ serve(async (req: Request) => {
       });
     }
 
-    // Get Etsy connection (supports multiple stores; defaults to latest)
     let connQuery = supabase
       .from("store_connections")
       .select("*")
@@ -62,30 +62,26 @@ serve(async (req: Request) => {
       });
     }
 
-    // Public/manual connections are read-only
     if (connection.access_token === "public_only") {
-      return new Response(
-        JSON.stringify({
-          error:
-            "This Etsy connection is read-only. Use Copy buttons, or connect via Etsy OAuth to apply changes directly.",
-        }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ error: "This Etsy connection is read-only. Use Copy buttons, or connect via Etsy OAuth to apply changes directly." }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     let accessToken = connection.access_token;
-    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
-    if (!clientId) {
+    let clientId: string;
+    let apiKeyHeader: string;
+    try {
+      clientId = getEtsyClientId();
+      apiKeyHeader = getEtsyApiKeyHeader();
+    } catch {
       return new Response(JSON.stringify({ error: "ETSY_CLIENT_ID is not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Refresh token if expired
     if (connection.token_expires_at && new Date(connection.token_expires_at) <= new Date()) {
       const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
         method: "POST",
@@ -122,7 +118,6 @@ serve(async (req: Request) => {
         .eq("id", connection.id);
     }
 
-    // Step 1: Snapshot - save original data
     const { error: snapError } = await supabase.from("listing_snapshots").insert({
       user_id: userId,
       store_connection_id: connection.id,
@@ -139,7 +134,6 @@ serve(async (req: Request) => {
       });
     }
 
-    // Step 2: Write changes to Etsy
     const shopId = connection.shop_domain;
     const updateBody: Record<string, unknown> = {};
     if (optimizedData.title) updateBody.title = optimizedData.title;
@@ -147,18 +141,15 @@ serve(async (req: Request) => {
     if (optimizedData.tags) updateBody.tags = optimizedData.tags;
     if (optimizedData.materials) updateBody.materials = optimizedData.materials;
 
-    const updateRes = await fetch(
-      `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/${listingId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "x-api-key": clientId,
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updateBody),
+    const updateRes = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${listingId}`, {
+      method: "PATCH",
+      headers: {
+        "x-api-key": apiKeyHeader,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(updateBody),
+    });
 
     if (!updateRes.ok) {
       const errText = await updateRes.text();
@@ -170,7 +161,6 @@ serve(async (req: Request) => {
     }
 
     const updatedListing = await updateRes.json();
-
     return new Response(JSON.stringify({ success: true, listing: updatedListing }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -182,6 +172,3 @@ serve(async (req: Request) => {
     });
   }
 });
-
-
-

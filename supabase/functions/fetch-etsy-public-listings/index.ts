@@ -1,3 +1,5 @@
+import { getEtsyApiKeyHeader } from "../_shared/etsy.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -38,7 +40,7 @@ function parseFallbackShopData(html: string, cleanShopName: string, limit: numbe
 
   const listingRegex = new RegExp("/listing/(\\d+)", "g");
   const listingIds = Array.from(html.matchAll(listingRegex))
-    .map((m) => Number(m[1]))
+    .map((match) => Number(match[1]))
     .filter((id) => Number.isFinite(id));
 
   const uniqueListingIds = Array.from(new Set(listingIds));
@@ -46,7 +48,7 @@ function parseFallbackShopData(html: string, cleanShopName: string, limit: numbe
 
   const results = pagedListingIds.map((listingId) => {
     const anchorRegex = new RegExp(
-      `<a[^>]*href=["'][^"']*/listing/${listingId}[^"']*["'][^>]*>([\\s\\S]*?)<\/a>`,
+      `<a[^>]*href=["'][^"']*/listing/${listingId}[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>`,
       "i",
     );
     const anchorMatch = html.match(anchorRegex);
@@ -91,13 +93,18 @@ Deno.serve(async (req) => {
 
     console.log("Fetching public listings for shop:", cleanShopName);
 
-    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
+    let apiKeyHeader: string | null = null;
+    try {
+      apiKeyHeader = getEtsyApiKeyHeader();
+    } catch {
+      console.warn("ETSY_CLIENT_ID not configured; using HTML fallback.");
+    }
 
-    if (clientId) {
+    if (apiKeyHeader) {
       try {
         const shopRes = await fetch(
-          `https://openapi.etsy.com/v3/application/shops?shop_name=${encodeURIComponent(cleanShopName)}`,
-          { headers: { "x-api-key": clientId } },
+          `https://api.etsy.com/v3/application/shops?shop_name=${encodeURIComponent(cleanShopName)}`,
+          { headers: { "x-api-key": apiKeyHeader } },
         );
 
         if (shopRes.ok) {
@@ -109,8 +116,8 @@ Deno.serve(async (req) => {
             const shopDisplayName = shop.shop_name || cleanShopName;
 
             const listingsRes = await fetch(
-              `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/active?limit=${safeLimit}&offset=${safeOffset}&includes=Images`,
-              { headers: { "x-api-key": clientId } },
+              `https://api.etsy.com/v3/application/shops/${shopId}/listings/active?limit=${safeLimit}&offset=${safeOffset}&includes=Images`,
+              { headers: { "x-api-key": apiKeyHeader } },
             );
 
             if (listingsRes.ok) {
@@ -120,27 +127,24 @@ Deno.serve(async (req) => {
                   ...listingsData,
                   shop_id: shopId,
                   shop_name: shopDisplayName,
-                  source: "etsy_openapi",
+                  source: "etsy_api_public",
                 }),
                 { headers: { ...corsHeaders, "Content-Type": "application/json" } },
               );
             }
 
             const listErrText = await listingsRes.text();
-            console.error("Listings fetch failed with API key:", listErrText);
+            console.error("Listings fetch failed with Etsy API:", listErrText);
           }
         } else {
           const errText = await shopRes.text();
           console.error("Shop lookup failed:", errText);
         }
       } catch (apiError) {
-        console.error("Open API path failed, falling back to HTML:", apiError);
+        console.error("Etsy API lookup failed, falling back to HTML:", apiError);
       }
-    } else {
-      console.warn("ETSY_CLIENT_ID not configured; using HTML fallback.");
     }
 
-    // Fallback path (does not require Etsy API key): scrape public shop page
     const fallbackUrls = [
       `https://www.etsy.com/shop/${encodeURIComponent(cleanShopName)}`,
       `https://${encodeURIComponent(cleanShopName)}.etsy.com`,
@@ -167,6 +171,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
     const fallbackData = parseFallbackShopData(html, cleanShopName, safeLimit, safeOffset);
 
     if (!fallbackData.shop_id && fallbackData.results.length === 0) {
@@ -180,7 +185,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         ...fallbackData,
         warning:
-          "Displaying read-only data from Etsy. To enable editing and other features, please connect your Etsy account in the settings.",
+          "Displaying read-only data from Etsy. To enable editing and other features, please connect your Etsy account in settings.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -195,6 +200,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-
-

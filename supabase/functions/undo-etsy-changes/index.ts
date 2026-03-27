@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getEtsyApiKeyHeader, getEtsyClientId } from "../_shared/etsy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,12 +22,12 @@ serve(async (req) => {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
 
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    if (claimsError || !claimsData?.claims?.sub) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
     const userId = claimsData.claims.sub;
@@ -34,11 +35,11 @@ serve(async (req) => {
     const { snapshotId } = await req.json();
     if (!snapshotId) {
       return new Response(JSON.stringify({ error: "Missing snapshot ID" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Get snapshot
     const { data: snapshot, error: snapErr } = await supabase
       .from("listing_snapshots")
       .select("*, store_connections(*)")
@@ -48,15 +49,25 @@ serve(async (req) => {
 
     if (snapErr || !snapshot) {
       return new Response(JSON.stringify({ error: "Snapshot not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const connection = snapshot.store_connections;
     let accessToken = connection.access_token;
-    const clientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY")!;
+    let clientId: string;
+    let apiKeyHeader: string;
+    try {
+      clientId = getEtsyClientId();
+      apiKeyHeader = getEtsyApiKeyHeader();
+    } catch {
+      return new Response(JSON.stringify({ error: "ETSY_CLIENT_ID is not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    // Refresh token if expired
     if (connection.token_expires_at && new Date(connection.token_expires_at) <= new Date()) {
       const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
         method: "POST",
@@ -70,7 +81,8 @@ serve(async (req) => {
 
       if (!refreshRes.ok) {
         return new Response(JSON.stringify({ error: "Token expired. Please reconnect your Etsy shop." }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -79,7 +91,7 @@ serve(async (req) => {
 
       const serviceSupabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       );
       await serviceSupabase.from("store_connections").update({
         access_token: refreshData.access_token,
@@ -89,50 +101,42 @@ serve(async (req) => {
       }).eq("id", connection.id);
     }
 
-    // Restore original data to Etsy
     const originalData = snapshot.snapshot_data;
     const shopId = connection.shop_domain;
-
     const updateBody: Record<string, unknown> = {};
     if (originalData.title) updateBody.title = originalData.title;
     if (originalData.description) updateBody.description = originalData.description;
     if (originalData.tags) updateBody.tags = originalData.tags;
     if (originalData.materials) updateBody.materials = originalData.materials;
 
-    const updateRes = await fetch(
-      `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/${snapshot.etsy_listing_id}`,
-      {
-        method: "PATCH",
-        headers: {
-          "x-api-key": clientId,
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updateBody),
-      }
-    );
+    const updateRes = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${snapshot.etsy_listing_id}`, {
+      method: "PATCH",
+      headers: {
+        "x-api-key": apiKeyHeader,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updateBody),
+    });
 
     if (!updateRes.ok) {
       const errText = await updateRes.text();
       console.error("Etsy undo failed:", errText);
       return new Response(JSON.stringify({ error: "Failed to restore listing on Etsy" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Delete snapshot after successful undo
     await supabase.from("listing_snapshots").delete().eq("id", snapshotId);
-
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("undo-etsy-changes error:", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
-
-
-

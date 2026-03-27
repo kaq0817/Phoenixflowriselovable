@@ -43,6 +43,8 @@ interface ScanSummary {
   critical_count?: number;
 }
 
+type Platform = "etsy" | "shopify";
+
 interface ScanJob {
   id: string;
   status: string;
@@ -55,12 +57,8 @@ interface ScanJob {
   error_message: string | null;
   platform: string;
   store_connection_id: string | null;
-  // On mount, only load store connections and past jobs, do NOT auto-trigger scans or product fetches
-  useEffect(() => {
-    fetchConnections();
-    fetchPastJobs();
-    // Do not auto-trigger any scan or expensive action
-  }, [fetchConnections, fetchPastJobs]);
+}
+
 interface StoreConnectionOption {
   id: string;
   platform: Platform;
@@ -523,6 +521,7 @@ export default function ListingScanPage() {
     </div>
   );
 }
+
 
 
 

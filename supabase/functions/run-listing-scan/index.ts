@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getEtsyApiKeyHeader, getEtsyClientId } from "../_shared/etsy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -247,13 +248,13 @@ serve(async (req: Request) => {
       // Check token expiry and refresh if needed
       let accessToken = conn.access_token;
       if (!isPublicOnly && (conn.token_expires_at && new Date(conn.token_expires_at) < new Date())) {
-        const ETSY_API_KEY = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY");
+        const etsyClientId = getEtsyClientId();
         const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
             grant_type: "refresh_token",
-            client_id: ETSY_API_KEY!,
+            client_id: etsyClientId,
             refresh_token: conn.refresh_token!,
           }),
         });
@@ -273,10 +274,11 @@ serve(async (req: Request) => {
       const shopId = shopMatch?.[1] || conn.shop_domain;
 
       if (shopId) {
-        const etsyClientId = Deno.env.get("ETSY_CLIENT_ID") || Deno.env.get("ETSY_API_KEY")!;
-        const etsyHeaders = isPublicOnly
-          ? { "x-api-key": etsyClientId }
-          : { "x-api-key": etsyClientId, Authorization: `Bearer ${accessToken}` };
+        const apiKeyHeader = getEtsyApiKeyHeader();
+        const etsyHeaders: Record<string, string> = { "x-api-key": apiKeyHeader };
+        if (!isPublicOnly) {
+          etsyHeaders.Authorization = `Bearer ${accessToken}`;
+        }
         const MAX_LISTINGS = 500;
         let offset = 0;
         const PAGE_SIZE = 100;
@@ -284,8 +286,8 @@ serve(async (req: Request) => {
         while (listings.length < MAX_LISTINGS) {
           const listRes = await fetch(
             isPublicOnly
-              ? `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/active?limit=${PAGE_SIZE}&offset=${offset}&includes=Images`
-              : `https://openapi.etsy.com/v3/application/shops/${shopId}/listings?state=active&limit=${PAGE_SIZE}&offset=${offset}&includes=Images`,
+              ? `https://api.etsy.com/v3/application/shops/${shopId}/listings/active?limit=${PAGE_SIZE}&offset=${offset}&includes=Images`
+              : `https://api.etsy.com/v3/application/shops/${shopId}/listings?state=active&limit=${PAGE_SIZE}&offset=${offset}&includes=Images`,
             { headers: etsyHeaders }
           );
           if (!listRes.ok) break;
@@ -594,6 +596,10 @@ serve(async (req: Request) => {
     });
   }
 });
+
+
+
+
 
 
 
