@@ -1,0 +1,81 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+/**
+ * A debounced function that will be delayed by a given `wait`
+ * time in milliseconds. If the method is called again before
+ * the timeout expires, the previous call will be aborted.
+ */
+export interface DebouncedFunction<T extends Array<unknown>> {
+  (...args: T): void;
+  /** Clears the debounce timeout and omits calling the debounced function. */
+  clear(): void;
+  /** Clears the debounce timeout and calls the debounced function immediately. */
+  flush(): void;
+  /** Returns a boolean whether a debounce call is pending or not. */
+  readonly pending: boolean;
+}
+
+/**
+ * Creates a debounced function that delays the given `func`
+ * by a given `wait` time in milliseconds. If the method is called
+ * again before the timeout expires, the previous call will be
+ * aborted.
+ *
+ * @example
+ * ```
+ * import { debounce } from "https://deno.land/std@$STD_VERSION/async/debounce.ts";
+ *
+ * const log = debounce(
+ *   (event: Deno.FsEvent) =>
+ *     console.log("[%s] %s", event.kind, event.paths[0]),
+ *   200,
+ * );
+ *
+ * for await (const event of Deno.watchFs("./")) {
+ *   log(event);
+ * }
+ * // wait 200ms ...
+ * // output: Function debounced after 200ms with baz
+ * ```
+ *
+ * @param fn    The function to debounce.
+ * @param wait  The time in milliseconds to delay the function.
+ */
+// deno-lint-ignore no-explicit-any
+export function debounce<T extends Array<any>>(
+  fn: (this: DebouncedFunction<T>, ...args: T) => void,
+  wait: number,
+): DebouncedFunction<T> {
+  let timeout: number | null = null;
+  let flush: (() => void) | null = null;
+
+  const debounced: DebouncedFunction<T> = ((...args: T) => {
+    debounced.clear();
+    flush = () => {
+      debounced.clear();
+      fn.call(debounced, ...args);
+    };
+    timeout = setTimeout(flush, wait);
+  }) as DebouncedFunction<T>;
+
+  debounced.clear = () => {
+    if (typeof timeout === "number") {
+      clearTimeout(timeout);
+      timeout = null;
+      flush = null;
+    }
+  };
+
+  debounced.flush = () => {
+    flush?.();
+  };
+
+  Object.defineProperty(debounced, "pending", {
+    get: () => typeof timeout === "number",
+  });
+
+  return debounced;
+}
+
+// denoCacheMetadata={"headers":{"last-modified":"Wed, 14 Dec 2022 22:35:42 GMT","x-amz-cf-pop":"ORD56-P16","x-amz-cf-id":"yH4UfYb5hdi6hW6or4h_Zw3Qyh3YKYzYOuyq9cIM7H9AD5we1C_j4g==","access-control-allow-origin":"*","cache-control":"public, max-age=31536000, immutable","server":"AmazonS3,deployd","x-amz-version-id":"0Gw9_0ZmJBaBYeiS4NYjIg1Yoj07POd3","x-amz-replication-status":"COMPLETED","cross-origin-opener-policy":"same-origin","server-timing":"fetchSource;dur=369","etag":"\"d8cf2eb80215dd1aa611b0b3ee897b52\"","accept-ranges":"bytes","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","referrer-policy":"strict-origin-when-cross-origin","x-amz-server-side-encryption":"AES256","strict-transport-security":"max-age=63072000; includeSubDomains; preload","cross-origin-embedder-policy":"same-origin","date":"Mon, 05 Jan 2026 19:30:26 GMT","cache-status":"deno; hit","x-deno-trace-id":"ef4eb1350b0142cc9d594318d0c2c529","content-type":"application/typescript; charset=utf-8","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","x-frame-options":"DENY","x-cache":"Hit from cloudfront","alt-svc":"h3=\":443\"; ma=86400","x-content-type-options":"nosniff","cross-origin-resource-policy":"same-origin","age":"6984875","vary":"Accept-Encoding, Origin","content-length":"2228"},"url":"https://deno.land/std@0.168.0/async/debounce.ts","time":1774626298}

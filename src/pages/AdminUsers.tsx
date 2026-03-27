@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,11 +44,8 @@ export default function AdminUsers() {
   const [search, setSearch] = useState("");
   const [updatingRole, setUpdatingRole] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isAdmin) fetchUsers();
-  }, [isAdmin]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       // Get all profiles
@@ -87,12 +84,18 @@ export default function AdminUsers() {
           store_count: storeCounts[p.id] || 0,
         }))
       );
-    } catch (err: any) {
-      toast({ title: "Error loading users", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Error loading users", description: errorMsg, variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (isAdmin) fetchUsers();
+  }, [isAdmin, fetchUsers]);
+
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     setUpdatingRole(userId);
@@ -109,15 +112,16 @@ export default function AdminUsers() {
       if (newRole !== "none") {
         const { error: insertErr } = await supabase
           .from("user_roles")
-          .insert({ user_id: userId, role: newRole as any });
+          .insert({ user_id: userId, role: newRole as "admin" | "moderator" | "user" });
 
         if (insertErr) throw insertErr;
       }
 
       toast({ title: "Role updated" });
       fetchUsers();
-    } catch (err: any) {
-      toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Failed to update role", description: errorMsg, variant: "destructive" });
     } finally {
       setUpdatingRole(null);
     }

@@ -9,7 +9,12 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-const SAFE_PUSH_KEYS = new Set(["sections/footer.liquid"]);
+const SAFE_PUSH_PATTERNS = [
+  /^layout\/theme\.liquid$/,
+  /^sections\/[a-z0-9_.-]+\.liquid$/i,
+  /^templates\/[a-z0-9_.-]+\.json$/i,
+  /^assets\/[a-z0-9_.-]+\.css$/i,
+];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -51,7 +56,9 @@ serve(async (req) => {
     const accessToken = conn.access_token;
 
     const safeApprovedFiles = Object.fromEntries(
-      Object.entries(approvedFiles).filter(([key, value]) => SAFE_PUSH_KEYS.has(key) && typeof value === "string" && value.trim().length > 0)
+      Object.entries(approvedFiles).filter(([key, value]) =>
+        SAFE_PUSH_PATTERNS.some((pattern) => pattern.test(key)) && typeof value === "string" && value.trim().length > 0,
+      )
     );
 
     if (Object.keys(safeApprovedFiles).length === 0) {
@@ -103,5 +110,3 @@ serve(async (req) => {
     });
   }
 });
-
-

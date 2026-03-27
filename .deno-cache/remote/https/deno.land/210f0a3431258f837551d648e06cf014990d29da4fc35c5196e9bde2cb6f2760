@@ -1,0 +1,32 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+import { deferred } from "./deferred.ts";
+
+export class DeadlineError extends Error {
+  constructor() {
+    super("Deadline");
+    this.name = "DeadlineError";
+  }
+}
+
+/**
+ * Create a promise which will be rejected with {@linkcode DeadlineError} when a given delay is exceeded.
+ *
+ * @example
+ * ```typescript
+ * import { deadline } from "https://deno.land/std@$STD_VERSION/async/deadline.ts";
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
+ *
+ * const delayedPromise = delay(1000);
+ * // Below throws `DeadlineError` after 10 ms
+ * const result = await deadline(delayedPromise, 10);
+ * ```
+ */
+export function deadline<T>(p: Promise<T>, delay: number): Promise<T> {
+  const d = deferred<never>();
+  const t = setTimeout(() => d.reject(new DeadlineError()), delay);
+  return Promise.race([p, d]).finally(() => clearTimeout(t));
+}
+
+// denoCacheMetadata={"headers":{"content-length":"974","x-amz-cf-id":"BLK_f8eoU7qNsCxfJsvR9IE0R-PeY2hc98hYA_XIRaRVj6DBqel0EA==","cache-control":"public, max-age=31536000, immutable","server":"AmazonS3,deployd","cross-origin-embedder-policy":"same-origin","x-amz-cf-pop":"ORD56-P16","age":"6984875","date":"Mon, 05 Jan 2026 19:30:26 GMT","last-modified":"Wed, 14 Dec 2022 22:35:42 GMT","x-content-type-options":"nosniff","x-amz-replication-status":"COMPLETED","etag":"\"54d98d8dd48c9878012f5c0ef419f935\"","server-timing":"fetchSource;dur=369","x-deno-trace-id":"d5ac8bb992187895979ee7dfcf5fcc25","cross-origin-resource-policy":"same-origin","access-control-allow-origin":"*","x-amz-version-id":"Cu2_Moi6WhV77PDx6tlf4RqCRLgTcZFX","cross-origin-opener-policy":"same-origin","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","accept-ranges":"bytes","x-cache":"Hit from cloudfront","cache-status":"deno; hit","content-type":"application/typescript; charset=utf-8","alt-svc":"h3=\":443\"; ma=86400","vary":"Accept-Encoding, Origin","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","referrer-policy":"strict-origin-when-cross-origin","strict-transport-security":"max-age=63072000; includeSubDomains; preload","x-amz-server-side-encryption":"AES256","x-frame-options":"DENY"},"url":"https://deno.land/std@0.168.0/async/deadline.ts","time":1774626298}

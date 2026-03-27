@@ -1,0 +1,83 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+export class RetryError extends Error {
+  constructor(cause: unknown, count: number) {
+    super(`Exceeded max retry count (${count})`);
+    this.name = "RetryError";
+    this.cause = cause;
+  }
+}
+
+export interface RetryOptions {
+  /** How much to backoff after each retry. This is `2` by default. */
+  multiplier?: number;
+  /** The maximum milliseconds between retries. This is `60000` by default. */
+  maxTimeout?: number;
+  /** The maximum amount of retries until failure. This is `5` by default. */
+  maxAttempts?: number;
+  /** The inital and minimum amount of milliseconds between retries. This is `1000` by default. */
+  minTimeout?: number;
+}
+
+const defaultRetryOptions = {
+  multiplier: 2,
+  maxTimeout: 60000,
+  maxAttempts: 5,
+  minTimeout: 1000,
+};
+
+/**
+ * Creates a retry promise which resolves to the value of the input using exponential backoff.
+ * If the input promise throws, it will be retried `maxAttempts` number of times.
+ * It will retry the input every certain amount of milliseconds, starting at `minTimeout` and multiplying by the `multiplier` until it reaches the `maxTimeout`
+ *
+ * @example
+ * ```typescript
+ * import { retry } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ * const req = async () => {
+ *  // some function that throws sometimes
+ * };
+ *
+ * // Below resolves to the first non-error result of `req`
+ * const retryPromise = await retry(req, {
+ *  multiplier: 2,
+ *  maxTimeout: 60000,
+ *  maxAttempts: 5,
+ *  minTimeout: 100,
+ * });
+```
+ */
+export async function retry<T>(
+  fn: (() => Promise<T>) | (() => T),
+  opts?: RetryOptions,
+) {
+  const options: Required<RetryOptions> = {
+    ...defaultRetryOptions,
+    ...opts,
+  };
+
+  if (options.maxTimeout >= 0 && options.minTimeout > options.maxTimeout) {
+    throw new RangeError("minTimeout is greater than maxTimeout");
+  }
+
+  let timeout = options.minTimeout;
+  let error: unknown;
+
+  for (let i = 0; i < options.maxAttempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      await new Promise((r) => setTimeout(r, timeout));
+      timeout *= options.multiplier;
+      timeout = Math.max(timeout, options.minTimeout);
+      if (options.maxTimeout >= 0) {
+        timeout = Math.min(timeout, options.maxTimeout);
+      }
+      error = err;
+    }
+  }
+
+  throw new RetryError(error, options.maxAttempts);
+}
+
+// denoCacheMetadata={"headers":{"content-type":"application/typescript; charset=utf-8","vary":"Accept-Encoding, Origin","access-control-allow-origin":"*","accept-ranges":"bytes","x-amz-replication-status":"COMPLETED","x-amz-server-side-encryption":"AES256","cross-origin-opener-policy":"same-origin","cache-control":"public, max-age=31536000, immutable","cache-status":"deno; hit","age":"6984878","cross-origin-resource-policy":"same-origin","x-amz-version-id":"ZSZ1YOg9t1hUzMJ6b8wjnKodWdjxZS_N","last-modified":"Wed, 14 Dec 2022 22:35:42 GMT","referrer-policy":"strict-origin-when-cross-origin","x-content-type-options":"nosniff","x-amz-cf-pop":"ORD56-P16","date":"Mon, 05 Jan 2026 19:30:26 GMT","content-length":"2404","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","server":"AmazonS3,deployd","server-timing":"fetchSource;dur=187","strict-transport-security":"max-age=63072000; includeSubDomains; preload","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","cross-origin-embedder-policy":"same-origin","x-amz-cf-id":"hXyqNEznNwzdToSow02mcLZb8d9ubuJzzvr2Cgvr7Irsb7r_l6p40w==","x-deno-trace-id":"ba96f94d1dfe6f0c3495d75b13c8dbd7","x-cache":"Hit from cloudfront","x-frame-options":"DENY","etag":"\"006d16dcaf4ff6f729c34ca40ce7a83e\"","alt-svc":"h3=\":443\"; ma=86400"},"url":"https://deno.land/std@0.168.0/async/retry.ts","time":1774626298}

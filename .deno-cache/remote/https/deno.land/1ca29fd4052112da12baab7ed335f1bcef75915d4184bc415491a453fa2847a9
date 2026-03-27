@@ -1,0 +1,99 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+import { Deferred, deferred } from "./deferred.ts";
+
+interface TaggedYieldedValue<T> {
+  iterator: AsyncIterator<T>;
+  value: T;
+}
+
+/**
+ * The MuxAsyncIterator class multiplexes multiple async iterators into a single
+ * stream. It currently makes an assumption that the final result (the value
+ * returned and not yielded from the iterator) does not matter; if there is any
+ * result, it is discarded.
+ *
+ * @example
+ * ```typescript
+ * import { MuxAsyncIterator } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * async function* gen123(): AsyncIterableIterator<number> {
+ *   yield 1;
+ *   yield 2;
+ *   yield 3;
+ * }
+ *
+ * async function* gen456(): AsyncIterableIterator<number> {
+ *   yield 4;
+ *   yield 5;
+ *   yield 6;
+ * }
+ *
+ * const mux = new MuxAsyncIterator<number>();
+ * mux.add(gen123());
+ * mux.add(gen456());
+ * for await (const value of mux) {
+ *   // ...
+ * }
+ * // ..
+ * ```
+ */
+export class MuxAsyncIterator<T> implements AsyncIterable<T> {
+  #iteratorCount = 0;
+  #yields: Array<TaggedYieldedValue<T>> = [];
+  // deno-lint-ignore no-explicit-any
+  #throws: any[] = [];
+  #signal: Deferred<void> = deferred();
+
+  add(iterable: AsyncIterable<T>) {
+    ++this.#iteratorCount;
+    this.#callIteratorNext(iterable[Symbol.asyncIterator]());
+  }
+
+  async #callIteratorNext(
+    iterator: AsyncIterator<T>,
+  ) {
+    try {
+      const { value, done } = await iterator.next();
+      if (done) {
+        --this.#iteratorCount;
+      } else {
+        this.#yields.push({ iterator, value });
+      }
+    } catch (e) {
+      this.#throws.push(e);
+    }
+    this.#signal.resolve();
+  }
+
+  async *iterate(): AsyncIterableIterator<T> {
+    while (this.#iteratorCount > 0) {
+      // Sleep until any of the wrapped iterators yields.
+      await this.#signal;
+
+      // Note that while we're looping over `yields`, new items may be added.
+      for (let i = 0; i < this.#yields.length; i++) {
+        const { iterator, value } = this.#yields[i];
+        yield value;
+        this.#callIteratorNext(iterator);
+      }
+
+      if (this.#throws.length) {
+        for (const e of this.#throws) {
+          throw e;
+        }
+        this.#throws.length = 0;
+      }
+      // Clear the `yields` list and reset the `signal` promise.
+      this.#yields.length = 0;
+      this.#signal = deferred();
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return this.iterate();
+  }
+}
+
+// denoCacheMetadata={"headers":{"alt-svc":"h3=\":443\"; ma=86400","vary":"Accept-Encoding, Origin","cross-origin-embedder-policy":"same-origin","accept-ranges":"bytes","referrer-policy":"strict-origin-when-cross-origin","strict-transport-security":"max-age=63072000; includeSubDomains; preload","x-content-type-options":"nosniff","x-amz-version-id":"1xpUn1UH5jF6DHhEw0rFPsCpPhzGd0na","x-amz-server-side-encryption":"AES256","cross-origin-opener-policy":"same-origin","x-amz-replication-status":"COMPLETED","content-type":"application/typescript; charset=utf-8","cache-status":"deno; hit","etag":"\"322a6c13636759fd46478394b1f70b8b\"","access-control-allow-origin":"*","cache-control":"public, max-age=31536000, immutable","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","server-timing":"fetchSource;dur=188","x-amz-cf-id":"HD2OeOP0ImfQxrrZaFsHwaby8LnEIqBwpvlYVAhRbNCRoCkyWV-8-g==","server":"AmazonS3,deployd","x-cache":"Hit from cloudfront","content-length":"2510","x-deno-trace-id":"fbaf4b46fc30a3f65262cbd9b0fbcef8","last-modified":"Wed, 14 Dec 2022 22:35:42 GMT","x-frame-options":"DENY","date":"Mon, 05 Jan 2026 19:30:26 GMT","cross-origin-resource-policy":"same-origin","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","age":"6984878","x-amz-cf-pop":"ORD56-P16"},"url":"https://deno.land/std@0.168.0/async/mux_async_iterator.ts","time":1774626298}

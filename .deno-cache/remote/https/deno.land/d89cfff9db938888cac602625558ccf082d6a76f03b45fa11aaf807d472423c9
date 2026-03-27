@@ -1,0 +1,153 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+import { deferred } from "./deferred.ts";
+
+/**
+ * Make Promise abortable with the given signal.
+ *
+ * @example
+ * ```typescript
+ * import { abortable } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const p = delay(1000);
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * // Below throws `DOMException` after 100 ms
+ * await abortable(p, c.signal);
+ * ```
+ */
+export function abortable<T>(p: Promise<T>, signal: AbortSignal): Promise<T>;
+/**
+ * Make AsyncIterable abortable with the given signal.
+ *
+ * @example
+ * ```typescript
+ * import { abortable } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const p = async function* () {
+ *   yield "Hello";
+ *   await delay(1000);
+ *   yield "World";
+ * };
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * // Below throws `DOMException` after 100 ms
+ * // and items become `["Hello"]`
+ * const items: string[] = [];
+ * for await (const item of abortable(p(), c.signal)) {
+ *   items.push(item);
+ * }
+ * ```
+ */
+export function abortable<T>(
+  p: AsyncIterable<T>,
+  signal: AbortSignal,
+): AsyncGenerator<T>;
+export function abortable<T>(
+  p: Promise<T> | AsyncIterable<T>,
+  signal: AbortSignal,
+): Promise<T> | AsyncIterable<T> {
+  if (p instanceof Promise) {
+    return abortablePromise(p, signal);
+  } else {
+    return abortableAsyncIterable(p, signal);
+  }
+}
+
+/**
+ * Make Promise abortable with the given signal.
+ *
+ * @example
+ * ```typescript
+ * import { abortablePromise } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const request = fetch("https://example.com");
+ *
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * const p = abortablePromise(request, c.signal);
+ *
+ * // The below throws if the request didn't resolve in 100ms
+ * await p;
+ * ```
+ */
+export function abortablePromise<T>(
+  p: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(createAbortError(signal.reason));
+  }
+  const waiter = deferred<never>();
+  const abort = () => waiter.reject(createAbortError(signal.reason));
+  signal.addEventListener("abort", abort, { once: true });
+  return Promise.race([
+    waiter,
+    p.finally(() => {
+      signal.removeEventListener("abort", abort);
+    }),
+  ]);
+}
+
+/**
+ * Make AsyncIterable abortable with the given signal.
+ *
+ * @example
+ * ```typescript
+ * import { abortableAsyncIterable } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const p = async function* () {
+ *   yield "Hello";
+ *   await delay(1000);
+ *   yield "World";
+ * };
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * // Below throws `DOMException` after 100 ms
+ * // and items become `["Hello"]`
+ * const items: string[] = [];
+ * for await (const item of abortableAsyncIterable(p(), c.signal)) {
+ *   items.push(item);
+ * }
+ * ```
+ */
+export async function* abortableAsyncIterable<T>(
+  p: AsyncIterable<T>,
+  signal: AbortSignal,
+): AsyncGenerator<T> {
+  if (signal.aborted) {
+    throw createAbortError(signal.reason);
+  }
+  const waiter = deferred<never>();
+  const abort = () => waiter.reject(createAbortError(signal.reason));
+  signal.addEventListener("abort", abort, { once: true });
+
+  const it = p[Symbol.asyncIterator]();
+  while (true) {
+    const { done, value } = await Promise.race([waiter, it.next()]);
+    if (done) {
+      signal.removeEventListener("abort", abort);
+      return;
+    }
+    yield value;
+  }
+}
+
+// This `reason` comes from `AbortSignal` thus must be `any`.
+// deno-lint-ignore no-explicit-any
+function createAbortError(reason?: any): DOMException {
+  return new DOMException(
+    reason ? `Aborted: ${reason}` : "Aborted",
+    "AbortError",
+  );
+}
+
+// denoCacheMetadata={"headers":{"access-control-allow-origin":"*","x-cache":"Hit from cloudfront","x-content-type-options":"nosniff","cross-origin-opener-policy":"same-origin","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","referrer-policy":"strict-origin-when-cross-origin","x-amz-cf-id":"-H1tZYAyNFbQdzeABcNJ2kP0o0yoWEvEAjY9Px1oo5zk5Cn_2upxmg==","x-amz-server-side-encryption":"AES256","x-frame-options":"DENY","accept-ranges":"bytes","last-modified":"Mon, 29 May 2023 22:31:21 GMT","cache-control":"public, max-age=31536000, immutable","etag":"\"c45b9c92d6477842c4bcbd50c5a40b77\"","x-amz-cf-pop":"ORD56-P16","cross-origin-embedder-policy":"same-origin","x-amz-version-id":"HhQRJyzry4PEl4qA_7mVTbF7MBVxQzem","vary":"Accept-Encoding, Origin","x-amz-replication-status":"COMPLETED","content-type":"application/typescript; charset=utf-8","content-length":"4087","date":"Sat, 03 Jan 2026 09:45:51 GMT","alt-svc":"h3=\":443\"; ma=86400","cache-status":"deno; hit","server":"AmazonS3,deployd","x-deno-trace-id":"96679e4afc680f5da9c80bc28e3090a4","age":"7192749","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","cross-origin-resource-policy":"same-origin","strict-transport-security":"max-age=63072000; includeSubDomains; preload","server-timing":"fetchSource;dur=52"},"url":"https://deno.land/std@0.190.0/async/abortable.ts","time":1774626298}

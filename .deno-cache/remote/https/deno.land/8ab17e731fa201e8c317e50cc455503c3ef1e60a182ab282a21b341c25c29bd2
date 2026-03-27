@@ -1,0 +1,110 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+export const ERROR_WHILE_MAPPING_MESSAGE = "Threw while mapping.";
+
+/**
+ * pooledMap transforms values from an (async) iterable into another async
+ * iterable. The transforms are done concurrently, with a max concurrency
+ * defined by the poolLimit.
+ *
+ * If an error is thrown from `iterableFn`, no new transformations will begin.
+ * All currently executing transformations are allowed to finish and still
+ * yielded on success. After that, the rejections among them are gathered and
+ * thrown by the iterator in an `AggregateError`.
+ *
+ * @example
+ * ```typescript
+ * import { pooledMap } from "https://deno.land/std@$STD_VERSION/async/pool.ts";
+ *
+ * const results = pooledMap(
+ *   2,
+ *   [1, 2, 3],
+ *   (i) => new Promise((r) => setTimeout(() => r(i), 1000)),
+ * );
+ *
+ * for await (const value of results) {
+ *   // ...
+ * }
+ * ```
+ *
+ * @param poolLimit The maximum count of items being processed concurrently.
+ * @param array The input array for mapping.
+ * @param iteratorFn The function to call for every item of the array.
+ */
+export function pooledMap<T, R>(
+  poolLimit: number,
+  array: Iterable<T> | AsyncIterable<T>,
+  iteratorFn: (data: T) => Promise<R>,
+): AsyncIterableIterator<R> {
+  // Create the async iterable that is returned from this function.
+  const res = new TransformStream<Promise<R>, R>({
+    async transform(
+      p: Promise<R>,
+      controller: TransformStreamDefaultController<R>,
+    ) {
+      try {
+        const s = await p;
+        controller.enqueue(s);
+      } catch (e) {
+        if (
+          e instanceof AggregateError &&
+          e.message == ERROR_WHILE_MAPPING_MESSAGE
+        ) {
+          controller.error(e as unknown);
+        }
+      }
+    },
+  });
+  // Start processing items from the iterator
+  (async () => {
+    const writer = res.writable.getWriter();
+    const executing: Array<Promise<unknown>> = [];
+    try {
+      for await (const item of array) {
+        const p = Promise.resolve().then(() => iteratorFn(item));
+        // Only write on success. If we `writer.write()` a rejected promise,
+        // that will end the iteration. We don't want that yet. Instead let it
+        // fail the race, taking us to the catch block where all currently
+        // executing jobs are allowed to finish and all rejections among them
+        // can be reported together.
+        writer.write(p);
+        const e: Promise<unknown> = p.then(() =>
+          executing.splice(executing.indexOf(e), 1)
+        );
+        executing.push(e);
+        if (executing.length >= poolLimit) {
+          await Promise.race(executing);
+        }
+      }
+      // Wait until all ongoing events have processed, then close the writer.
+      await Promise.all(executing);
+      writer.close();
+    } catch {
+      const errors = [];
+      for (const result of await Promise.allSettled(executing)) {
+        if (result.status == "rejected") {
+          errors.push(result.reason);
+        }
+      }
+      writer.write(Promise.reject(
+        new AggregateError(errors, ERROR_WHILE_MAPPING_MESSAGE),
+      )).catch(() => {});
+    }
+  })();
+  // Feature test until browser coverage is adequate
+  return Symbol.asyncIterator in res.readable &&
+      typeof res.readable[Symbol.asyncIterator] === "function"
+    ? (res.readable[Symbol.asyncIterator] as () => AsyncIterableIterator<R>)()
+    : (async function* () {
+      const reader = res.readable.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        yield value;
+      }
+      reader.releaseLock();
+    })();
+}
+
+// denoCacheMetadata={"headers":{"cache-control":"public, max-age=31536000, immutable","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","x-amz-cf-pop":"ORD56-P16","x-amz-replication-status":"COMPLETED","alt-svc":"h3=\":443\"; ma=86400","x-amz-cf-id":"uE2dv1SaYupafCs37ZSuw1fBAYv9523KszISaII7CG6t7LuaiX7U0A==","accept-ranges":"bytes","server-timing":"fetchSource;dur=60","content-type":"application/typescript; charset=utf-8","etag":"\"3d602c6d2241f70cd2ea8a65a84ee77d\"","last-modified":"Mon, 29 May 2023 22:31:21 GMT","x-amz-version-id":"0eJdunaxzmTZz4lrZBJgqTejF3qLyLrw","access-control-allow-origin":"*","x-cache":"Hit from cloudfront","strict-transport-security":"max-age=63072000; includeSubDomains; preload","cross-origin-opener-policy":"same-origin","date":"Sat, 03 Jan 2026 19:54:19 GMT","vary":"Accept-Encoding, Origin","cross-origin-embedder-policy":"same-origin","x-amz-server-side-encryption":"AES256","x-content-type-options":"nosniff","x-frame-options":"DENY","cross-origin-resource-policy":"same-origin","content-length":"3678","age":"7156241","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","referrer-policy":"strict-origin-when-cross-origin","server":"AmazonS3,deployd","cache-status":"deno; hit","x-deno-trace-id":"0755a83f9d85e70a7d59fad023642728"},"url":"https://deno.land/std@0.190.0/async/pool.ts","time":1774626298}

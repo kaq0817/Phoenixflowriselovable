@@ -1,0 +1,50 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+import { delay } from "./delay.ts";
+
+export interface DeadlineOptions {
+  /** Signal used to abort the deadline. */
+  signal?: AbortSignal;
+}
+
+export class DeadlineError extends Error {
+  constructor() {
+    super("Deadline");
+    this.name = this.constructor.name;
+  }
+}
+
+/**
+ * Create a promise which will be rejected with {@linkcode DeadlineError} when a given delay is exceeded.
+ *
+ * NOTE: Prefer to use `AbortSignal.timeout` instead for the APIs accept `AbortSignal`.
+ *
+ * @example
+ * ```typescript
+ * import { deadline } from "https://deno.land/std@$STD_VERSION/async/deadline.ts";
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
+ *
+ * const delayedPromise = delay(1000);
+ * // Below throws `DeadlineError` after 10 ms
+ * const result = await deadline(delayedPromise, 10);
+ * ```
+ */
+export function deadline<T>(
+  p: Promise<T>,
+  ms: number,
+  options: DeadlineOptions = {},
+): Promise<T> {
+  const controller = new AbortController();
+  const { signal } = options;
+  if (signal?.aborted) {
+    return Promise.reject(new DeadlineError());
+  }
+  signal?.addEventListener("abort", () => controller.abort(signal.reason));
+  const d = delay(ms, { signal: controller.signal })
+    .catch(() => {}) // Do NOTHING on abort.
+    .then(() => Promise.reject(new DeadlineError()));
+  return Promise.race([p.finally(() => controller.abort()), d]);
+}
+
+// denoCacheMetadata={"headers":{"alt-svc":"h3=\":443\"; ma=86400","x-frame-options":"DENY","strict-transport-security":"max-age=63072000; includeSubDomains; preload","x-amz-cf-pop":"ORD56-P16","cross-origin-embedder-policy":"same-origin","cache-control":"public, max-age=31536000, immutable","etag":"\"6dd57213c4b1a5c9197511e493e8c701\"","x-amz-version-id":"Slku09VOqGiRr7Pk1WyRHn9AS8L9aIaR","x-deno-trace-id":"d42fe78f5f1366b6a38ca1e9865bc6a3","x-cache":"Hit from cloudfront","content-length":"1491","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","x-amz-server-side-encryption":"AES256","content-type":"application/typescript; charset=utf-8","x-amz-replication-status":"COMPLETED","date":"Mon, 05 Jan 2026 19:30:26 GMT","server-timing":"fetchSource;dur=52","cache-status":"deno; hit","vary":"Accept-Encoding, Origin","last-modified":"Mon, 29 May 2023 22:31:21 GMT","server":"AmazonS3,deployd","cross-origin-resource-policy":"same-origin","accept-ranges":"bytes","cross-origin-opener-policy":"same-origin","x-amz-cf-id":"Vk5g7lZiHO02BLB0WwRph_pQ0rik1kuEU8Jvk-eV8_3OZT1SSs7wzQ==","access-control-allow-origin":"*","x-content-type-options":"nosniff","referrer-policy":"strict-origin-when-cross-origin","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","age":"6984874"},"url":"https://deno.land/std@0.190.0/async/deadline.ts","time":1774626298}

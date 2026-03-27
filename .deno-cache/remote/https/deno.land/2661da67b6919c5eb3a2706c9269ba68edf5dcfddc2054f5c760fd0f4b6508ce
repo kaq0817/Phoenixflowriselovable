@@ -1,0 +1,50 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+// TODO(ry) It'd be better to make Deferred a class that inherits from
+// Promise, rather than an interface. This is possible in ES2016, however
+// typescript produces broken code when targeting ES5 code.
+// See https://github.com/Microsoft/TypeScript/issues/15202
+// At the time of writing, the github issue is closed but the problem remains.
+export interface Deferred<T> extends Promise<T> {
+  readonly state: "pending" | "fulfilled" | "rejected";
+  resolve(value?: T | PromiseLike<T>): void;
+  // deno-lint-ignore no-explicit-any
+  reject(reason?: any): void;
+}
+
+/**
+ * Creates a Promise with the `reject` and `resolve` functions placed as methods
+ * on the promise object itself.
+ *
+ * @example
+ * ```typescript
+ * import { deferred } from "https://deno.land/std@$STD_VERSION/async/deferred.ts";
+ *
+ * const p = deferred<number>();
+ * // ...
+ * p.resolve(42);
+ * ```
+ */
+export function deferred<T>(): Deferred<T> {
+  let methods;
+  let state = "pending";
+  const promise = new Promise<T>((resolve, reject) => {
+    methods = {
+      async resolve(value: T | PromiseLike<T>) {
+        await value;
+        state = "fulfilled";
+        resolve(value);
+      },
+      // deno-lint-ignore no-explicit-any
+      reject(reason?: any) {
+        state = "rejected";
+        reject(reason);
+      },
+    };
+  });
+  Object.defineProperty(promise, "state", { get: () => state });
+  return Object.assign(promise, methods) as Deferred<T>;
+}
+
+// denoCacheMetadata={"headers":{"strict-transport-security":"max-age=63072000; includeSubDomains; preload","x-frame-options":"DENY","x-amz-server-side-encryption":"AES256","referrer-policy":"strict-origin-when-cross-origin","cross-origin-embedder-policy":"same-origin","etag":"\"925b4ad3e318d2d8dabd24859d23066d\"","cross-origin-opener-policy":"same-origin","x-amz-version-id":"I1sYz6rHuNYOnRT2UDg_oE0L_TvUraSb","cache-status":"deno; hit","x-amz-replication-status":"COMPLETED","server-timing":"fetchSource;dur=52","x-deno-trace-id":"ba43d5b390e880d027f2ef4a96781c09","last-modified":"Mon, 29 May 2023 22:31:21 GMT","alt-svc":"h3=\":443\"; ma=86400","cross-origin-resource-policy":"same-origin","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","age":"6984874","vary":"Accept-Encoding, Origin","accept-ranges":"bytes","content-type":"application/typescript; charset=utf-8","x-amz-cf-pop":"ORD56-P16","x-amz-cf-id":"0xcVc9rML7PT31HeT1vDWgTBVCM5cBNfwLUeFIVJiTaLZxUaVTC7nQ==","content-length":"1547","x-content-type-options":"nosniff","date":"Mon, 05 Jan 2026 19:30:26 GMT","cache-control":"public, max-age=31536000, immutable","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","access-control-allow-origin":"*","server":"AmazonS3,deployd","x-cache":"Hit from cloudfront"},"url":"https://deno.land/std@0.190.0/async/deferred.ts","time":1774626298}

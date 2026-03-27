@@ -1,0 +1,27 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+/**
+ * All internal non-test code, that is files that do not have `test` or `bench` in the name, must use the assertion functions within `_utils/asserts.ts` and not `testing/asserts.ts`. This is to create a separation of concerns between internal and testing assertions.
+ */
+
+export class DenoStdInternalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DenoStdInternalError";
+  }
+}
+
+/** Make an assertion, if not `true`, then throw. */
+export function assert(expr: unknown, msg = ""): asserts expr {
+  if (!expr) {
+    throw new DenoStdInternalError(msg);
+  }
+}
+
+/** Use this to assert unreachable code. */
+export function unreachable(): never {
+  throw new DenoStdInternalError("unreachable");
+}
+
+// denoCacheMetadata={"headers":{"x-deno-trace-id":"3717d6aaebeddb07748ca234049e8120","date":"Mon, 05 Jan 2026 19:30:26 GMT","x-content-type-options":"nosniff","cross-origin-embedder-policy":"same-origin","x-cache":"Hit from cloudfront","etag":"\"21e3bfdc76eaffde400b332f9fd09128\"","cache-control":"public, max-age=31536000, immutable","last-modified":"Mon, 29 May 2023 22:31:21 GMT","access-control-allow-origin":"*","server":"AmazonS3,deployd","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","x-frame-options":"DENY","x-amz-server-side-encryption":"AES256","server-timing":"fetchSource;dur=54","x-amz-version-id":"1rZ2K.JWTjGitqNNeUQTmmqMHWo9Jpt6","x-amz-cf-id":"q_rB6Fh0B902Wy7MLZ8u8jBxRyCZxr62neJCS9jk9LW7j_gYtLf--g==","age":"6984874","alt-svc":"h3=\":443\"; ma=86400","cross-origin-resource-policy":"same-origin","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","x-amz-cf-pop":"ORD56-P16","accept-ranges":"bytes","content-length":"854","content-type":"application/typescript; charset=utf-8","cross-origin-opener-policy":"same-origin","cache-status":"deno; hit","strict-transport-security":"max-age=63072000; includeSubDomains; preload","vary":"Accept-Encoding, Origin","referrer-policy":"strict-origin-when-cross-origin","x-amz-replication-status":"COMPLETED"},"url":"https://deno.land/std@0.190.0/_util/asserts.ts","time":1774626298}

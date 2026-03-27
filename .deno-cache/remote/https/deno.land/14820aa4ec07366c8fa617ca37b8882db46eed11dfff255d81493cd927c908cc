@@ -1,0 +1,69 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+export interface DelayOptions {
+  /** Signal used to abort the delay. */
+  signal?: AbortSignal;
+  /** Indicates whether the process should continue to run as long as the timer exists.
+   *
+   * @default {true}
+   */
+  persistent?: boolean;
+}
+
+/**
+ * Resolve a Promise after a given amount of milliseconds.
+ *
+ * @example
+ *
+ * ```typescript
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
+ *
+ * // ...
+ * const delayedPromise = delay(100);
+ * const result = await delayedPromise;
+ * // ...
+ * ```
+ *
+ * To allow the process to continue to run as long as the timer exists. Requires
+ * `--unstable` flag.
+ *
+ * ```typescript
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
+ *
+ * // ...
+ * await delay(100, { persistent: false });
+ * // ...
+ * ```
+ */
+export function delay(ms: number, options: DelayOptions = {}): Promise<void> {
+  const { signal, persistent } = options;
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Delay was aborted.", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(i);
+      reject(new DOMException("Delay was aborted.", "AbortError"));
+    };
+    const done = () => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const i = setTimeout(done, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (persistent === false) {
+      try {
+        // @ts-ignore For browser compatibility
+        Deno.unrefTimer(i);
+      } catch (error) {
+        if (!(error instanceof ReferenceError)) {
+          throw error;
+        }
+        console.error("`persistent` option is only available in Deno");
+      }
+    }
+  });
+}
+
+// denoCacheMetadata={"headers":{"referrer-policy":"strict-origin-when-cross-origin","cross-origin-resource-policy":"same-origin","x-amz-cf-id":"nt1_5GrLGp-EArc3hjvq3Sbig4dVQpyZ35Es8wL1F--sgQHsDPB-xw==","cache-control":"public, max-age=31536000, immutable","date":"Mon, 05 Jan 2026 19:30:26 GMT","x-frame-options":"DENY","x-amz-replication-status":"COMPLETED","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox","content-length":"1842","via":"1.1 73552abbaf31717af86cb9621017148a.cloudfront.net (CloudFront),HTTP/2 ord.vultr.prod.deno-cluster.net","age":"6984874","cache-status":"deno; hit","content-type":"application/typescript; charset=utf-8","cross-origin-opener-policy":"same-origin","strict-transport-security":"max-age=63072000; includeSubDomains; preload","x-amz-version-id":"TOgXXsSiXSEvlccWC._p5fcH6a6T4cdx","server-timing":"fetchSource;dur=52","last-modified":"Mon, 29 May 2023 22:31:21 GMT","etag":"\"d30303a54e34d200bbcff8c3de7b5551\"","cross-origin-embedder-policy":"same-origin","x-cache":"Hit from cloudfront","accept-ranges":"bytes","x-content-type-options":"nosniff","alt-svc":"h3=\":443\"; ma=86400","vary":"Accept-Encoding, Origin","access-control-allow-origin":"*","x-amz-server-side-encryption":"AES256","x-amz-cf-pop":"ORD56-P16","x-deno-trace-id":"dfc8da26b05167b30e026938df6598e4","server":"AmazonS3,deployd"},"url":"https://deno.land/std@0.190.0/async/delay.ts","time":1774626298}
