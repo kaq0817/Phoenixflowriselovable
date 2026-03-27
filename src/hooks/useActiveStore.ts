@@ -6,11 +6,14 @@ export function useActiveStore() {
   const queryClient = useQueryClient();
 
   // Call this when the user selects a new store
-  const selectStore = useCallback((storeId: string) => {
-    setActiveStoreId(storeId);
-    // Clear all cached queries related to the previous store
-    queryClient.clear();
-  }, [queryClient]);
+  const selectStore = useCallback(
+    (storeId: string) => {
+      setActiveStoreId(storeId);
+      // Clear all cached queries related to the previous store
+      queryClient.clear();
+    },
+    [queryClient],
+  );
 
   // Optionally, persist the selected store in localStorage/sessionStorage
   useEffect(() => {
