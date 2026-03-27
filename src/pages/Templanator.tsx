@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
+import { Link } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Flame, Loader2, CheckCircle2, AlertTriangle, ArrowRight,
   ArrowLeft, Zap, Shield, Palette, Upload, Play, FileCode,
-  Store, Eye, Send, X, ChevronDown, ChevronUp,
+  Store, Eye, Send, X, ChevronDown, ChevronUp, Gauge,
+  Rocket, Workflow, Clock3, Sparkles, ArrowUpRight,
 } from "lucide-react";
 import {
   Select,
@@ -87,8 +88,48 @@ const STEPS = [
   { num: 4, label: "Push to Store" },
 ];
 
+// Subdomain Mapper Logic (The Brain)
+interface NichePillar {
+  name: string;
+  count: number;
+  isSubdomain: boolean;
+  parentPillar?: string;
+}
+
+interface ScanData {
+  collections?: string[];
+  navigation?: string[];
+}
+
+function mapNicheArchitecture(scanData: ScanData): NichePillar[] {
+  const collections: string[] = scanData.collections || [];
+  const navigation: string[] = scanData.navigation || [];
+  // 1. Combine and Count keyword frequency
+  const rawNiches: string[] = [...collections, ...navigation];
+  const nicheCounts: Record<string, number> = rawNiches.reduce((acc: Record<string, number>, val: string) => {
+    acc[val] = (acc[val] || 0) + 1;
+    return acc;
+  }, {});
+  // 2. Sort by "Strength"
+  const sorted: { name: string; count: number }[] = Object.entries(nicheCounts)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, count]) => ({ name, count }));
+  // 3. Partition: Top 5 become Subdomains, others become Children
+  return sorted.map((niche, index) => {
+    if (index < 5) {
+      return { ...niche, isSubdomain: true };
+    }
+    // Logic: If it's a small niche, find the closest parent pillar
+    // (Example: 'Children' might map to 'Family' if 'Family' is in Top 5)
+    return {
+      ...niche,
+      isSubdomain: false,
+      parentPillar: sorted[0].name // Default to the strongest pillar
+    };
+  });
+}
+
 export default function Templanator() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [connections, setConnections] = useState<StoreConnection[]>([]);
@@ -104,13 +145,32 @@ export default function Templanator() {
   const [nichePalette, setNichePalette] = useState("default");
   const [departmentMappings, setDepartmentMappings] = useState<DepartmentMapping[]>([]);
 
-  // Step 3 — preview
+  // Step 3 - preview
   const [generating, setGenerating] = useState(false);
   const [fileApprovals, setFileApprovals] = useState<FileApproval[]>([]);
 
   // Step 4 — push
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
+
+  const selectedStore = connections.find((connection) => connection.id === selectedConn) ?? null;
+  const approvedCount = fileApprovals.filter((file) => file.approved).length;
+  const pendingReviewCount = Math.max(fileApprovals.length - approvedCount, 0);
+  const availableStep = pushResult ? 4 : fileApprovals.length > 0 ? 3 : scanResult ? 2 : 1;
+  const missionState = step;
+  const missionProgress = pushResult
+    ? 100
+    : fileApprovals.length > 0
+      ? 78
+      : scanResult
+        ? 46
+        : selectedConn
+          ? 18
+          : 6;
+  const assetCount = scanResult ? Object.keys(scanResult.assets).length : 0;
+  const canImport = Boolean(selectedConn) && !scanning;
+  const canGenerate = Boolean(scanResult) && !generating;
+  const canPush = approvedCount > 0 && !pushing;
 
   useEffect(() => {
     const fetchConns = async () => {
@@ -120,8 +180,21 @@ export default function Templanator() {
         .eq("platform", "shopify");
       if (data) setConnections(data);
     };
-    fetchConns();
+    void fetchConns();
   }, []);
+
+  useEffect(() => {
+    if (!selectedConn && connections.length === 1) {
+      setSelectedConn(connections[0].id);
+    }
+  }, [connections, selectedConn]);
+
+  const resetSession = () => {
+    setStep(1);
+    setScanResult(null);
+    setFileApprovals([]);
+    setPushResult(null);
+  };
 
   const handleImportTheme = async () => {
     if (!selectedConn) {
@@ -135,6 +208,8 @@ export default function Templanator() {
       });
       if (error) throw error;
 
+      setPushResult(null);
+      setFileApprovals([]);
       setScanResult(result);
 
       const detected = result.detectedBusinessInfo || {};
@@ -194,6 +269,7 @@ export default function Templanator() {
         })
       );
 
+      setPushResult(null);
       setFileApprovals(approvals);
       setStep(3);
       toast({ title: "Preview Ready!", description: `${approvals.length} files rewritten. Review before pushing.` });
@@ -696,6 +772,14 @@ function StatBox({ label, value, sub }: { label: string; value: number; sub?: st
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
 
