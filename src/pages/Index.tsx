@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Flame, Zap, Shield, BarChart3, Layers, FileText, Image, Package,
+  Flame, Zap, Shield, BarChart3, Layers, FileText, Image,
   Flower2, Palette, Scan, Bot, History, Radio, Settings, Cpu
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -14,7 +14,6 @@ const commandCenterItems = [
   { title: "Bulk Analyzer", description: "Run larger listing workflows in one place.", url: "/bulk-analyzer", icon: Layers, platform: "shopify" as const },
   { title: "Descriptions", description: "Generate product copy and admin content.", url: "/descriptions", icon: FileText, platform: "shopify" as const },
   { title: "Media Tools", description: "Image and media utilities.", url: "/media", icon: Image, platform: "shopify" as const },
-  { title: "Inventory", description: "Review inventory and related store data.", url: "/inventory", icon: Package, platform: "shopify" as const },
 ];
 
 const etsyToolsItems = [
@@ -145,3 +144,5 @@ const Index = () => {
 };
 
 export default Index;
+
+

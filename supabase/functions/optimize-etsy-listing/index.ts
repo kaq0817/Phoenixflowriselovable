@@ -1,4 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import {
+  normalizeEtsySuggestions,
+  type EtsyListingLike,
+  type EtsySuggestionShape,
+} from "../_shared/listingValidators.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +13,12 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+interface GeminiFunctionCallPart {
+  functionCall?: {
+    args?: EtsySuggestionShape;
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -15,19 +26,33 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
 
-    const { listing } = await req.json();
+    const { listing } = await req.json() as { listing?: EtsyListingLike };
     if (!listing) {
       return new Response(JSON.stringify({ error: "No listing provided" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const systemPrompt = `You are an expert Etsy SEO optimizer. Given a listing's current title, description, tags, and materials, produce optimized versions that will improve search ranking and conversion.
+    const systemPrompt = `You are an expert Etsy SEO optimizer. Given a listing's current title, description, tags, and materials, produce optimized versions that improve search ranking and conversion.
 
 Rules:
-- Etsy titles: max 140 characters, front-load important keywords
-- Tags: exactly 13 tags, each max 20 characters, no repeating words from title
-- Description: compelling, benefit-focused, includes relevant keywords naturally
+- Etsy titles: max 140 characters, but prioritize the first few words because shoppers see those first in search
+- Make the title easy to scan and clearly name the item for sale
+- Include the most important traits early, such as color, material, size, recipient, or occasion, only when they are truly relevant
+- Try to keep titles concise and readable instead of cramming in every keyword variation
+- Tags: exactly 13 tags, each max 20 characters
+- Prefer multi-word tags made of 2-4 natural words when possible
+- Tags should sound like real search phrases a buyer could type into Etsy or Google
+- Avoid generic one-word tags unless the term is required for accuracy, such as a material, color, or size
+- Do not repeat the same keyword phrase twice in the tag set
+- Do not create near-duplicate tags that only swap word order or singular/plural form
+- It is acceptable for multiple tags to share a core noun if each phrase targets a distinct long-tail search intent
+- Do not waste tags by repeating words already heavily covered in the title unless the phrase becomes a stronger long-tail search term
+- Description: short, informative, and engaging
+- Put essential details near the top, such as size, dimensions, color, ordering notes, or customization details
+- Work relevant keywords naturally into the first few sentences without copying the title verbatim
+- Use short paragraphs or bullet-style formatting when it improves readability
+- End with a brand or story note only after the practical buying details are clear
 - Materials: accurate, specific materials list
 
 GOOGLE MERCHANT CENTER & PLATFORM COMPLIANCE (CRITICAL):
@@ -37,8 +62,9 @@ GOOGLE MERCHANT CENTER & PLATFORM COMPLIANCE (CRITICAL):
 - No ALL CAPS words (except material acronyms like "PLA" or "UV").
 - No promotional text in titles (e.g. "FREE SHIPPING", "SALE", "BEST SELLER").
 - No excessive punctuation (!!!, ???, ...).
-- Descriptions must be factual and accurate — no exaggerated claims.
+- Descriptions must be factual and accurate with no exaggerated claims.
 
+In reasoning, briefly explain the title lead, long-tail keyword angle, and any pivot away from weak or repetitive tags.
 Return your optimizations using the suggest_optimizations function.`;
 
     const userPrompt = `Optimize this Etsy listing:
@@ -73,7 +99,7 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
                     properties: {
                       title: { type: "string", description: "Optimized title (max 140 chars)" },
                       description: { type: "string", description: "Optimized description" },
-                      tags: { type: "array", items: { type: "string" }, description: "Exactly 13 optimized tags" },
+                      tags: { type: "array", items: { type: "string" }, description: "Exactly 13 optimized tags with long-tail preference" },
                       materials: { type: "array", items: { type: "string" }, description: "Optimized materials list" },
                       reasoning: { type: "string", description: "Brief explanation of changes made" },
                     },
@@ -87,7 +113,7 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
             functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_optimizations"] },
           },
         }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -102,13 +128,13 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
     }
 
     const data = await response.json();
-    const functionCall = data.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall);
-    if (!functionCall) {
+    const functionCall = data.candidates?.[0]?.content?.parts?.find((part: GeminiFunctionCallPart) => part.functionCall) as GeminiFunctionCallPart | undefined;
+    if (!functionCall?.functionCall?.args) {
       console.error("Gemini response missing function call:", JSON.stringify(data).slice(0, 2000));
       throw new Error("AI returned an unexpected format");
     }
 
-    const suggestions = functionCall.functionCall.args;
+    const suggestions = normalizeEtsySuggestions(listing, functionCall.functionCall.args);
 
     return new Response(JSON.stringify({ suggestions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -120,7 +146,3 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
     });
   }
 });
-
-
-
-

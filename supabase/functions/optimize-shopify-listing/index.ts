@@ -1,4 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import {
+  normalizeShopifySuggestions,
+  type ShopifyProductLike,
+  type ShopifySuggestionShape,
+  type ShopifyVariantLike,
+} from "../_shared/listingValidators.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +14,12 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+interface GeminiFunctionCallPart {
+  functionCall?: {
+    args?: ShopifySuggestionShape;
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -15,7 +27,7 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
 
-    const { product } = await req.json();
+    const { product } = await req.json() as { product?: ShopifyProductLike };
     if (!product) {
       return new Response(JSON.stringify({ error: "No product provided" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -23,8 +35,8 @@ serve(async (req) => {
     }
 
     const variants = product.variants || [];
-    const variantInfo = variants.map((v: any) => 
-      `${v.title} - $${v.price} (${v.inventory_quantity || 0} in stock)`
+    const variantInfo = variants.map((variant: ShopifyVariantLike) =>
+      `${variant.title || "Default"} - $${variant.price || "0.00"} (${variant.inventory_quantity || 0} in stock)`,
     ).join("\n");
 
     const systemPrompt = `You are an expert Shopify SEO optimizer specializing in product listings.
@@ -36,20 +48,24 @@ SHOPIFY-SPECIFIC RULES:
 - SEO description (meta description): max 320 characters, benefit-focused, include key attributes
 - Body HTML description: compelling, formatted with bullet points for specs, benefit-focused paragraphs
 - Tags: relevant product tags for Shopify collections and filtering (comma-separated)
+- Prefer specific multi-word tags when they improve clarity, but keep them natural and usable for store organization
+- Avoid generic one-word filler tags unless they are required category, material, color, or size markers
+- Do not repeat the same keyword twice across tags
+- Do not create near-duplicate tags that only swap word order or pluralization
 - Product type: accurate category classification
 
-GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL — violations cause suspension):
-- FOR CLOTHING/APPAREL ONLY: Titles MUST include color and size. If the original title contains a color (e.g. "Blue", "Red", "Gold"), you MUST keep it. Format for clothing: [Brand] [Product Name] [Color] [Size]. For non-clothing products, color and size in titles are optional.
+GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL - violations cause suspension):
+- FOR CLOTHING/APPAREL ONLY: Titles MUST include color and size. If the product has a size range such as S-XXL, XS-XL, or numeric sizes, keep that range in the title exactly. If the original title or variants contain a color (e.g. "Blue", "Red", "Gold"), you MUST keep it. Format for clothing: [Brand] [Product Name] [Color] [Size or Size Range]. For non-clothing products, color and size in titles are optional.
 - For clothing: always include color as a tag as well.
+- Never collapse a multi-size apparel listing into a single size in the title. Preserve the actual size range if the listing covers multiple sizes.
 - NEVER use special characters or symbols in titles, descriptions, or tags. This includes: curly quotes, em dashes, en dashes, bullets, trademark symbols, arrows, stars, checkmarks, hearts, or ANY Unicode decorative characters.
 - Only use plain ASCII characters: regular quotes (" "), hyphens (-), commas, periods, parentheses, forward slashes, ampersands (&), and plus signs (+).
 - No ALL CAPS words (except brand acronyms like "USB" or "LED").
 - No promotional text in titles (e.g. "FREE SHIPPING", "SALE", "BEST SELLER").
 - No excessive punctuation (!!!, ???, ...).
-- Descriptions must be factual and accurate — no exaggerated claims.
+- Descriptions must be factual and accurate with no exaggerated claims.
 
-IMPORTANT: Shopify SEO is about clarity, proper categorization, and variant structure - NOT Etsy-style long-tail keyword stuffing. For clothing products, NEVER strip color or size from titles.
-
+IMPORTANT: Shopify SEO is about clarity, proper categorization, and variant structure, not Etsy-style title stuffing. Use long-tail detail mainly in tags and description where it stays natural. For apparel, the title must still carry the real color and the real size or size range visible to the shopper.
 Return your optimizations using the suggest_shopify_optimizations function.`;
 
     const userPrompt = `Optimize this Shopify product:
@@ -91,7 +107,7 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
                       seo_title: { type: "string", description: "SEO meta title (max 70 chars)" },
                       seo_description: { type: "string", description: "SEO meta description (max 320 chars)" },
                       product_type: { type: "string", description: "Optimized product type/category" },
-                      tags: { type: "string", description: "Comma-separated optimized tags" },
+                      tags: { type: "string", description: "Comma-separated optimized tags with clear, non-duplicated phrasing" },
                       variant_suggestions: { type: "string", description: "Suggestions for variant naming (Color/Size/Gender conventions)" },
                       reasoning: { type: "string", description: "Brief explanation of changes made" },
                     },
@@ -105,7 +121,7 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
             functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] },
           },
         }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -120,13 +136,13 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
     }
 
     const data = await response.json();
-    const functionCall = data.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall);
-    if (!functionCall) {
+    const functionCall = data.candidates?.[0]?.content?.parts?.find((part: GeminiFunctionCallPart) => part.functionCall) as GeminiFunctionCallPart | undefined;
+    if (!functionCall?.functionCall?.args) {
       console.error("Gemini response missing function call:", JSON.stringify(data).slice(0, 2000));
       throw new Error("AI returned an unexpected format");
     }
 
-    const suggestions = functionCall.functionCall.args;
+    const suggestions = normalizeShopifySuggestions(product, functionCall.functionCall.args);
 
     return new Response(JSON.stringify({ suggestions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -138,7 +154,3 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
     });
   }
 });
-
-
-
-

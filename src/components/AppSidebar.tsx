@@ -1,6 +1,6 @@
 import {
   Flame, BarChart3, Shield, Layers, FileText, Bot, History, CreditCard,
-  Settings, Zap, Image, Package, Flower2, Palette, Scan, Radio, Users, Cpu
+  Settings, Zap, Image, Flower2, Palette, Scan, Radio, Users, Cpu
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -24,7 +24,6 @@ const shopifyItems = [
   { title: "Bulk Analyzer", url: "/bulk-analyzer", icon: Layers },
   { title: "Descriptions", url: "/descriptions", icon: FileText },
   { title: "Media Tools", url: "/media", icon: Image },
-  { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Templanator", url: "/templanator", icon: Cpu },
   { title: "Theme Compliance", url: "/theme-audit", icon: Palette },
 ];
@@ -169,5 +168,7 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
+
 
 

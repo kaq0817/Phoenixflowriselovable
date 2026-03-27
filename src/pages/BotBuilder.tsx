@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Bot, Loader2, RefreshCw, ShoppingBag, Sparkles, Store } from "lucide-react";
 
@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { appDomainFacts, appIdentityConfig, pillarDomainFacts, storeDomainFacts } from "@/config/appIdentity";
+import { appSupportConfig } from "@/config/appSupport";
 import { cn } from "@/lib/utils";
 
 type SourceMode = "shopify" | "etsy" | "manual";
@@ -25,10 +27,6 @@ interface StoreConnectionOption {
   shop_name: string | null;
   scopes?: string | null;
   created_at: string;
-// Copyright (c) 2026 [Your Name or Company]
-// All rights reserved.
-// This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
-// For licensing inquiries, contact: [your contact email]
 }
 
 interface ShopifyProduct {
@@ -95,7 +93,7 @@ function stripHtml(value: string) {
 }
 
 function isUsableEtsyConnection(connection: StoreConnectionOption) {
-  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r:");
+  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
 }
 
 function getStoreLabel(connection: StoreConnectionOption) {
@@ -138,8 +136,10 @@ export default function BotPage() {
     callToAction: "Shop now",
   });
   const [result, setResult] = useState<AdConcept | null>(null);
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false);
 
-  // On mount, only load store connections, do NOT auto-fetch products or listings
   useEffect(() => {
     if (!session) return;
     (async () => {
@@ -168,8 +168,7 @@ export default function BotPage() {
   const shopifyConnections = useMemo(() => storeConnections.filter((connection) => connection.platform === "shopify"), [storeConnections]);
   const etsyConnections = useMemo(() => storeConnections.filter((connection) => connection.platform === "etsy"), [storeConnections]);
 
-  // Only fetch products on explicit user action
-  const fetchShopifyProducts = async (connectionId = selectedShopifyConnectionId) => {
+  const fetchShopifyProducts = useCallback(async (connectionId = selectedShopifyConnectionId) => {
     if (!connectionId) return;
     setShopifyLoading(true);
     try {
@@ -186,10 +185,9 @@ export default function BotPage() {
     } finally {
       setShopifyLoading(false);
     }
-  };
+  }, [selectedShopifyConnectionId, toast]);
 
-  // Only fetch listings on explicit user action
-  const fetchEtsyListings = async (connectionId = selectedEtsyConnectionId) => {
+  const fetchEtsyListings = useCallback(async (connectionId = selectedEtsyConnectionId) => {
     if (!connectionId) return;
     setEtsyLoading(true);
     try {
@@ -206,17 +204,17 @@ export default function BotPage() {
     } finally {
       setEtsyLoading(false);
     }
-  };
+  }, [selectedEtsyConnectionId, toast]);
 
   useEffect(() => {
     if (loading || sourceMode !== "shopify" || !selectedShopifyConnectionId || shopifyProducts.length > 0) return;
     void fetchShopifyProducts(selectedShopifyConnectionId);
-  }, [loading, sourceMode, selectedShopifyConnectionId, shopifyProducts.length]);
+  }, [fetchShopifyProducts, loading, sourceMode, selectedShopifyConnectionId, shopifyProducts.length]);
 
   useEffect(() => {
     if (loading || sourceMode !== "etsy" || !selectedEtsyConnectionId || etsyListings.length > 0) return;
     void fetchEtsyListings(selectedEtsyConnectionId);
-  }, [loading, sourceMode, selectedEtsyConnectionId, etsyListings.length]);
+  }, [fetchEtsyListings, loading, sourceMode, selectedEtsyConnectionId, etsyListings.length]);
 
   const selectedShopifyProduct = useMemo(
     () => shopifyProducts.find((product) => String(product.id) === selectedShopifyProductId) || null,
@@ -241,15 +239,15 @@ export default function BotPage() {
       return {
         title: selectedEtsyListing.title,
         description: selectedEtsyListing.description,
-        subtitle: selectedEtsyListing.taxonomy_path || "Etsy listing", // No change needed here, it's not using the garbled char
+        subtitle: selectedEtsyListing.taxonomy_path || "Etsy listing",
       };
     }
 
     return {
       title: manualItem.title || "Manual product",
       description: manualItem.description,
-      subtitle: [manualItem.vendor, manualItem.productType].filter(Boolean).join(" � ") || "Manual input",
-    }; // Changed to " - " below
+      subtitle: [manualItem.vendor, manualItem.productType].filter(Boolean).join(" - ") || "Manual input",
+    };
   }, [sourceMode, selectedShopifyProduct, selectedEtsyListing, manualItem]);
 
   const generateDisabled = useMemo(() => {
@@ -258,6 +256,33 @@ export default function BotPage() {
     if (sourceMode === "etsy") return !selectedEtsyListing;
     return !manualItem.title.trim() || !manualItem.description.trim();
   }, [generating, sourceMode, selectedShopifyProduct, selectedEtsyListing, manualItem]);
+
+  const handleAskAssistant = async () => {
+    const question = assistantQuestion.trim();
+    if (!question) return;
+
+    setAssistantLoading(true);
+    setAssistantAnswer("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("answer-app-question", {
+        body: {
+          question,
+          identity: appIdentityConfig,
+          support: appSupportConfig,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.answer) throw new Error("Assistant did not return an answer");
+      setAssistantAnswer(data.answer as string);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to answer question";
+      toast({ title: "Assistant failed", description: message, variant: "destructive" });
+    } finally {
+      setAssistantLoading(false);
+    }
+  };
 
   const handleGenerate = async () => {
     let item: Record<string, unknown> | null = null;
@@ -341,12 +366,110 @@ export default function BotPage() {
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Bot className="h-6 w-6 text-primary" /> Ad Generator
+          <Bot className="h-6 w-6 text-primary" /> Bot Builder
         </h1>
         <p className="mt-1 text-muted-foreground">
-          Create truthful 8-second product ads that highlight the best parts of an item without fake in-use scenes.
+          Ask how to use Templanator, Etsy connection, and product editing tools, then generate truthful 8-second product ads from real catalog data.
         </p>
       </motion.div>
+
+      <Card className="border-border/30 bg-card/50">
+        <CardHeader>
+          <CardTitle className="text-lg">App-Aware Assistant</CardTitle>
+          <CardDescription>
+            This assistant is for Phoenix Flow customers. It explains how to use Templanator, Etsy integration, and product editing workflows, while still respecting the app identity source of truth and domain guardrails.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 bg-background/40 p-4">
+            <p className="mb-3 font-medium">Supported workflows</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {appSupportConfig.modules.map((module) => (
+                <div key={module.id} className="rounded-lg bg-muted/20 p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{module.name}</p>
+                    <Badge variant="outline">{module.route}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{module.summary}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-3 rounded-xl border border-border/40 bg-background/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">Identity source of truth</p>
+                <Badge variant="outline">Updated {appIdentityConfig.updatedAt}</Badge>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p><span className="font-medium text-foreground">App:</span> {appIdentityConfig.appName}</p>
+                <p><span className="font-medium text-foreground">Legal name:</span> {appIdentityConfig.legalName}</p>
+              </div>
+              <div className="space-y-2">
+                {appIdentityConfig.domains.map((fact) => (
+                  <div key={`${fact.type}-${fact.host}`} className="rounded-lg bg-muted/20 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{fact.host}</p>
+                      <Badge variant="secondary">{fact.type}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{fact.label} - {fact.description}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <div className="rounded-lg bg-muted/20 p-3 text-sm">
+                  <p className="font-medium">App domains</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{appDomainFacts.length}</p>
+                </div>
+                <div className="rounded-lg bg-muted/20 p-3 text-sm">
+                  <p className="font-medium">Store domains</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{storeDomainFacts.length}</p>
+                </div>
+                <div className="rounded-lg bg-muted/20 p-3 text-sm">
+                  <p className="font-medium">Pillar domains</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{pillarDomainFacts.length}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border/40 bg-background/40 p-4">
+              <p className="font-medium">Assistant guardrails</p>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                {appIdentityConfig.assistantRules.map((rule) => (
+                  <div key={rule} className="rounded-lg bg-muted/20 p-3">{rule}</div>
+                ))}
+                {appIdentityConfig.notes.map((note) => (
+                  <div key={note} className="rounded-lg border border-dashed border-border/50 p-3 text-xs">{note}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-border/40 bg-background/40 p-4">
+            <p className="font-medium">Ask about the app</p>
+            <Textarea
+              rows={4}
+              value={assistantQuestion}
+              onChange={(event) => setAssistantQuestion(event.target.value)}
+              placeholder="Example: How do I connect Etsy, use Templanator, or apply changes in the Product Optimizer?"
+              className="bg-muted/30"
+            />
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button onClick={handleAskAssistant} disabled={assistantLoading || !assistantQuestion.trim()} className="gradient-phoenix text-primary-foreground sm:w-auto">
+                {assistantLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+                {assistantLoading ? "Answering..." : "Ask Assistant"}
+              </Button>
+              <Button variant="outline" onClick={() => { setAssistantQuestion(""); setAssistantAnswer(""); }} disabled={assistantLoading}>
+                Clear
+              </Button>
+            </div>
+            {assistantAnswer ? (
+              <div className="whitespace-pre-wrap rounded-lg bg-muted/20 p-4 text-sm text-foreground">{assistantAnswer}</div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-border/30 bg-card/50">
         <CardHeader>
@@ -644,3 +767,7 @@ export default function BotPage() {
     </div>
   );
 }
+
+
+
+

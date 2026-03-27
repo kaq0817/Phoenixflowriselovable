@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   BarChart3, Sparkles, ShoppingBag, Store, Loader2, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Tag, FileText, Palette,
-  ArrowRight, Copy
+  ArrowRight, Copy, AlertTriangle
 } from "lucide-react";
 import { CopyButton, copyAllFields } from "@/components/CopyButton";
 import { supabase } from "@/integrations/supabase/client";
@@ -73,7 +73,12 @@ interface StoreConnectionOption {
 }
 
 function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r:");
+  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+}
+
+function isApparelProduct(product: ShopifyProduct): boolean {
+  const haystack = `${product.title || ""} ${product.product_type || ""} ${product.tags || ""}`.toLowerCase();
+  return ["shirt", "tee", "hoodie", "sweatshirt", "sweater", "jacket", "dress", "pants", "leggings", "shorts", "top", "tank", "skirt", "apparel", "clothing", "beanie", "hat", "cap", "jersey"].some((term) => haystack.includes(term));
 }
 
 export default function OptimizerPage() {
@@ -437,6 +442,15 @@ export default function OptimizerPage() {
                         <p className="text-sm text-muted-foreground"><Sparkles className="h-4 w-4 inline mr-1 text-primary" />{shopifySuggestions.reasoning}</p>
                       </div>
 
+                      {selectedProduct && isApparelProduct(selectedProduct) && (
+                        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                          <p className="text-sm text-amber-200">
+                            <AlertTriangle className="h-4 w-4 inline mr-1.5 text-amber-300" />
+                            Apparel titles should keep the real color and size or size range. Leaving them out can trigger a Google Merchant issue for misrepresentation.
+                          </p>
+                        </div>
+                      )}
+
                       <ComparisonRow label="Product Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.title} sectionKey="title" />
                       <ComparisonRow label="SEO Title" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.seo_title} sectionKey="seo_title" />
                       <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original="" optimized={shopifySuggestions.seo_description} sectionKey="seo_desc" />
@@ -672,3 +686,8 @@ export default function OptimizerPage() {
     </div>
   );
 }
+
+
+
+
+

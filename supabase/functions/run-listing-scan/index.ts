@@ -269,9 +269,8 @@ serve(async (req: Request) => {
         }
       }
 
-      // Extract shop ID from scopes (format: "shops_r:SHOPID ...")
-      const shopMatch = conn.scopes?.match(/shops_r:(\d+)/);
-      const shopId = shopMatch?.[1] || conn.shop_domain;
+      // Use the stored Etsy shop ID from the connection row.
+      const shopId = conn.shop_domain;
 
       if (shopId) {
         const apiKeyHeader = getEtsyApiKeyHeader();
@@ -449,7 +448,7 @@ serve(async (req: Request) => {
       // 4. SerpAPI keyword verification (top 5 tags)
       if (SERPAPI_KEY && tags.length > 0) {
         try {
-          const keywordResults = await verifyKeywordsWithSerpApi(tags.slice(0, 5), SERPAPI_KEY);
+          const keywordResults = await verifyKeywordsWithSerpApi(selectKeywordsForVerification(tags), SERPAPI_KEY);
           const lowVolume = keywordResults.filter(k => k.searchVolume === "low");
           const tiktokTrending = keywordResults.filter(k => k.tiktokTrend);
 
@@ -458,7 +457,7 @@ serve(async (req: Request) => {
               type: "low_volume_keywords",
               severity: "warning",
               field: "tags",
-              message: `Low search volume keywords: ${lowVolume.map(k => k.keyword).join(", ")}. Consider replacing with higher-demand terms.`,
+              message: `Low search volume keyword phrases: ${lowVolume.map(k => k.keyword).join(", ")}. Consider pivoting toward stronger long-tail phrases.`,
             });
           }
 
@@ -596,6 +595,12 @@ serve(async (req: Request) => {
     });
   }
 });
+
+
+
+
+
+
 
 
 

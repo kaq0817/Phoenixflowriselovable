@@ -30,3 +30,7 @@ supabase/.temp/
 # Misc
 .DS_Store
 .env.backup_*
+
+# Deno local cache
+.deno-cache/
+

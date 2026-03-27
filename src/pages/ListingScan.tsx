@@ -169,7 +169,7 @@ export default function ListingScanPage() {
   }, [currentJob, toast, fetchPastJobs]);
 
   function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-    return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r:");
+    return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
   }
 
   async function startScan() {
@@ -521,6 +521,7 @@ export default function ListingScanPage() {
     </div>
   );
 }
+
 
 
 

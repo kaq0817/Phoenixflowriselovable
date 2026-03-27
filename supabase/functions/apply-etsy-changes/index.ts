@@ -33,27 +33,20 @@ serve(async (req: Request) => {
     const userId = claimsData.claims.sub;
 
     const { listingId, originalData, optimizedData, connectionId } = await req.json();
-    if (!listingId || !originalData || !optimizedData) {
+    if (!listingId || !originalData || !optimizedData || !connectionId) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let connQuery = supabase
+    const { data: connection, error: connErr } = await supabase
       .from("store_connections")
       .select("*")
       .eq("user_id", userId)
       .eq("platform", "etsy")
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (connectionId) {
-      connQuery = connQuery.eq("id", connectionId);
-    }
-
-    const { data: connectionRows, error: connErr } = await connQuery;
-    const connection = connectionRows?.[0];
+      .eq("id", connectionId)
+      .maybeSingle();
 
     if (connErr || !connection) {
       return new Response(JSON.stringify({ error: "No Etsy connection found" }), {
@@ -172,3 +165,4 @@ serve(async (req: Request) => {
     });
   }
 });
+

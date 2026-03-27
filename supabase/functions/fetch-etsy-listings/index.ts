@@ -34,20 +34,20 @@ serve(async (req) => {
 
     const { limit = 25, offset = 0, state: listingState = "active", connectionId } = await req.json().catch(() => ({}));
 
-    let connQuery = supabase
+    if (!connectionId) {
+      return new Response(JSON.stringify({ error: "connectionId is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: connection, error: connErr } = await supabase
       .from("store_connections")
       .select("*")
       .eq("user_id", userId)
       .eq("platform", "etsy")
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (connectionId) {
-      connQuery = connQuery.eq("id", connectionId);
-    }
-
-    const { data: connectionRows, error: connErr } = await connQuery;
-    const connection = connectionRows?.[0];
+      .eq("id", connectionId)
+      .maybeSingle();
 
     if (connErr || !connection) {
       return new Response(JSON.stringify({ error: "No Etsy connection found. Please connect an Etsy shop in Settings first." }), {
@@ -183,3 +183,4 @@ serve(async (req) => {
     });
   }
 });
+

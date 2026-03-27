@@ -17,15 +17,20 @@ import {
 
 const tierIcons: Record<string, React.ElementType> = {
   "Free Trial": Zap,
-  "Phoenix Flow - Essential (Basic)": Rocket,
-  "Phoenix Flow - Basic Yearly": Rocket,
-  "Pro ($24/mo)": Crown,
-  "Phoenix Flow - Premium Monthly": Gem,
-  "Phoenix Flow - Premium Yearly": Gem,
-  "Phoenix Flow - Agency Elite": Building2,
-  "Phoenix Flow - Agency Elite (Annual)": Building2,
-  "Phoenix Flow - Enterprise": Building2,
-  "Phoenix Flow - Enterprise (Annual)": Building2,
+  "Phoenix Spark - Etsy": Rocket,
+  "Phoenix Rise - Etsy": Crown,
+  "Phoenix Spark - Shopify 1 Store": Rocket,
+  "Phoenix Rise - Shopify 3 stores": Crown,
+  "Phoenix Ascend 5 stores": Gem,
+  "Phoenix Reign 10 store mix": Gem,
+  "Phoenix Transcend(40 Stores)": Building2,
+  "Phoenix Spark - Etsy (Annual)": Rocket,
+  "Phoenix Rise - Etsy (Annual)": Crown,
+  "Phoenix Spark - Shopify (Annual) 1 store": Rocket,
+  "Phoenix Rise - Shopify (Annual)": Crown,
+  "Phoenix Ascend (Annual)": Gem,
+  "Phoenix Reign Annual": Gem,
+  "Phoenix Transcend - Agency Elite (Annual)": Building2,
 };
 
 type Tab = "subscriptions" | "compliance" | "bundles";
@@ -37,22 +42,17 @@ export default function PricingPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const handleCheckout = async (stripeProductId: string, mode: "subscription" | "payment") => {
-    const priceId = STRIPE_PRICES[stripeProductId];
+  const handleCheckout = async (priceId: string, mode: "subscription" | "payment", loadingKey: string) => {
     if (!priceId) {
       toast({ title: "Not available", description: "This product isn't set up for checkout yet.", variant: "destructive" });
       return;
-    // Copyright (c) 2026 [Your Name or Company]
-    // All rights reserved.
-    // This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
-    // For licensing inquiries, contact: [your contact email]
     }
 
-    setLoadingId(stripeProductId);
+    setLoadingId(loadingKey);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        toast({ title: "Sign in required", description: "Please sign in to subscribe.", variant: "destructive" });
+        toast({ title: "Sign in required", description: "Please sign in to purchase.", variant: "destructive" });
         return;
       }
 
@@ -64,8 +64,9 @@ export default function PricingPage() {
       if (data?.url) {
         window.location.href = data.url;
       }
-    } catch (err: any) {
-      toast({ title: "Checkout error", description: err.message || "Something went wrong", variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      toast({ title: "Checkout error", description: message, variant: "destructive" });
     } finally {
       setLoadingId(null);
     }
@@ -79,9 +80,9 @@ export default function PricingPage() {
     navigate("/settings");
   };
 
-  const filteredSubs = SUBSCRIPTION_TIERS.filter((t) => {
-    if (t.price === 0) return billing === "monthly";
-    return t.billing === billing || t.billing === "6-months";
+  const filteredSubs = SUBSCRIPTION_TIERS.filter((tier) => {
+    if (tier.price === 0) return billing === "monthly";
+    return tier.billing === billing || tier.billing === "6-months";
   });
 
   return (
@@ -91,11 +92,10 @@ export default function PricingPage() {
           <CreditCard className="h-6 w-6 text-primary" /> Pricing
         </h1>
         <p className="text-muted-foreground mt-1">
-          {TOTAL_STRIPE_PRODUCTS} products across subscriptions, compliance, and bundles.
+          {TOTAL_STRIPE_PRODUCTS} live packages across subscriptions, compliance, and bundles.
         </p>
       </motion.div>
 
-      {/* Tab buttons */}
       <div className="flex gap-2 flex-wrap">
         <Button variant={tab === "subscriptions" ? "default" : "secondary"} onClick={() => setTab("subscriptions")}>
           Subscriptions ({SUBSCRIPTION_TIERS.length})
@@ -108,7 +108,6 @@ export default function PricingPage() {
         </Button>
       </div>
 
-      {/* SUBSCRIPTIONS TAB */}
       {tab === "subscriptions" && (
         <>
           <div className="flex items-center gap-2">
@@ -121,11 +120,12 @@ export default function PricingPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredSubs.map((tier, i) => {
+            {filteredSubs.map((tier, index) => {
               const Icon = tierIcons[tier.name] || ShoppingBag;
-              const isPopular = tier.name.includes("Pro (");
+              const isPopular = tier.name === "Phoenix Rise - Shopify 3 stores";
               const isLoading = loadingId === tier.stripeId;
-              const hasPriceId = !!STRIPE_PRICES[tier.stripeId];
+              const hasPriceId = tier.price === 0 || !!STRIPE_PRICES[tier.stripeId];
+              const priceId = STRIPE_PRICES[tier.stripeId];
               const perStoreCost = tier.stores > 1 && tier.price > 0 ? tier.price / tier.stores : null;
 
               return (
@@ -133,7 +133,7 @@ export default function PricingPage() {
                   key={tier.stripeId || "free"}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.08 }}
+                  transition={{ delay: index * 0.08 }}
                 >
                   <Card className={`bg-card/50 border-border/30 h-full relative ${isPopular ? "border-primary/50 glow-primary" : ""}`}>
                     {isPopular && (
@@ -157,7 +157,7 @@ export default function PricingPage() {
                       )}
                       {perStoreCost !== null && (
                         <p className="text-xs text-muted-foreground">
-                          ≈ ${perStoreCost.toFixed(2)} per store/{tier.billing === "yearly" ? "yr" : "mo"}
+                          ~= ${perStoreCost.toFixed(2)} per store/{tier.billing === "yearly" ? "yr" : "mo"}
                         </p>
                       )}
                     </CardHeader>
@@ -168,21 +168,21 @@ export default function PricingPage() {
                       <Button
                         className={`w-full ${isPopular ? "gradient-phoenix text-primary-foreground" : ""}`}
                         variant={isPopular ? "default" : "secondary"}
-                        disabled={isLoading || (!hasPriceId && tier.price > 0)}
+                        disabled={isLoading || !hasPriceId}
                         onClick={() => {
                           if (tier.price === 0) {
                             handleFreeTrial();
                             return;
                           }
 
-                          if (tier.stripeId) {
-                            handleCheckout(tier.stripeId, "subscription");
+                          if (priceId) {
+                            handleCheckout(priceId, tier.checkoutMode, tier.stripeId);
                           }
                         }}
                       >
                         {isLoading ? (
                           <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
-                        ) : tier.price === 0 ? "Get Started" : "Subscribe"}
+                        ) : tier.price === 0 ? "Get Started" : tier.checkoutMode === "payment" ? "Buy" : "Subscribe"}
                       </Button>
                     </CardContent>
                   </Card>
@@ -193,21 +193,21 @@ export default function PricingPage() {
         </>
       )}
 
-      {/* COMPLIANCE TAB */}
       {tab === "compliance" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {COMPLIANCE_PRODUCTS.map((product, i) => {
+          {COMPLIANCE_PRODUCTS.map((product, index) => {
             const isLoading = loadingId === product.stripeId;
-            const hasPriceId = !!STRIPE_PRICES[product.stripeId];
+            const priceId = STRIPE_PRICES[product.stripeId];
+            const hasPriceId = !!priceId;
             return (
               <motion.div
                 key={product.stripeId}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08 }}
+                transition={{ delay: index * 0.08 }}
               >
-                <Card className={`bg-card/50 border-border/30 h-full relative ${product.name.includes("Best Value") ? "border-primary/50 glow-primary" : ""}`}>
-                  {product.name.includes("Best Value") && (
+                <Card className={`bg-card/50 border-border/30 h-full relative ${product.name.includes("25") ? "border-primary/50 glow-primary" : ""}`}>
+                  {product.name.includes("25") && (
                     <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 gradient-phoenix text-primary-foreground text-xs">
                       Best Value
                     </Badge>
@@ -216,16 +216,8 @@ export default function PricingPage() {
                     <Shield className="h-8 w-8 text-primary mx-auto mb-2" />
                     <CardTitle className="text-base">{product.name}</CardTitle>
                     <div className="mt-1">
-                      {product.price !== null ? (
-                        <>
-                          <span className="text-3xl font-bold">${product.price}</span>
-                          <span className="text-muted-foreground text-sm">
-                            /{product.billing === "monthly" ? "mo" : "one-time"}
-                          </span>
-                        </>
-                      ) : (
-                        <Badge variant="outline" className="text-xs">Price in Stripe</Badge>
-                      )}
+                      <span className="text-3xl font-bold">${product.price}</span>
+                      <span className="text-muted-foreground text-sm">/one-time</span>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -248,7 +240,9 @@ export default function PricingPage() {
                       variant="secondary"
                       className="w-full"
                       disabled={isLoading || !hasPriceId}
-                      onClick={() => handleCheckout(product.stripeId, product.billing === "monthly" ? "subscription" : "payment")}
+                      onClick={() => {
+                        if (priceId) handleCheckout(priceId, "payment", product.stripeId);
+                      }}
                     >
                       {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</> : "Buy"}
                     </Button>
@@ -260,40 +254,36 @@ export default function PricingPage() {
         </div>
       )}
 
-      {/* BUNDLES TAB */}
       {tab === "bundles" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {BUNDLE_PRODUCTS.map((product, i) => {
+          {BUNDLE_PRODUCTS.map((product, index) => {
             const isLoading = loadingId === product.stripeId;
-            const hasPriceId = !!STRIPE_PRICES[product.stripeId];
+            const priceId = STRIPE_PRICES[product.stripeId];
+            const hasPriceId = !!priceId;
             return (
               <motion.div
                 key={product.stripeId}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08 }}
+                transition={{ delay: index * 0.08 }}
               >
                 <Card className="bg-card/50 border-border/30 h-full">
                   <CardHeader className="text-center pb-2">
                     <Package className="h-8 w-8 text-primary mx-auto mb-2" />
                     <CardTitle className="text-base">{product.name}</CardTitle>
                     <div className="mt-1">
-                      {product.price !== null ? (
-                        <span className="text-3xl font-bold">${product.price}</span>
-                      ) : (
-                        <Badge variant="outline" className="text-xs">Price in Stripe</Badge>
-                      )}
+                      <span className="text-3xl font-bold">${product.price}</span>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {product.description && (
-                      <p className="text-xs text-muted-foreground leading-relaxed">{product.description}</p>
-                    )}
+                    <p className="text-xs text-muted-foreground leading-relaxed">{product.description}</p>
                     <Button
                       variant="secondary"
                       className="w-full"
                       disabled={isLoading || !hasPriceId}
-                      onClick={() => handleCheckout(product.stripeId, "payment")}
+                      onClick={() => {
+                        if (priceId) handleCheckout(priceId, "payment", product.stripeId);
+                      }}
                     >
                       {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</> : "Buy"}
                     </Button>
@@ -307,6 +297,3 @@ export default function PricingPage() {
     </div>
   );
 }
-
-
-

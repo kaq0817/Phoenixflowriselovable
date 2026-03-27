@@ -1,76 +1,54 @@
 /**
  * PHOENIX FLOW: STRIPE PRODUCT CATALOG
- * Source: Stripe products CSV export — 2026-03-12
- * DO NOT MODIFY PRICES — these match live Stripe products
+ * Source: Stripe products CSV export - 2026-03-25
+ * These are the only live packages that currently exist in Stripe.
  */
 
-// ============================================================================
-// STRIPE PRODUCT IDS + PRICE IDS
-// ============================================================================
-
 export const STRIPE_PRODUCTS = {
-  // Subscriptions
-  BASIC: "prod_U8Ql8O4CAH7EtR",
-  BASIC_YEARLY: "prod_U8RZnmJGxnQ0Jw",
-  PRO: "prod_U8Qnc3mKuDjHU3",
-  PREMIUM_MONTHLY: "prod_U8Sl0IykdxvN7q",
-  PREMIUM_YEARLY: "prod_U8So6Vf7BsyU4e",
-  AGENCY_MONTHLY: "prod_U8RC6wioPFz5uX",
-  AGENCY_ANNUAL: "prod_U8TEHkXHb8naio",
-  AGENCY_ELITE: "prod_U8R7QcJ1QjKfhj",
+  SPARK_ETSY_MONTHLY: "prod_U8Ql8O4CAH7EtR",
+  SPARK_SHOPIFY_YEARLY: "prod_U8RZnmJGxnQ0Jw",
+  RISE_ETSY_MONTHLY: "prod_UD2nX7EaGsxrnb",
+  REIGN_TEN_STORES_MONTHLY: "prod_UDQxNtHsLCdNGK",
+  REIGN_TEN_STORES_YEARLY: "prod_UDQtGIhlzqYICz",
+  ASCEND_FIVE_STORES_MONTHLY: "prod_UDQfUkGxtrPQay",
+  TRANSCEND_FORTY_STORES_MONTHLY: "prod_U8RC6wioPFz5uX",
+  TRANSCEND_FORTY_STORES_YEARLY: "prod_U8TEHkXHb8naio",
+  RISE_SHOPIFY_YEARLY: "prod_U8So6Vf7BsyU4e",
+  SPARK_SHOPIFY_MONTHLY: "prod_U8Sl0IykdxvN7q",
+  ASCEND_FIVE_STORES_YEARLY: "prod_U8R7QcJ1QjKfhj",
+  RISE_ETSY_YEARLY: "prod_U8Qnc3mKuDjHU3",
+  SPARK_ETSY_YEARLY: "prod_U8QkDuYfmta0pw",
+  RISE_SHOPIFY_THREE_STORES_MONTHLY: "prod_UDR5GIa5P4nFeu",
 
-  // Compliance
-  COMPLIANCE_BUSINESS: "prod_U8RlNjLt4R5CSJ",
-  SINGLE_COMPLIANCE: "prod_U8RnwNAWiMyF4K",
-  THREE_SCAN_PACK: "prod_U8QrfgnjxMJ4ic",
-  TEN_SCAN_PACK: "prod_U8QqVYXsk6RbRK",
-  TWENTY_FIVE_SCAN_PACK: "prod_U8QpzRv9aJUZXC",
+  SCAN_SINGLE: "prod_U8RnwNAWiMyF4K",
+  SCAN_PACK_THREE: "prod_U7sxKLhOv6tRCs",
+  SCAN_PACK_TEN: "prod_U8RlNjLt4R5CSJ",
+  SCAN_PACK_TWENTY_FIVE: "prod_U8QpzRv9aJUZXC",
 
-  // One-offs / Bundles
   APP_WALKTHROUGH: "prod_U8RnJY32kFCGcB",
-  ETSY_BUNDLE: "prod_U8QkDuYfmta0pw",
-  SHOPIFY_SEO: "prod_U8Qj5CkVlGruLm",
-
-  // Enterprise (to be created in Stripe)
-  ENTERPRISE_MONTHLY: "",
-  ENTERPRISE_YEARLY: "",
 } as const;
 
-/** Stripe Price IDs — verified against live Stripe account 2026-03-15 */
 export const STRIPE_PRICES: Record<string, string> = {
-  // Basic Monthly $12
-  [STRIPE_PRODUCTS.BASIC]: "price_1TA9uJGUZx3v4iGjJzKwS65d",
-  // Basic Yearly $100
-  [STRIPE_PRODUCTS.BASIC_YEARLY]: "price_1TAAgUGUZx3v4iGjzGu5XLeA",
-  // Pro Monthly $24
-  [STRIPE_PRODUCTS.PRO]: "price_1TA9vVGUZx3v4iGjs5QT1i1p",
-  // Premium Monthly $39
-  [STRIPE_PRODUCTS.PREMIUM_MONTHLY]: "price_1TABq5GUZx3v4iGj7CqTHaUj",
-  // Premium Yearly $399
-  [STRIPE_PRODUCTS.PREMIUM_YEARLY]: "price_1TABsWGUZx3v4iGjHz3ZVmuo",
-  // Agency Monthly $1999
-  [STRIPE_PRODUCTS.AGENCY_MONTHLY]: "price_1TAAKMGUZx3v4iGjxG8I2oGO",
-  // Agency Annual $19990
-  [STRIPE_PRODUCTS.AGENCY_ANNUAL]: "price_1TACIUGUZx3v4iGjk5hL2ytz",
-  // Agency Elite $1990/yr
-  [STRIPE_PRODUCTS.AGENCY_ELITE]: "price_1TAAF5GUZx3v4iGjnjpWl8Mq",
-
-  // Compliance
-  [STRIPE_PRODUCTS.COMPLIANCE_BUSINESS]: "price_1TAAs3GUZx3v4iGjmy5YutRI",
-  [STRIPE_PRODUCTS.SINGLE_COMPLIANCE]: "price_1TAAtdGUZx3v4iGj6HGyl4me",
-  [STRIPE_PRODUCTS.THREE_SCAN_PACK]: "price_1TA9zvGUZx3v4iGj3fq3UexX",
-  [STRIPE_PRODUCTS.TEN_SCAN_PACK]: "price_1TA9ywGUZx3v4iGj3hyqKg3d",
-  [STRIPE_PRODUCTS.TWENTY_FIVE_SCAN_PACK]: "price_1TA9y2GUZx3v4iGju7eCWtQE",
-
-  // Bundles
+  [STRIPE_PRODUCTS.RISE_SHOPIFY_THREE_STORES_MONTHLY]: "price_1TF0DGGUZx3v4iGjx91mU18j",
+  [STRIPE_PRODUCTS.REIGN_TEN_STORES_MONTHLY]: "price_1TF05CGUZx3v4iGjGTrFpsMY",
+  [STRIPE_PRODUCTS.REIGN_TEN_STORES_YEARLY]: "price_1TF01WGUZx3v4iGjOqjTYRe2",
+  [STRIPE_PRODUCTS.ASCEND_FIVE_STORES_MONTHLY]: "price_1TEzoNGUZx3v4iGjmaUX2w5W",
+  [STRIPE_PRODUCTS.RISE_ETSY_MONTHLY]: "price_1TEciIGUZx3v4iGjSqcfHXVa",
+  [STRIPE_PRODUCTS.TRANSCEND_FORTY_STORES_YEARLY]: "price_1TACIUGUZx3v4iGjk5hL2ytz",
+  [STRIPE_PRODUCTS.RISE_SHOPIFY_YEARLY]: "price_1TABsWGUZx3v4iGjHz3ZVmuo",
+  [STRIPE_PRODUCTS.SPARK_SHOPIFY_MONTHLY]: "price_1TABq5GUZx3v4iGj7CqTHaUj",
   [STRIPE_PRODUCTS.APP_WALKTHROUGH]: "price_1TAAuMGUZx3v4iGjMc0lSu3L",
-  [STRIPE_PRODUCTS.ETSY_BUNDLE]: "price_1TA9sqGUZx3v4iGjvoznpjmm",
-  [STRIPE_PRODUCTS.SHOPIFY_SEO]: "price_1TA9rzGUZx3v4iGjwPF9fCQg",
+  [STRIPE_PRODUCTS.SCAN_SINGLE]: "price_1TAAtdGUZx3v4iGj6HGyl4me",
+  [STRIPE_PRODUCTS.SCAN_PACK_TEN]: "price_1TAAs3GUZx3v4iGjmy5YutRI",
+  [STRIPE_PRODUCTS.SPARK_SHOPIFY_YEARLY]: "price_1TAAgUGUZx3v4iGjzGu5XLeA",
+  [STRIPE_PRODUCTS.TRANSCEND_FORTY_STORES_MONTHLY]: "price_1TAAKMGUZx3v4iGjxG8I2oGO",
+  [STRIPE_PRODUCTS.ASCEND_FIVE_STORES_YEARLY]: "price_1TAAF5GUZx3v4iGjnjpWl8Mq",
+  [STRIPE_PRODUCTS.SCAN_PACK_TWENTY_FIVE]: "price_1TA9y2GUZx3v4iGju7eCWtQE",
+  [STRIPE_PRODUCTS.RISE_ETSY_YEARLY]: "price_1TA9vVGUZx3v4iGjs5QT1i1p",
+  [STRIPE_PRODUCTS.SPARK_ETSY_MONTHLY]: "price_1TA9uJGUZx3v4iGjJzKwS65d",
+  [STRIPE_PRODUCTS.SPARK_ETSY_YEARLY]: "price_1TA9sqGUZx3v4iGjvoznpjmm",
+  [STRIPE_PRODUCTS.SCAN_PACK_THREE]: "price_1T9dBVGUZx3v4iGjhWoDIokf",
 };
-
-// ============================================================================
-// SUBSCRIPTION TIERS (Monthly + Yearly where applicable)
-// ============================================================================
 
 export interface SubscriptionTier {
   stripeId: string;
@@ -80,129 +58,13 @@ export interface SubscriptionTier {
   description: string;
   stores: number;
   category: "subscription";
+  checkoutMode: "subscription" | "payment";
 }
-
-export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
-  // FREE (no Stripe product — internal)
-  {
-    stripeId: "",
-    name: "Free Trial",
-    price: 0,
-    billing: "6-months",
-    description: "5 free operations to test. Store verification required. 1 store limit.",
-    stores: 1,
-    category: "subscription",
-  },
-
-  // BASIC
-  {
-    stripeId: STRIPE_PRODUCTS.BASIC,
-    name: "Phoenix Flow - Essential (Basic)",
-    price: 12,
-    billing: "monthly",
-    description:
-      "Ideal for: Sellers only interested in core listing data like tags, materials, and descriptions.",
-    stores: 1,
-    category: "subscription",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.BASIC_YEARLY,
-    name: "Phoenix Flow - Basic Yearly",
-    price: 100,
-    billing: "yearly",
-    description:
-      "Price: $100/yr (Save $44!). No refunds once the 6th operation activates. Includes: Free Test: First 5 operations are free. 1 Store: Supports Shopify or Etsy. 50 AI Descriptions/mo: Monthly content limit. One-Time Use: Limited to one session per store. SEO: Full automated optimization. Bulk Edit: 5 items at once. Support: Email assistance. Note: Results depend on your marketing.",
-    stores: 1,
-    category: "subscription",
-  },
-
-  // PRO
-  {
-    stripeId: STRIPE_PRODUCTS.PRO,
-    name: "Pro ($24/mo)",
-    price: 24,
-    billing: "monthly",
-    description:
-      "Advanced optimization and multi-store sync. 50 products up to 3 stores",
-    stores: 3,
-    category: "subscription",
-  },
-
-  // PREMIUM
-  {
-    stripeId: STRIPE_PRODUCTS.PREMIUM_MONTHLY,
-    name: "Phoenix Flow - Premium Monthly",
-    price: 39,
-    billing: "monthly",
-    description:
-      "Pro Power for Multi-Store Owners BILLING: First 5 operations FREE. $39/mo auto-renews (cancel anytime). NO REFUNDS: After your 6th operation, all sales are final. We optimize products; sales depend on your marketing. INCLUDES: Up to 10 stores (Shopify/Etsy) 500 AI product descriptions/mo 50 AI music video scripts/mo 100 AI ad concepts/mo Bulk editing (25 products at once) White-label option Analytics dashboard Priority 24h support",
-    stores: 10,
-    category: "subscription",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.PREMIUM_YEARLY,
-    name: "Phoenix Flow - Premium Yearly",
-    price: 399,
-    billing: "yearly",
-    description:
-      "BILLING: First 5 ops FREE. $399/yr billed annually (cancel anytime). NO REFUNDS: After 6th operation, payment is final. We deliver optimization—sales depend on your marketing. INCLUDES: Unlimited stores (Shopify/Etsy) 500 AI product descriptions/mo 50 AI music video scripts/mo 100 AI ad concepts/mo Bulk editing (25 at once) White-label option Priority support (12-hour response)",
-    stores: -1,
-    category: "subscription",
-  },
-
-  // AGENCY ELITE
-  {
-    stripeId: STRIPE_PRODUCTS.AGENCY_ELITE,
-    name: "Phoenix Flow - Agency Elite",
-    price: 299,
-    billing: "monthly",
-    description:
-      "8 Store Slots with multi-tenant capacity. Compliance Suite with Google sales and customer trust scans. White-Label branding for logos/reports. 6h priority email support. All activations are final; partial months are not pro-rated.",
-    stores: 8,
-    category: "subscription",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.AGENCY_ANNUAL,
-    name: "Phoenix Flow - Agency Elite (Annual)",
-    price: 2990,
-    billing: "yearly",
-    description:
-      'Annual Agency Elite — 8 stores. Monthly Refresh: 8 Deep Scans/mo (1 per store), 24 Light Scans/mo (3 per store). Counters reset on billing cycle date.',
-    stores: 8,
-    category: "subscription",
-  },
-
-  // ENTERPRISE
-  {
-    stripeId: STRIPE_PRODUCTS.ENTERPRISE_MONTHLY,
-    name: "Phoenix Flow - Enterprise",
-    price: 1999,
-    billing: "monthly",
-    description:
-      "Enterprise plan for 40 stores with dedicated account manager, custom integrations, SLA guarantees, white-label, API access, and priority 1-hour support.",
-    stores: 40,
-    category: "subscription",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.ENTERPRISE_YEARLY,
-    name: "Phoenix Flow - Enterprise (Annual)",
-    price: 19999,
-    billing: "yearly",
-    description:
-      "Enterprise annual plan for 40 stores with dedicated account manager, custom integrations, SLA guarantees, white-label, API access, and priority 1-hour support.",
-    stores: 40,
-    category: "subscription",
-  },
-];
-
-// ============================================================================
-// COMPLIANCE PRODUCTS
-// ============================================================================
 
 export interface ComplianceProduct {
   stripeId: string;
   name: string;
-  price: number | null; // null = price not in CSV
+  price: number | null;
   billing: "monthly" | "one-time";
   description: string;
   scans: number;
@@ -210,68 +72,6 @@ export interface ComplianceProduct {
   expiry: string;
   category: "compliance";
 }
-
-export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
-  {
-    stripeId: STRIPE_PRODUCTS.COMPLIANCE_BUSINESS,
-    name: "Compliance Business (Monthly)",
-    price: 399,
-    billing: "monthly",
-    description: "25 scans per month (up to 5,000 products), scans reset monthly",
-    scans: 25,
-    maxProducts: 5000,
-    expiry: "monthly reset",
-    category: "compliance",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.SINGLE_COMPLIANCE,
-    name: "Single Compliance Scan",
-    price: 49,
-    billing: "one-time",
-    description: "1 compliance scan (up to 500 products), credits never expire",
-    scans: 1,
-    maxProducts: 500,
-    expiry: "never",
-    category: "compliance",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.THREE_SCAN_PACK,
-    name: "3 compliance scans",
-    price: 129,
-    billing: "one-time",
-    description: "3 compliance scans (up to 500 products each) expires after 1 yr",
-    scans: 3,
-    maxProducts: 500,
-    expiry: "1 year",
-    category: "compliance",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.TEN_SCAN_PACK,
-    name: "10-Compliance Scan Pack",
-    price: 399,
-    billing: "one-time",
-    description: "10 compliance scans (up to 2,000 products each), expire 1 yr.",
-    scans: 10,
-    maxProducts: 2000,
-    expiry: "1 year",
-    category: "compliance",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.TWENTY_FIVE_SCAN_PACK,
-    name: "25-Scan Pack (Best Value)",
-    price: 899,
-    billing: "one-time",
-    description: "25 compliance scans (up to 5,000 products each) expire 1 year",
-    scans: 25,
-    maxProducts: 5000,
-    expiry: "1 year",
-    category: "compliance",
-  },
-];
-
-// ============================================================================
-// ONE-OFF / BUNDLE PRODUCTS
-// ============================================================================
 
 export interface BundleProduct {
   stripeId: string;
@@ -281,39 +81,217 @@ export interface BundleProduct {
   category: "bundle";
 }
 
+export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
+  {
+    stripeId: "",
+    name: "Free Trial",
+    price: 0,
+    billing: "6-months",
+    description: "5 free operations to test. Store verification required. 1 store limit.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "payment",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SPARK_ETSY_MONTHLY,
+    name: "Phoenix Spark - Etsy",
+    price: 12,
+    billing: "monthly",
+    description: "Entry Etsy plan for one store with core listing optimization.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.RISE_ETSY_MONTHLY,
+    name: "Phoenix Rise - Etsy",
+    price: 24,
+    billing: "monthly",
+    description: "Higher-output Etsy plan for one store with stronger optimization coverage.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SPARK_SHOPIFY_MONTHLY,
+    name: "Phoenix Spark - Shopify 1 Store",
+    price: 39,
+    billing: "monthly",
+    description: "Shopify starter plan for one store.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.RISE_SHOPIFY_THREE_STORES_MONTHLY,
+    name: "Phoenix Rise - Shopify 3 stores",
+    price: 99,
+    billing: "monthly",
+    description: "Shopify growth plan for up to 3 stores.",
+    stores: 3,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.ASCEND_FIVE_STORES_MONTHLY,
+    name: "Phoenix Ascend 5 stores",
+    price: 199,
+    billing: "monthly",
+    description: "Multi-store monthly plan for up to 5 stores.",
+    stores: 5,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.REIGN_TEN_STORES_MONTHLY,
+    name: "Phoenix Reign 10 store mix",
+    price: 399,
+    billing: "monthly",
+    description: "Mixed-store monthly plan for up to 10 stores.",
+    stores: 10,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.TRANSCEND_FORTY_STORES_MONTHLY,
+    name: "Phoenix Transcend(40 Stores)",
+    price: 1999,
+    billing: "monthly",
+    description: "Enterprise-scale monthly plan for up to 40 stores.",
+    stores: 40,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SPARK_ETSY_YEARLY,
+    name: "Phoenix Spark - Etsy (Annual)",
+    price: 99,
+    billing: "yearly",
+    description: "One-time annual Etsy package for one store.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "payment",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.RISE_ETSY_YEARLY,
+    name: "Phoenix Rise - Etsy (Annual)",
+    price: 199,
+    billing: "yearly",
+    description: "One-time annual Etsy package for one store.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "payment",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SPARK_SHOPIFY_YEARLY,
+    name: "Phoenix Spark - Shopify (Annual) 1 store",
+    price: 420,
+    billing: "yearly",
+    description: "Yearly Shopify starter plan for one store.",
+    stores: 1,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.RISE_SHOPIFY_YEARLY,
+    name: "Phoenix Rise - Shopify (Annual)",
+    price: 1069,
+    billing: "yearly",
+    description: "Yearly Shopify growth plan with expanded store coverage.",
+    stores: 3,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.ASCEND_FIVE_STORES_YEARLY,
+    name: "Phoenix Ascend (Annual)",
+    price: 1990,
+    billing: "yearly",
+    description: "Yearly multi-store plan for 5 stores.",
+    stores: 5,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.REIGN_TEN_STORES_YEARLY,
+    name: "Phoenix Reign Annual",
+    price: 3990,
+    billing: "yearly",
+    description: "Yearly mixed-store plan for up to 10 stores.",
+    stores: 10,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.TRANSCEND_FORTY_STORES_YEARLY,
+    name: "Phoenix Transcend - Agency Elite (Annual)",
+    price: 19990,
+    billing: "yearly",
+    description: "Yearly agency-tier plan for up to 40 stores.",
+    stores: 40,
+    category: "subscription",
+    checkoutMode: "subscription",
+  },
+];
+
+export const COMPLIANCE_PRODUCTS: ComplianceProduct[] = [
+  {
+    stripeId: STRIPE_PRODUCTS.SCAN_SINGLE,
+    name: "Phoenix Scan - Single",
+    price: 49,
+    billing: "one-time",
+    description: "1 compliance scan.",
+    scans: 1,
+    maxProducts: 500,
+    expiry: "never",
+    category: "compliance",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SCAN_PACK_THREE,
+    name: "Phoenix Scan Pack - 3",
+    price: 129,
+    billing: "one-time",
+    description: "3 compliance scans.",
+    scans: 3,
+    maxProducts: 500,
+    expiry: "1 year",
+    category: "compliance",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SCAN_PACK_TEN,
+    name: "Phoenix Scan Pack - 10",
+    price: 399,
+    billing: "one-time",
+    description: "10 compliance scans.",
+    scans: 10,
+    maxProducts: 2000,
+    expiry: "1 year",
+    category: "compliance",
+  },
+  {
+    stripeId: STRIPE_PRODUCTS.SCAN_PACK_TWENTY_FIVE,
+    name: "Phoenix Scan Pack - 25",
+    price: 899,
+    billing: "one-time",
+    description: "25 compliance scans.",
+    scans: 25,
+    maxProducts: 5000,
+    expiry: "1 year",
+    category: "compliance",
+  },
+];
+
 export const BUNDLE_PRODUCTS: BundleProduct[] = [
   {
     stripeId: STRIPE_PRODUCTS.APP_WALKTHROUGH,
     name: "One-Off App Walkthrough",
     price: 75,
-    description: "",
-    category: "bundle",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.ETSY_BUNDLE,
-    name: "Etsy Optimization Bundle",
-    price: 15,
-    description:
-      "Includes the 8-Second Narrative Framework for video scripts, noun-first titles, and utilizing all 13 tags with multi-word long-tail phrases.",
-    category: "bundle",
-  },
-  {
-    stripeId: STRIPE_PRODUCTS.SHOPIFY_SEO,
-    name: "Shopify SEO Automation",
-    price: 50,
-    description:
-      "This covers the 9-Section Optimization Framework, including front-loading focus keywords in titles and enforcing a 900–1,100 character long-form description.",
+    description: "Guided onboarding session.",
     category: "bundle",
   },
 ];
-
-// ============================================================================
-// TOTAL PRODUCT COUNT
-// ============================================================================
 
 export const TOTAL_STRIPE_PRODUCTS =
   SUBSCRIPTION_TIERS.length +
   COMPLIANCE_PRODUCTS.length +
   BUNDLE_PRODUCTS.length;
-
-

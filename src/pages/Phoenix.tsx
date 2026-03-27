@@ -78,7 +78,12 @@ interface StoreConnectionOption {
 }
 
 function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r:");
+  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+}
+
+function isApparelProduct(product: ShopifyProduct): boolean {
+  const haystack = `${product.title || ""} ${product.product_type || ""} ${product.tags || ""}`.toLowerCase();
+  return ["shirt", "tee", "hoodie", "sweatshirt", "sweater", "jacket", "dress", "pants", "leggings", "shorts", "top", "tank", "skirt", "apparel", "clothing", "beanie", "hat", "cap", "jersey"].some((term) => haystack.includes(term));
 }
 
 function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
@@ -400,6 +405,16 @@ export default function PhoenixPage() {
                     <Sparkles className="h-3.5 w-3.5" /> AI-Generated Fix — Review Changes
                   </div>
 
+                  {platform === "shopify" && (() => {
+                    const product = shopifyProducts.find((p) => p.id === id);
+                    return product && isApparelProduct(product) ? (
+                      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                        <AlertTriangle className="mr-1.5 inline h-4 w-4 text-amber-300" />
+                        Apparel titles should keep the real color and size or size range. Leaving them out can trigger a Google Merchant issue for misrepresentation.
+                      </div>
+                    ) : null;
+                  })()}
+
                   <div className="rounded-md border border-border/20 bg-muted/10 p-3">
                     {platform === "shopify" ? (
                       <>
@@ -608,6 +623,11 @@ export default function PhoenixPage() {
     </div>
   );
 }
+
+
+
+
+
 
 
 

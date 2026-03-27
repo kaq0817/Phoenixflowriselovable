@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,10 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveStore } from "@/hooks/useActiveStore";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Layers, Sparkles, RefreshCw, Check, AlertCircle,
-  Flower2, ChevronDown, ChevronUp, Undo2, ArrowRight,
+  Flower2, ChevronDown, ChevronUp, ArrowRight,
   CheckCheck, XCircle, Copy
 } from "lucide-react";
 import { CopyButton, copyAllFields } from "@/components/CopyButton";
@@ -34,6 +36,17 @@ interface Suggestions {
   reasoning: string;
 }
 
+interface StoreConnectionOption {
+  id: string;
+  platform: "etsy";
+  shop_domain: string | null;
+  shop_name: string | null;
+  scopes: string | null;
+  created_at: string;
+}
+
+const BULK_ANALYZER_DRAFT_KEY = "bulk-analyzer-draft";
+
 interface OptimizationResult {
   listing: EtsyListing;
   suggestions: Suggestions | null;
@@ -42,26 +55,63 @@ interface OptimizationResult {
   error?: string;
 }
 
+interface BulkAnalyzerDraft {
+  connectionId: string;
+  listings: EtsyListing[];
+  selected: number[];
+  results: OptimizationResult[];
+  expandedResult: number | null;
+  savedAt: string;
+}
+
+function isUsableEtsyConnection(connection: {
+  platform: string;
+  shop_domain: string | null;
+  scopes: string | null;
+}): connection is StoreConnectionOption {
+  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+}
+
+function getDraftKey(userId: string, connectionId: string) {
+  return `${BULK_ANALYZER_DRAFT_KEY}:${userId}:${connectionId}`;
+}
+
+function getConnectionLabel(connection: StoreConnectionOption) {
+  return connection.shop_name || connection.shop_domain || "Etsy shop";
+}
+
+function serializeResults(results: Map<number, OptimizationResult>) {
+  return Array.from(results.values());
+}
+
+function deserializeResults(items: OptimizationResult[]) {
+  return new Map(
+    items.map((item) => {
+      const normalizedStatus = item.status === "optimizing" ? "pending" : item.status;
+      return [item.listing.listing_id, { ...item, status: normalizedStatus } as OptimizationResult];
+    }),
+  );
+}
+
 function scoreListing(listing: EtsyListing): number {
   let score = 0;
-  // Title length (ideal 100-140 chars)
   const titleLen = listing.title?.length || 0;
   if (titleLen >= 100) score += 25;
   else if (titleLen >= 60) score += 15;
   else score += 5;
-  // Tags count (ideal 13)
+
   const tagCount = listing.tags?.length || 0;
   score += Math.min(25, Math.round((tagCount / 13) * 25));
-  // Description length
+
   const descLen = listing.description?.length || 0;
   if (descLen >= 500) score += 25;
   else if (descLen >= 200) score += 15;
   else if (descLen > 0) score += 5;
-  // Materials
+
   const matCount = listing.materials?.length || 0;
   if (matCount >= 3) score += 25;
   else if (matCount >= 1) score += 15;
-  else score += 0;
+
   return score;
 }
 
@@ -78,97 +128,244 @@ function getScoreLabel(score: number) {
   return "Critical";
 }
 
+interface StoreSelectorProps {
+  connections: StoreConnectionOption[];
+  selectedConnectionId: string;
+  onChange: (value: string) => void;
+  activeStoreId: string | null;
+}
+
+function StoreSelector({ connections, selectedConnectionId, onChange, activeStoreId }: StoreSelectorProps) {
+  return (
+    <Card className="bg-card/50 border-border/30">
+      <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium">Active Etsy shop</p>
+          <p className="text-xs text-muted-foreground">
+            Bulk Analyzer only reads and writes through the selected Etsy connection.
+          </p>
+          {activeStoreId ? (
+            <p className="text-xs text-muted-foreground mt-1">
+              Admin-store context is active, so this list is pre-filtered before any Etsy fetch runs.
+            </p>
+          ) : null}
+        </div>
+        <select
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[220px]"
+          value={selectedConnectionId}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Select an Etsy shop</option>
+          {connections.map((connection) => (
+            <option key={connection.id} value={connection.id}>
+              {getConnectionLabel(connection)}
+            </option>
+          ))}
+        </select>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function BulkAnalyzerPage() {
   const { toast } = useToast();
+  const { activeStoreId } = useActiveStore();
+
   const [listings, setListings] = useState<EtsyListing[]>([]);
   const [loading, setLoading] = useState(false);
-  const [hasConnection, setHasConnection] = useState<boolean | null>(null);
+  const [connectionsReady, setConnectionsReady] = useState(false);
+  const [storeConnections, setStoreConnections] = useState<StoreConnectionOption[]>([]);
+  const [selectedEtsyConnectionId, setSelectedEtsyConnectionId] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [results, setResults] = useState<Map<number, OptimizationResult>>(new Map());
   const [bulkRunning, setBulkRunning] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
   const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
+  const [userId, setUserId] = useState<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
 
-  // On mount, only check for connection, do NOT auto-fetch listings or run bulk actions
-  useEffect(() => {
-    checkConnection();
-    // Do not auto-fetch listings or run bulk actions
-  }, []);
+  const scopedConnections = useMemo(() => {
+    if (!activeStoreId) return storeConnections;
 
-  // Only fetch listings on explicit user action
-  const checkConnection = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from("store_connections")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("platform", "etsy")
-      .order("created_at", { ascending: false })
-      .limit(1);
+    return storeConnections.filter(
+      (connection) => connection.id === activeStoreId || connection.shop_domain === activeStoreId,
+    );
+  }, [activeStoreId, storeConnections]);
 
-    const hasEtsy = !!data && data.length > 0;
-    setHasConnection(hasEtsy);
-    // Do not auto-fetch listings here
+  const hasAnyConnection = storeConnections.length > 0;
+  const hasScopedConnections = scopedConnections.length > 0;
+
+  const resetAnalyzerState = () => {
+    setListings([]);
+    setSelected(new Set());
+    setResults(new Map());
+    setExpandedResult(null);
   };
 
-  // Only fetch listings on explicit user action
+  useEffect(() => {
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setConnectionsReady(true);
+        return;
+      }
+
+      setUserId(user.id);
+
+      const { data } = await supabase
+        .from("store_connections")
+        .select("id, platform, shop_domain, shop_name, scopes, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      const rows = ((data || []) as Array<StoreConnectionOption | {
+        id: string;
+        platform: string;
+        shop_domain: string | null;
+        shop_name: string | null;
+        scopes: string | null;
+        created_at: string;
+      }>).filter(isUsableEtsyConnection);
+
+      setStoreConnections(rows);
+      setConnectionsReady(true);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (scopedConnections.some((connection) => connection.id === selectedEtsyConnectionId)) {
+      return;
+    }
+
+    const nextConnectionId = scopedConnections.length === 1 ? scopedConnections[0].id : "";
+    setSelectedEtsyConnectionId(nextConnectionId);
+    resetAnalyzerState();
+  }, [scopedConnections, selectedEtsyConnectionId]);
+
+  useEffect(() => {
+    if (!userId || !selectedEtsyConnectionId) return;
+
+    try {
+      const rawDraft = window.localStorage.getItem(getDraftKey(userId, selectedEtsyConnectionId));
+      if (!rawDraft) {
+        setDraftSavedAt(null);
+        return;
+      }
+
+      const draft = JSON.parse(rawDraft) as BulkAnalyzerDraft;
+      if (draft.connectionId !== selectedEtsyConnectionId) return;
+
+      setListings(draft.listings || []);
+      setSelected(new Set(draft.selected || []));
+      setResults(deserializeResults(draft.results || []));
+      setExpandedResult(draft.expandedResult ?? null);
+      setDraftSavedAt(draft.savedAt || null);
+
+      if (draft.results?.length) {
+        toast({ title: "Draft restored", description: "Unsaved bulk recommendations were restored for this Etsy shop on this device." });
+      }
+    } catch {
+      window.localStorage.removeItem(getDraftKey(userId, selectedEtsyConnectionId));
+      setDraftSavedAt(null);
+    }
+  }, [selectedEtsyConnectionId, toast, userId]);
+
+  useEffect(() => {
+    if (!userId || !selectedEtsyConnectionId) {
+      setDraftSavedAt(null);
+      return;
+    }
+
+    if (listings.length === 0 && selected.size === 0 && results.size === 0) {
+      window.localStorage.removeItem(getDraftKey(userId, selectedEtsyConnectionId));
+      setDraftSavedAt(null);
+      return;
+    }
+
+    const savedAt = new Date().toISOString();
+    const draft: BulkAnalyzerDraft = {
+      connectionId: selectedEtsyConnectionId,
+      listings,
+      selected: Array.from(selected),
+      results: serializeResults(results),
+      expandedResult,
+      savedAt,
+    };
+
+    window.localStorage.setItem(getDraftKey(userId, selectedEtsyConnectionId), JSON.stringify(draft));
+    setDraftSavedAt(savedAt);
+  }, [expandedResult, listings, results, selected, selectedEtsyConnectionId, userId]);
+
   const fetchListings = async () => {
+    if (!selectedEtsyConnectionId) {
+      toast({ title: "Select a shop", description: "Choose an Etsy shop before loading listings." });
+      return;
+    }
+
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-etsy-listings`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ limit: 10, offset: 0, state: "active" }),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to fetch listings");
+      const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", {
+        body: {
+          limit: 5,
+          offset: 0,
+          state: "active",
+          connectionId: selectedEtsyConnectionId,
+        },
+      });
+
+      if (error) throw error;
+
       setListings(data.results || []);
+      setSelected(new Set());
+      setResults(new Map());
+      setExpandedResult(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to fetch";
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      const message = err instanceof Error ? err.message : "Failed to fetch listings";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
   const toggleSelect = (id: number) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < 10) next.add(id);
-      else toast({ title: "Limit reached", description: "Max 10 listings per batch.", variant: "destructive" });
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 5) {
+        next.add(id);
+      } else {
+        toast({ title: "Limit reached", description: "Max 5 listings per batch.", variant: "destructive" });
+      }
       return next;
     });
   };
 
   const selectAll = () => {
-    if (selected.size === Math.min(listings.length, 10)) {
+    if (!selectedEtsyConnectionId) return;
+
+    if (selected.size === Math.min(listings.length, 5)) {
       setSelected(new Set());
-    } else {
-      setSelected(new Set(listings.slice(0, 10).map(l => l.listing_id)));
+      return;
     }
+
+    setSelected(new Set(listings.slice(0, 5).map((listing) => listing.listing_id)));
   };
 
   const runBulkOptimize = async () => {
-    const selectedListings = listings.filter(l => selected.has(l.listing_id));
+    if (!selectedEtsyConnectionId) {
+      toast({ title: "Select a shop", description: "Choose an Etsy shop before optimizing listings." });
+      return;
+    }
+
+    const selectedListings = listings.filter((listing) => selected.has(listing.listing_id));
     if (selectedListings.length === 0) return;
 
     setBulkRunning(true);
     setProgress({ current: 0, total: selectedListings.length });
 
     const newResults = new Map<number, OptimizationResult>();
-
-    // Initialize all as pending
     for (const listing of selectedListings) {
       newResults.set(listing.listing_id, {
         listing,
@@ -180,15 +377,19 @@ export default function BulkAnalyzerPage() {
     setResults(new Map(newResults));
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { setBulkRunning(false); return; }
+    if (!session) {
+      setBulkRunning(false);
+      return;
+    }
 
-    // Process sequentially to avoid rate limits
-    for (let i = 0; i < selectedListings.length; i++) {
-      const listing = selectedListings[i];
-      const result = newResults.get(listing.listing_id)!;
+    for (let index = 0; index < selectedListings.length; index += 1) {
+      const listing = selectedListings[index];
+      const result = newResults.get(listing.listing_id);
+      if (!result) continue;
+
       result.status = "optimizing";
       setResults(new Map(newResults));
-      setProgress({ current: i, total: selectedListings.length });
+      setProgress({ current: index, total: selectedListings.length });
 
       try {
         const res = await fetch(
@@ -200,12 +401,11 @@ export default function BulkAnalyzerPage() {
               Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({ listing }),
-          }
+          },
         );
 
         if (res.status === 429) {
-          // Rate limited — wait and retry once
-          await new Promise(r => setTimeout(r, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 5000));
           const retry = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/optimize-etsy-listing`,
             {
@@ -215,7 +415,7 @@ export default function BulkAnalyzerPage() {
                 Authorization: `Bearer ${session.access_token}`,
               },
               body: JSON.stringify({ listing }),
-            }
+            },
           );
           const retryData = await retry.json();
           if (!retry.ok) throw new Error(retryData.error || "Retry failed");
@@ -235,9 +435,8 @@ export default function BulkAnalyzerPage() {
       newResults.set(listing.listing_id, { ...result });
       setResults(new Map(newResults));
 
-      // Small delay between requests
-      if (i < selectedListings.length - 1) {
-        await new Promise(r => setTimeout(r, 1500));
+      if (index < selectedListings.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
 
@@ -248,61 +447,63 @@ export default function BulkAnalyzerPage() {
 
   const applyOne = async (result: OptimizationResult) => {
     if (!result.suggestions) return;
+    if (!selectedEtsyConnectionId) {
+      toast({ title: "Select a shop", description: "Choose an Etsy shop before applying changes." });
+      return;
+    }
+
     const id = result.listing.listing_id;
-    setApplyingIds(prev => new Set(prev).add(id));
+    setApplyingIds((previous) => new Set(previous).add(id));
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/apply-etsy-changes`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+      const { error } = await supabase.functions.invoke("apply-etsy-changes", {
+        body: {
+          listingId: id,
+          connectionId: selectedEtsyConnectionId,
+          originalData: {
+            title: result.listing.title,
+            description: result.listing.description,
+            tags: result.listing.tags,
+            materials: result.listing.materials,
           },
-          body: JSON.stringify({
-            listingId: id,
-            originalData: {
-              title: result.listing.title,
-              description: result.listing.description,
-              tags: result.listing.tags,
-              materials: result.listing.materials,
-            },
-            optimizedData: result.suggestions,
-          }),
-        }
-      );
+          optimizedData: result.suggestions,
+        },
+      });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to apply");
+      if (error) throw error;
 
-      setResults(prev => {
-        const next = new Map(prev);
-        const r = next.get(id)!;
-        next.set(id, { ...r, status: "applied" });
+      setResults((previous) => {
+        const next = new Map(previous);
+        const nextResult = next.get(id);
+        if (!nextResult) return next;
+        next.set(id, { ...nextResult, status: "applied" });
         return next;
       });
-      toast({ title: "Applied!", description: `"${result.listing.title.slice(0, 40)}…" updated on Etsy.` });
+      toast({ title: "Applied!", description: `"${result.listing.title.slice(0, 40)}..." updated on Etsy.` });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Apply failed";
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      const message = err instanceof Error ? err.message : "Apply failed";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
-      setApplyingIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      setApplyingIds((previous) => {
+        const next = new Set(previous);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
-  const applyAll = async () => {
-    const doneResults = Array.from(results.values()).filter(r => r.status === "done" && r.suggestions);
-    for (const result of doneResults) {
-      await applyOne(result);
-      await new Promise(r => setTimeout(r, 1000));
-    }
+  const clearDraft = () => {
+    if (!userId || !selectedEtsyConnectionId) return;
+    window.localStorage.removeItem(getDraftKey(userId, selectedEtsyConnectionId));
+    setDraftSavedAt(null);
+    toast({ title: "Draft cleared", description: "Saved bulk recommendations were removed from this device for this Etsy shop." });
   };
 
-  if (hasConnection === null) {
+  const doneCount = Array.from(results.values()).filter((result) => result.status === "done").length;
+  const appliedCount = Array.from(results.values()).filter((result) => result.status === "applied").length;
+  const errorCount = Array.from(results.values()).filter((result) => result.status === "error").length;
+
+  if (!connectionsReady) {
     return (
       <div className="space-y-4 p-6">
         <Skeleton className="h-8 w-64" />
@@ -311,7 +512,7 @@ export default function BulkAnalyzerPage() {
     );
   }
 
-  if (!hasConnection) {
+  if (!hasAnyConnection) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="bg-card/50 border-spring/30 max-w-md">
@@ -321,7 +522,7 @@ export default function BulkAnalyzerPage() {
             <p className="text-muted-foreground text-sm">
               Connect your Etsy shop in Settings to start bulk optimizing listings.
             </p>
-            <Button onClick={() => window.location.href = "/settings"} className="bg-spring text-spring-foreground hover:bg-spring/90">
+            <Button onClick={() => { window.location.href = "/settings"; }} className="bg-spring text-spring-foreground hover:bg-spring/90">
               Go to Settings
             </Button>
           </CardContent>
@@ -330,42 +531,69 @@ export default function BulkAnalyzerPage() {
     );
   }
 
-  const doneCount = Array.from(results.values()).filter(r => r.status === "done").length;
-  const appliedCount = Array.from(results.values()).filter(r => r.status === "applied").length;
-  const errorCount = Array.from(results.values()).filter(r => r.status === "error").length;
-
   return (
     <div className="space-y-6">
-      {/* Header */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Layers className="h-6 w-6 text-primary" /> Bulk Optimizer
         </h1>
         <p className="text-muted-foreground mt-1">
-          Select up to 10 listings for AI-powered batch optimization. Score, optimize, and apply in one go.
+          Select up to 5 listings for AI-powered batch optimization. The Etsy shop must be chosen first.
         </p>
       </motion.div>
 
-      {/* Progress Bar (while running) */}
-      {bulkRunning && (
+      <StoreSelector
+        connections={scopedConnections}
+        selectedConnectionId={selectedEtsyConnectionId}
+        onChange={(value) => {
+          setSelectedEtsyConnectionId(value);
+          setDraftSavedAt(null);
+          resetAnalyzerState();
+        }}
+        activeStoreId={activeStoreId}
+      />
+
+      {activeStoreId && !hasScopedConnections ? (
+        <Card className="bg-card/50 border-amber-500/30">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            No Etsy shop is available inside the current admin-store context. Change the active store or connect the matching Etsy shop in Settings.
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {draftSavedAt && (listings.length > 0 || results.size > 0) && selectedEtsyConnectionId ? (
+        <Card className="bg-card/50 border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap text-sm">
+              <span className="text-muted-foreground">
+                Unsaved bulk recommendations are being remembered on this device for {scopedConnections.find((connection) => connection.id === selectedEtsyConnectionId)?.shop_name || "this Etsy shop"}. Last saved {new Date(draftSavedAt).toLocaleString()}.
+              </span>
+              <Button size="sm" variant="outline" onClick={clearDraft}>
+                Clear Saved Draft
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {bulkRunning ? (
         <Card className="bg-card/50 border-primary/20">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium flex items-center gap-2">
                 <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-                Optimizing {progress.current + 1} of {progress.total}…
+                Optimizing {progress.current + 1} of {progress.total}...
               </span>
               <span className="text-muted-foreground">
-                {Math.round(((progress.current) / progress.total) * 100)}%
+                {Math.round((progress.current / progress.total) * 100)}%
               </span>
             </div>
             <Progress value={(progress.current / progress.total) * 100} className="h-2" />
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {/* Results Summary */}
-      {results.size > 0 && !bulkRunning && (
+      {results.size > 0 && !bulkRunning ? (
         <Card className="bg-card/50 border-spring/20">
           <CardContent className="p-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -376,25 +604,26 @@ export default function BulkAnalyzerPage() {
                 <span className="flex items-center gap-1 text-primary">
                   <CheckCheck className="h-4 w-4" /> {appliedCount} applied
                 </span>
-                {errorCount > 0 && (
+                {errorCount > 0 ? (
                   <span className="flex items-center gap-1 text-destructive">
                     <XCircle className="h-4 w-4" /> {errorCount} failed
                   </span>
-                )}
+                ) : null}
               </div>
-              {doneCount > 0 && (
+              {doneCount > 0 ? (
                 <Button
                   onClick={async () => {
                     const allText = Array.from(results.values())
-                      .filter(r => r.status === "done" && r.suggestions)
-                      .map(r => {
-                        return `=== ${r.listing.title} ===\n${copyAllFields([
-                          { label: "Title", value: r.suggestions!.title },
-                          { label: "Tags", value: r.suggestions!.tags.join(", ") },
-                          { label: "Description", value: r.suggestions!.description },
-                          { label: "Materials", value: r.suggestions!.materials.join(", ") },
+                      .filter((result) => result.status === "done" && result.suggestions)
+                      .map((result) => {
+                        return `=== ${result.listing.title} ===\n${copyAllFields([
+                          { label: "Title", value: result.suggestions!.title },
+                          { label: "Tags", value: result.suggestions!.tags.join(", ") },
+                          { label: "Description", value: result.suggestions!.description },
+                          { label: "Materials", value: result.suggestions!.materials.join(", ") },
                         ])}`;
-                      }).join("\n\n========\n\n");
+                      })
+                      .join("\n\n========\n\n");
                     await navigator.clipboard.writeText(allText);
                     toast({ title: "All copied!", description: `${doneCount} listings' optimizations copied to clipboard.` });
                   }}
@@ -404,14 +633,13 @@ export default function BulkAnalyzerPage() {
                   <Copy className="h-4 w-4 mr-1" />
                   Copy All ({doneCount})
                 </Button>
-              )}
+              ) : null}
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {/* Optimization Results */}
-      {results.size > 0 && (
+      {results.size > 0 ? (
         <div className="space-y-3">
           {Array.from(results.values()).map((result) => {
             const isExpanded = expandedResult === result.listing.listing_id;
@@ -421,7 +649,7 @@ export default function BulkAnalyzerPage() {
                 <Card className={`bg-card/50 border-border/30 ${result.status === "applied" ? "border-spring/40" : ""}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      {imgUrl && <img src={imgUrl} alt="" className="h-12 w-12 rounded-md object-cover shrink-0" />}
+                      {imgUrl ? <img src={imgUrl} alt="" className="h-12 w-12 rounded-md object-cover shrink-0" /> : null}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-medium text-sm truncate">{result.listing.title}</p>
@@ -429,26 +657,16 @@ export default function BulkAnalyzerPage() {
                             <Badge variant="outline" className={`text-xs ${getScoreColor(result.score)}`}>
                               {getScoreLabel(result.score)} {result.score}/100
                             </Badge>
-                            {result.status === "optimizing" && (
-                              <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-                            )}
-                            {result.status === "done" && (
-                              <Check className="h-4 w-4 text-emerald-500" />
-                            )}
-                            {result.status === "applied" && (
-                              <Badge className="bg-spring/10 text-spring text-xs">Applied</Badge>
-                            )}
-                            {result.status === "error" && (
-                              <Badge variant="destructive" className="text-xs">Error</Badge>
-                            )}
+                            {result.status === "optimizing" ? <RefreshCw className="h-4 w-4 animate-spin text-primary" /> : null}
+                            {result.status === "done" ? <Check className="h-4 w-4 text-emerald-500" /> : null}
+                            {result.status === "applied" ? <Badge className="bg-spring/10 text-spring text-xs">Applied</Badge> : null}
+                            {result.status === "error" ? <Badge variant="destructive" className="text-xs">Error</Badge> : null}
                           </div>
                         </div>
 
-                        {result.error && (
-                          <p className="text-xs text-destructive mt-1">{result.error}</p>
-                        )}
+                        {result.error ? <p className="text-xs text-destructive mt-1">{result.error}</p> : null}
 
-                        {result.suggestions && (
+                        {result.suggestions ? (
                           <>
                             <button
                               onClick={() => setExpandedResult(isExpanded ? null : result.listing.listing_id)}
@@ -459,7 +677,7 @@ export default function BulkAnalyzerPage() {
                             </button>
 
                             <AnimatePresence>
-                              {isExpanded && (
+                              {isExpanded ? (
                                 <motion.div
                                   initial={{ height: 0, opacity: 0 }}
                                   animate={{ height: "auto", opacity: 1 }}
@@ -467,12 +685,10 @@ export default function BulkAnalyzerPage() {
                                   className="overflow-hidden"
                                 >
                                   <div className="mt-3 space-y-3">
-                                    {/* Reasoning */}
                                     <p className="text-xs text-muted-foreground italic">
                                       {result.suggestions.reasoning}
                                     </p>
 
-                                    {/* Title */}
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       <div className="p-2 rounded bg-muted/30 border border-border/20">
                                         <p className="text-[10px] text-muted-foreground mb-1">Current Title</p>
@@ -484,25 +700,23 @@ export default function BulkAnalyzerPage() {
                                       </div>
                                     </div>
 
-                                    {/* Tags */}
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       <div className="p-2 rounded bg-muted/30 border border-border/20">
                                         <p className="text-[10px] text-muted-foreground mb-1">Current Tags ({result.listing.tags?.length || 0})</p>
                                         <div className="flex flex-wrap gap-1">
-                                          {result.listing.tags?.map(t => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
+                                          {result.listing.tags?.map((tag) => <Badge key={tag} variant="secondary" className="text-[10px]">{tag}</Badge>)}
                                         </div>
                                       </div>
                                       <div className="p-2 rounded bg-spring/5 border border-spring/20">
                                         <p className="text-[10px] text-spring mb-1">Optimized Tags ({result.suggestions.tags.length})</p>
                                         <div className="flex flex-wrap gap-1">
-                                          {result.suggestions.tags.map(t => <Badge key={t} className="text-[10px] bg-spring/10 text-spring border-spring/20">{t}</Badge>)}
+                                          {result.suggestions.tags.map((tag) => <Badge key={tag} className="text-[10px] bg-spring/10 text-spring border-spring/20">{tag}</Badge>)}
                                         </div>
                                       </div>
                                     </div>
 
-                                    {/* Copy button */}
-                                    {result.status === "done" && result.suggestions && (
-                                      <div className="flex gap-2 pt-1">
+                                    {result.status === "done" ? (
+                                      <div className="flex gap-2 pt-1 flex-wrap">
                                         <Button
                                           size="sm"
                                           onClick={async () => {
@@ -513,28 +727,34 @@ export default function BulkAnalyzerPage() {
                                               { label: "Materials", value: result.suggestions!.materials.join(", ") },
                                             ]);
                                             await navigator.clipboard.writeText(text);
-                                            toast({ title: "Copied!", description: `"${result.listing.title.slice(0, 40)}…" optimizations copied.` });
-                                            setResults(prev => {
-                                              const next = new Map(prev);
-                                              const r = next.get(result.listing.listing_id)!;
-                                              next.set(result.listing.listing_id, { ...r, status: "applied" });
-                                              return next;
-                                            });
+                                            toast({ title: "Copied!", description: `"${result.listing.title.slice(0, 40)}..." optimizations copied.` });
                                           }}
                                           className="bg-spring text-spring-foreground hover:bg-spring/90"
                                         >
                                           <Copy className="h-3 w-3 mr-1" /> Copy All Fields
                                         </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={!selectedEtsyConnectionId || applyingIds.has(result.listing.listing_id)}
+                                          onClick={() => void applyOne(result)}
+                                        >
+                                          {applyingIds.has(result.listing.listing_id) ? (
+                                            <><RefreshCw className="h-3 w-3 mr-1 animate-spin" /> Applying...</>
+                                          ) : (
+                                            <><Check className="h-3 w-3 mr-1" /> Apply to Etsy</>
+                                          )}
+                                        </Button>
                                         <CopyButton text={result.suggestions!.title} label="Title" />
                                         <CopyButton text={result.suggestions!.tags.join(", ")} label="Tags" />
                                       </div>
-                                    )}
+                                    ) : null}
                                   </div>
                                 </motion.div>
-                              )}
+                              ) : null}
                             </AnimatePresence>
                           </>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </CardContent>
@@ -543,23 +763,29 @@ export default function BulkAnalyzerPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
 
-      {/* Listing Selection */}
       <Card className="bg-card/50 border-border/30">
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              Active Listings
-              {!loading && <Badge variant="outline" className="ml-1">{listings.length}</Badge>}
-            </CardTitle>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                Active Listings
+                {!loading ? <Badge variant="outline" className="ml-1">{listings.length}</Badge> : null}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                {selectedEtsyConnectionId
+                  ? `Store locked to ${scopedConnections.find((connection) => connection.id === selectedEtsyConnectionId)?.shop_name || "the selected Etsy shop"}.`
+                  : "Pick an Etsy shop before loading listings."}
+              </p>
+            </div>
             <div className="flex gap-2">
-              {listings.length > 0 && (
-                <Button size="sm" variant="outline" onClick={selectAll}>
-                  {selected.size === Math.min(listings.length, 10) ? "Deselect All" : "Select All (10)"}
+              {listings.length > 0 ? (
+                <Button size="sm" variant="outline" onClick={selectAll} disabled={!selectedEtsyConnectionId}>
+                  {selected.size === Math.min(listings.length, 5) ? "Deselect All" : "Select All (5)"}
                 </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={fetchListings} disabled={loading}>
+              ) : null}
+              <Button size="sm" variant="outline" onClick={() => void fetchListings()} disabled={!selectedEtsyConnectionId || loading}>
                 <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               </Button>
             </div>
@@ -568,12 +794,17 @@ export default function BulkAnalyzerPage() {
         <CardContent>
           {loading ? (
             <div className="space-y-2">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-14 rounded-lg" />)}
+              {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-14 rounded-lg" />)}
+            </div>
+          ) : !selectedEtsyConnectionId ? (
+            <div className="text-center py-8">
+              <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground">Select an Etsy shop to load listings.</p>
             </div>
           ) : listings.length === 0 ? (
             <div className="text-center py-8">
               <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-muted-foreground">No active listings found.</p>
+              <p className="text-muted-foreground">No active listings found for the selected Etsy shop.</p>
             </div>
           ) : (
             <>
@@ -589,7 +820,7 @@ export default function BulkAnalyzerPage() {
                       onClick={() => toggleSelect(listing.listing_id)}
                     >
                       <Checkbox checked={isSelected} className="shrink-0" />
-                      {imgUrl && <img src={imgUrl} alt="" className="h-10 w-10 rounded object-cover shrink-0" />}
+                      {imgUrl ? <img src={imgUrl} alt="" className="h-10 w-10 rounded object-cover shrink-0" /> : null}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{listing.title}</p>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -597,7 +828,7 @@ export default function BulkAnalyzerPage() {
                             {score}/100
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {listing.tags?.length || 0} tags · {listing.materials?.length || 0} materials
+                            {listing.tags?.length || 0} tags � {listing.materials?.length || 0} materials
                           </span>
                         </div>
                       </div>
@@ -606,24 +837,24 @@ export default function BulkAnalyzerPage() {
                 })}
               </div>
 
-              {selected.size > 0 && (
-                <div className="flex items-center justify-between pt-4 border-t border-border/20 mt-4">
+              {selected.size > 0 ? (
+                <div className="flex items-center justify-between pt-4 border-t border-border/20 mt-4 gap-3 flex-wrap">
                   <p className="text-sm text-muted-foreground">
                     {selected.size} listing{selected.size !== 1 ? "s" : ""} selected
                   </p>
                   <Button
-                    onClick={runBulkOptimize}
-                    disabled={bulkRunning}
+                    onClick={() => void runBulkOptimize()}
+                    disabled={bulkRunning || !selectedEtsyConnectionId}
                     className="bg-spring text-spring-foreground hover:bg-spring/90"
                   >
                     {bulkRunning ? (
-                      <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Optimizing…</>
+                      <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Optimizing...</>
                     ) : (
                       <><Sparkles className="h-4 w-4 mr-2" /> Optimize {selected.size} Listings</>
                     )}
                   </Button>
                 </div>
-              )}
+              ) : null}
             </>
           )}
         </CardContent>
@@ -631,8 +862,11 @@ export default function BulkAnalyzerPage() {
 
       <p className="text-xs text-muted-foreground flex items-center gap-1">
         <ArrowRight className="h-3 w-3" />
-        Applied changes are saved with snapshots. Undo anytime from the Listing Optimizer.
+        Bulk Analyzer only runs against the selected Etsy connection. Drafts are remembered per shop on this device.
       </p>
     </div>
   );
 }
+
+
+
