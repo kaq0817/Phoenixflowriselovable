@@ -41,6 +41,7 @@ export default function PricingPage() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const ctaButtonClass = "w-full gradient-phoenix text-primary-foreground hover:opacity-95";
 
   const handleCheckout = async (priceId: string, mode: "subscription" | "payment", loadingKey: string) => {
     if (!priceId) {
@@ -166,8 +167,8 @@ export default function PricingPage() {
                         {tier.description}
                       </p>
                       <Button
-                        className={`w-full ${isPopular ? "gradient-phoenix text-primary-foreground" : ""}`}
-                        variant={isPopular ? "default" : "secondary"}
+                        className={ctaButtonClass}
+                        variant="default"
                         disabled={isLoading || !hasPriceId}
                         onClick={() => {
                           if (tier.price === 0) {
@@ -237,8 +238,8 @@ export default function PricingPage() {
                       </div>
                     </div>
                     <Button
-                      variant="secondary"
-                      className="w-full"
+                      variant="default"
+                      className={ctaButtonClass}
                       disabled={isLoading || !hasPriceId}
                       onClick={() => {
                         if (priceId) handleCheckout(priceId, "payment", product.stripeId);
@@ -278,8 +279,8 @@ export default function PricingPage() {
                   <CardContent className="space-y-3">
                     <p className="text-xs text-muted-foreground leading-relaxed">{product.description}</p>
                     <Button
-                      variant="secondary"
-                      className="w-full"
+                      variant="default"
+                      className={ctaButtonClass}
                       disabled={isLoading || !hasPriceId}
                       onClick={() => {
                         if (priceId) handleCheckout(priceId, "payment", product.stripeId);
