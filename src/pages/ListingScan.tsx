@@ -18,7 +18,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface KeywordResearchItem {
   keyword: string;
   searchVolume: number | string;
+  trending?: boolean;
   tiktokTrend?: boolean;
+  source?: "tiktok_api" | "serpapi";
 }
 
 interface Finding {
@@ -83,6 +85,51 @@ const FINDING_ICONS: Record<string, typeof SpellCheck> = {
   keyword_research: Zap,
   short_description: FileText,
 };
+
+function getKeywordResearchItems(listing: ListingResult): KeywordResearchItem[] {
+  return listing.findings
+    .filter((finding) => finding.type === "keyword_research" && finding.data)
+    .flatMap((finding) => finding.data ?? []);
+}
+
+function getTikTokSummary(findings: ListingResult[]) {
+  const listingsWithTikTokSignals = findings.filter((listing) =>
+    getKeywordResearchItems(listing).some((item) => item.tiktokTrend)
+  ).length;
+
+  const keywordItems = findings.flatMap((listing) => getKeywordResearchItems(listing));
+  const uniqueTikTokKeywords = new Set(
+    keywordItems
+      .filter((item) => item.tiktokTrend)
+      .map((item) => item.keyword.toLowerCase())
+  ).size;
+
+  const apiBackedKeywords = new Set(
+    keywordItems
+      .filter((item) => item.source === "tiktok_api")
+      .map((item) => item.keyword.toLowerCase())
+  ).size;
+
+  return {
+    listingsWithTikTokSignals,
+    uniqueTikTokKeywords,
+    apiBackedKeywords,
+  };
+}
+
+function sortKeywordResearchItems(items: KeywordResearchItem[]): KeywordResearchItem[] {
+  return [...items].sort((left, right) => {
+    const leftScore = (left.source === "tiktok_api" ? 4 : 0) + (left.tiktokTrend ? 2 : 0) + (left.trending ? 1 : 0);
+    const rightScore = (right.source === "tiktok_api" ? 4 : 0) + (right.tiktokTrend ? 2 : 0) + (right.trending ? 1 : 0);
+    return rightScore - leftScore || String(left.keyword).localeCompare(String(right.keyword));
+  });
+}
+
+function getKeywordSourceLabel(source?: KeywordResearchItem["source"]): string | null {
+  if (source === "tiktok_api") return "TikTok API";
+  if (source === "serpapi") return "Web Signal";
+  return null;
+}
 
 export default function ListingScanPage() {
   const { toast } = useToast();
@@ -222,6 +269,9 @@ export default function ListingScanPage() {
     ? Math.round((currentJob.processed_items / currentJob.total_items) * 100)
     : 0;
 
+  const currentFindings = currentJob?.findings as ListingResult[] | null;
+  const tiktokSummary = currentFindings ? getTikTokSummary(currentFindings) : null;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -348,7 +398,7 @@ export default function ListingScanPage() {
                         </Button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                       <Card>
                         <CardContent className="p-4 text-center">
                           <div className="text-2xl font-bold">{currentJob.summary?.total_listings_scanned || 0}</div>
@@ -373,7 +423,37 @@ export default function ListingScanPage() {
                           <div className="text-xs text-muted-foreground">Critical</div>
                         </CardContent>
                       </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-pink-400">{tiktokSummary?.listingsWithTikTokSignals || 0}</div>
+                          <div className="text-xs text-muted-foreground">TikTok Signals</div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-primary">{tiktokSummary?.apiBackedKeywords || 0}</div>
+                          <div className="text-xs text-muted-foreground">TikTok API Keywords</div>
+                        </CardContent>
+                      </Card>
                     </div>
+
+                    {tiktokSummary && tiktokSummary.uniqueTikTokKeywords > 0 && (
+                      <Card className="border-primary/20 bg-primary/5">
+                        <CardContent className="p-4 sm:p-5">
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-xl bg-primary/10 p-2">
+                              <TrendingUp className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="space-y-1">
+                              <h4 className="font-semibold">TikTok Trend Findings Ready To Demo</h4>
+                              <p className="text-sm text-muted-foreground">
+                                This scan found {tiktokSummary.uniqueTikTokKeywords} TikTok-backed keyword signals across {tiktokSummary.listingsWithTikTokSignals} listings. Reviewers can see the exact phrases inside each expanded listing row below.
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
 
                     {/* Listing findings */}
                     <div className="space-y-3">
@@ -432,26 +512,57 @@ export default function ListingScanPage() {
                                   {/* Keyword research data */}
                                   {listing.findings
                                     .filter(f => f.type === "keyword_research" && f.data)
-                                    .map((finding, i) => (
-                                      <div key={`kw-${i}`} className="mt-3">
-                                        <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Keyword Research</h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                          {finding.data?.map((kw: KeywordResearchItem, j: number) => (
-                                            <div key={j} className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm">
-                                              <span className="truncate">{kw.keyword}</span>
-                                              <div className="flex gap-1.5 items-center">
-                                                <Badge variant="outline" className="text-[10px] px-1.5">
-                                                  {kw.searchVolume}
-                                                </Badge>
-                                                {kw.tiktokTrend && (
-                                                  <Badge className="bg-pink-500/20 text-pink-400 text-[10px] px-1.5">TikTok</Badge>
-                                                )}
+                                    .map((finding, i) => {
+                                      const sortedKeywords = sortKeywordResearchItems(finding.data ?? []);
+                                      const tiktokKeywords = sortedKeywords.filter((kw) => kw.tiktokTrend);
+
+                                      return (
+                                        <div key={`kw-${i}`} className="mt-3 space-y-3">
+                                          {tiktokKeywords.length > 0 && (
+                                            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">TikTok Findings</h4>
+                                              <div className="flex flex-wrap gap-2">
+                                                {tiktokKeywords.map((kw, j) => (
+                                                  <div key={`tt-${j}`} className="rounded-full border border-pink-500/30 bg-pink-500/10 px-3 py-1 text-xs text-pink-300">
+                                                    {kw.keyword}
+                                                  </div>
+                                                ))}
                                               </div>
                                             </div>
-                                          ))}
+                                          )}
+
+                                          <div>
+                                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Keyword Research</h4>
+                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                              {sortedKeywords.map((kw: KeywordResearchItem, j: number) => {
+                                                const sourceLabel = getKeywordSourceLabel(kw.source);
+                                                return (
+                                                  <div key={j} className="rounded-lg border border-border/50 bg-muted/30 p-3 text-sm">
+                                                    <div className="mb-2 font-medium truncate">{kw.keyword}</div>
+                                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                                      <Badge variant="outline" className="text-[10px] px-1.5">
+                                                        {kw.searchVolume}
+                                                      </Badge>
+                                                      {kw.trending && (
+                                                        <Badge className="bg-primary/15 text-primary text-[10px] px-1.5">Trending</Badge>
+                                                      )}
+                                                      {kw.tiktokTrend && (
+                                                        <Badge className="bg-pink-500/20 text-pink-400 text-[10px] px-1.5">TikTok</Badge>
+                                                      )}
+                                                      {sourceLabel && (
+                                                        <Badge variant="secondary" className="text-[10px] px-1.5">
+                                                          {sourceLabel}
+                                                        </Badge>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                 </div>
                               </motion.div>
                             )}

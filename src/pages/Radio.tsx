@@ -35,7 +35,6 @@ export default function RadioPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const audioRef = useRef<HTMLAudioElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(-1);
@@ -51,6 +50,8 @@ export default function RadioPage() {
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   const currentTrack = currentTrackIndex >= 0 ? tracks[currentTrackIndex] : null;
+  const currentTrackId = currentTrack?.id ?? null;
+  const currentTrackFilePath = currentTrack?.file_path ?? null;
   const storage = useStorageUsage(user?.id, "music");
   const isAdmin = useIsAdmin(user?.id);
 
@@ -77,54 +78,10 @@ export default function RadioPage() {
 
   useEffect(() => { fetchTracks(); }, [fetchTracks]);
 
-  // Audio event handlers
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onDurationChange = () => setDuration(audio.duration || 0);
-    const onEnded = () => {
-      if (isRepeating) {
-        audio.currentTime = 0;
-        audio.play();
-      } else {
-        playNext();
-      }
-    };
-
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("durationchange", onDurationChange);
-    audio.addEventListener("ended", onEnded);
-
-    return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("ended", onEnded);
-    };
-  }, [isRepeating, playNext]);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume / 100;
-    }
-  }, [volume, isMuted]);
-
   const playTrack = useCallback((index: number) => {
     setCurrentTrackIndex(index);
     setIsPlaying(true);
-    setTimeout(() => audioRef.current?.play(), 50);
   }, []);
-
-  const togglePlay = () => {
-    if (!audioRef.current || currentTrackIndex < 0) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
 
   const playNext = useCallback(() => {
     if (tracks.length === 0) return;
@@ -139,6 +96,73 @@ export default function RadioPage() {
     const prev = currentTrackIndex <= 0 ? tracks.length - 1 : currentTrackIndex - 1;
     playTrack(prev);
   }, [currentTrackIndex, playTrack, tracks.length]);
+
+  // Audio event handlers
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onDurationChange = () => setDuration(audio.duration || 0);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => {
+      if (isRepeating) {
+        audio.currentTime = 0;
+        void audio.play();
+      } else {
+        playNext();
+      }
+    };
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("durationchange", onDurationChange);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("durationchange", onDurationChange);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [isRepeating, playNext]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrackFilePath) return;
+
+    audio.load();
+    setCurrentTime(0);
+
+    if (!isPlaying) return;
+
+    void audio.play().catch(() => {
+      setIsPlaying(false);
+      toast({
+        title: "Playback failed",
+        description: "The selected track could not be started.",
+        variant: "destructive",
+      });
+    });
+  }, [currentTrackFilePath, currentTrackId, isPlaying, toast]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : volume / 100;
+    }
+  }, [volume, isMuted]);
+
+  const togglePlay = () => {
+    if (!audioRef.current || currentTrackIndex < 0) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      void audioRef.current.play();
+    }
+  };
 
   const seek = (value: number[]) => {
     if (audioRef.current) {
@@ -183,7 +207,7 @@ export default function RadioPage() {
   return (
     <div className="space-y-6">
       {currentTrack && (
-        <audio ref={audioRef} src={getPublicUrl(currentTrack.file_path)} preload="auto" />
+        <audio ref={audioRef} src={getPublicUrl(currentTrackFilePath)} preload="auto" />
       )}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">

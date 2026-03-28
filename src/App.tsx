@@ -26,6 +26,8 @@ import ListingScan from "./pages/ListingScan";
 import Radio from "./pages/Radio";
 import AdminUsers from "./pages/AdminUsers";
 import Templanator from "./pages/Templanator";
+import Terms from "./pages/Terms";
+import PrivacyPolicy from "./pages/privacy_policy";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +42,8 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route path="/" element={<Index />} />
               <Route path="/phoenix" element={<Phoenix />} />

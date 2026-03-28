@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 import { getEtsyApiKeyHeader, getEtsyClientId } from "../_shared/etsy.ts";
+import { getKeywordInsights, hasTikTokTrendsEnv, type TikTokKeywordInsight } from "../_shared/tiktokTrends.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +21,7 @@ interface KeywordVerificationResult {
   searchVolume: string;
   trending: boolean;
   tiktokTrend: boolean;
+  source: "tiktok_api" | "serpapi";
 }
 
 interface ListingFinding {
@@ -106,6 +108,68 @@ function findDuplicateKeywords(tags: string[], title: string): string[] {
   return [...new Set(duplicates)];
 }
 
+const TIKTOK_KEYWORD_LOOKUP_LIMIT = 20;
+
+function normalizeKeyword(keyword: string): string {
+  return keyword.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function selectKeywordsForVerification(tags: string[], limit = 5): string[] {
+  const seen = new Set<string>();
+
+  return tags
+    .map((tag) => tag.replace(/^#/, "").replace(/\s+/g, " ").trim())
+    .filter((tag) => tag.length >= 3)
+    .sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length || b.length - a.length)
+    .filter((tag) => {
+      const normalized = normalizeKeyword(tag);
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+function collectScanKeywords(listings: ListingRecord[], limit = TIKTOK_KEYWORD_LOOKUP_LIMIT): string[] {
+  const allTags = listings.flatMap((listing) => listing.tags || []);
+  return selectKeywordsForVerification(allTags, limit);
+}
+
+function getSearchVolumeBucket(searchVolume: number): string {
+  if (searchVolume >= 100000) return "high";
+  if (searchVolume >= 10000) return "medium";
+  return "low";
+}
+
+function mapTikTokInsightToVerification(insight: TikTokKeywordInsight): KeywordVerificationResult {
+  const trending = insight.volume_trend > 0;
+  return {
+    keyword: insight.keyword,
+    searchVolume: getSearchVolumeBucket(insight.search_volume),
+    trending,
+    tiktokTrend: trending || insight.search_volume >= 10000,
+    source: "tiktok_api",
+  };
+}
+
+async function prefetchTikTokKeywordInsights(
+  keywords: string[],
+): Promise<Map<string, KeywordVerificationResult>> {
+  const results = new Map<string, KeywordVerificationResult>();
+
+  for (const keyword of keywords.slice(0, TIKTOK_KEYWORD_LOOKUP_LIMIT)) {
+    try {
+      const response = await getKeywordInsights(keyword);
+      if (!response.insight) continue;
+      results.set(normalizeKeyword(keyword), mapTikTokInsightToVerification(response.insight));
+    } catch (error) {
+      console.error(`TikTok keyword lookup failed for "${keyword}":`, error);
+    }
+  }
+
+  return results;
+}
+
 async function verifyKeywordsWithSerpApi(
   keywords: string[],
   serpApiKey: string
@@ -141,10 +205,11 @@ async function verifyKeywordsWithSerpApi(
         searchVolume: totalResults > 1000000 ? "high" : totalResults > 100000 ? "medium" : "low",
         trending: totalResults > 500000,
         tiktokTrend,
+        source: "serpapi",
       });
     } catch (e) {
       console.error(`SerpAPI error for "${keyword}":`, e);
-      results.push({ keyword, searchVolume: "unknown", trending: false, tiktokTrend: false });
+      results.push({ keyword, searchVolume: "unknown", trending: false, tiktokTrend: false, source: "serpapi" });
     }
   }
 
@@ -385,7 +450,15 @@ serve(async (req: Request) => {
       total_items: listings.length,
     }).eq("id", scanJobId);
 
-    const SERPAPI_KEY = Deno.env.get("SERPAPI_API_KEY");
+    const SERPAPI_KEY = Deno.env.get("SERPAPI_API_KEY") || Deno.env.get("SERPAPI_KEY");
+    let tiktokKeywordResults = new Map<string, KeywordVerificationResult>();
+    if (hasTikTokTrendsEnv()) {
+      try {
+        tiktokKeywordResults = await prefetchTikTokKeywordInsights(collectScanKeywords(listings));
+      } catch (error) {
+        console.error("TikTok keyword prefetch failed:", error);
+      }
+    }
     const allFindings: Array<{
       listing_id: number | string;
       title: string;
@@ -444,42 +517,67 @@ serve(async (req: Request) => {
           message: `Only ${tags.length}/13 tags used. You're leaving SEO opportunity on the table.`,
         });
       }
-
-      // 4. SerpAPI keyword verification (top 5 tags)
-      if (SERPAPI_KEY && tags.length > 0) {
+      // 4. Keyword verification (TikTok first, SerpAPI fallback)
+      const selectedKeywords = selectKeywordsForVerification(tags);
+      if ((tiktokKeywordResults.size > 0 || SERPAPI_KEY) && selectedKeywords.length > 0) {
         try {
-          const keywordResults = await verifyKeywordsWithSerpApi(selectKeywordsForVerification(tags), SERPAPI_KEY);
-          const lowVolume = keywordResults.filter(k => k.searchVolume === "low");
-          const tiktokTrending = keywordResults.filter(k => k.tiktokTrend);
+          const keywordResults: KeywordVerificationResult[] = [];
+          const seenKeywords = new Set<string>();
 
-          if (lowVolume.length > 0) {
-            listingFindings.push({
-              type: "low_volume_keywords",
-              severity: "warning",
-              field: "tags",
-              message: `Low search volume keyword phrases: ${lowVolume.map(k => k.keyword).join(", ")}. Consider pivoting toward stronger long-tail phrases.`,
-            });
+          for (const keyword of selectedKeywords) {
+            const normalized = normalizeKeyword(keyword);
+            const tiktokMatch = tiktokKeywordResults.get(normalized);
+            if (!tiktokMatch) continue;
+
+            keywordResults.push({ ...tiktokMatch, keyword });
+            seenKeywords.add(normalized);
           }
 
-          if (tiktokTrending.length > 0) {
+          if (SERPAPI_KEY) {
+            const missingKeywords = selectedKeywords.filter((keyword) => !seenKeywords.has(normalizeKeyword(keyword)));
+            if (missingKeywords.length > 0) {
+              const serpResults = await verifyKeywordsWithSerpApi(missingKeywords, SERPAPI_KEY);
+              for (const result of serpResults) {
+                const normalized = normalizeKeyword(result.keyword);
+                if (seenKeywords.has(normalized)) continue;
+                keywordResults.push(result);
+                seenKeywords.add(normalized);
+              }
+            }
+          }
+
+          if (keywordResults.length > 0) {
+            const lowVolume = keywordResults.filter((keyword) => keyword.searchVolume === "low");
+            const tiktokTrending = keywordResults.filter((keyword) => keyword.tiktokTrend);
+
+            if (lowVolume.length > 0) {
+              listingFindings.push({
+                type: "low_volume_keywords",
+                severity: "warning",
+                field: "tags",
+                message: `Low search volume keyword phrases: ${lowVolume.map((keyword) => keyword.keyword).join(", ")}. Consider pivoting toward stronger long-tail phrases.`,
+              });
+            }
+
+            if (tiktokTrending.length > 0) {
+              listingFindings.push({
+                type: "tiktok_trending",
+                severity: "info",
+                field: "tags",
+                message: `TikTok trending: ${tiktokTrending.map((keyword) => keyword.keyword).join(", ")}. These phrases currently show TikTok momentum.`,
+              });
+            }
+
             listingFindings.push({
-              type: "tiktok_trending",
+              type: "keyword_research",
               severity: "info",
               field: "tags",
-              message: `🔥 TikTok trending: ${tiktokTrending.map(k => k.keyword).join(", ")}. Great — these keywords have TikTok presence!`,
+              message: "Keyword verification complete",
+              data: keywordResults,
             });
           }
-
-          // Store keyword data
-          listingFindings.push({
-            type: "keyword_research",
-            severity: "info",
-            field: "tags",
-            message: "Keyword verification complete",
-            data: keywordResults,
-          });
         } catch (e) {
-          console.error("SerpAPI batch error:", e);
+          console.error("Keyword verification error:", e);
         }
       }
 
@@ -595,6 +693,7 @@ serve(async (req: Request) => {
     });
   }
 });
+
 
 
 

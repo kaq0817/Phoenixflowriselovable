@@ -15,6 +15,8 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CHECK-SUBSCRIPTION] ${step}${d}`);
 };
 
+const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2026-02-25.clover";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,10 +44,21 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { email: user.email });
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+    const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION });
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (customers.data.length === 0) {
+    let customerId = profile?.stripe_customer_id ?? null;
+
+    if (!customerId) {
+      const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+      customerId = customers.data[0]?.id ?? null;
+    }
+
+    if (!customerId) {
       logStep("No customer found");
       return new Response(JSON.stringify({ subscribed: false }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -53,21 +66,22 @@ serve(async (req) => {
       });
     }
 
-    const customerId = customers.data[0].id;
     logStep("Found customer", { customerId });
 
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
-      status: "active",
-      limit: 1,
+      status: "all",
+      limit: 10,
     });
 
-    const hasActiveSub = subscriptions.data.length > 0;
+    const activeStatuses = new Set(["active", "trialing", "past_due"]);
+    const activeSubscription = subscriptions.data.find((sub) => activeStatuses.has(sub.status));
+    const hasActiveSub = !!activeSubscription;
     let productId = null;
     let subscriptionEnd = null;
 
     if (hasActiveSub) {
-      const sub = subscriptions.data[0];
+      const sub = activeSubscription;
       subscriptionEnd = new Date(sub.current_period_end * 1000).toISOString();
       productId = sub.items.data[0].price.product;
       logStep("Active subscription", { productId, subscriptionEnd });

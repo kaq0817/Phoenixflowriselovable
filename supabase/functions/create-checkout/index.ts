@@ -17,6 +17,8 @@ const logStep = (step: string, details?: LogDetails) => {
   console.log(`[CREATE-CHECKOUT] ${step}${d}`);
 };
 
+const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2026-02-25.clover";
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -49,7 +51,7 @@ serve(async (req: Request) => {
     logStep("User authenticated", { email: user.email });
 
     const stripe = new Stripe(stripeKey, {
-      apiVersion: "2024-06-20",
+      apiVersion: STRIPE_API_VERSION,
     });
 
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
@@ -63,11 +65,28 @@ serve(async (req: Request) => {
     const appUrl = req.headers.get("origin") || Deno.env.get("APP_URL") || Deno.env.get("SITE_URL") || "http://localhost:3000";
     logStep("Creating checkout session", { checkoutMode, appUrl });
 
+    const checkoutMetadata = {
+      supabase_user_id: user.id,
+      user_email: user.email,
+      checkout_mode: checkoutMode,
+      price_id: priceId,
+    };
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
+      client_reference_id: user.id,
       line_items: [{ price: priceId, quantity: 1 }],
+      metadata: checkoutMetadata,
       mode: checkoutMode,
+      subscription_data: checkoutMode === "subscription"
+        ? {
+            metadata: {
+              supabase_user_id: user.id,
+              user_email: user.email,
+            },
+          }
+        : undefined,
       success_url: `${appUrl}/pricing?success=true`,
       cancel_url: `${appUrl}/pricing?canceled=true`,
     });

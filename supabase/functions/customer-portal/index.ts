@@ -10,6 +10,8 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2026-02-25.clover";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -34,13 +36,24 @@ serve(async (req) => {
     const user = userData.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    if (customers.data.length === 0) throw new Error("No Stripe customer found for this user");
+    const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION });
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    let customerId = profile?.stripe_customer_id ?? null;
+    if (!customerId) {
+      const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+      customerId = customers.data[0]?.id ?? null;
+    }
+
+    if (!customerId) throw new Error("No Stripe customer found for this user");
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customers.data[0].id,
+      customer: customerId,
       return_url: `${origin}/pricing`,
     });
 
