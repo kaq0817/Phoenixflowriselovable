@@ -75,13 +75,13 @@ serve(async (req) => {
     });
 
     const activeStatuses = new Set(["active", "trialing", "past_due"]);
-    const activeSubscription = subscriptions.data.find((sub) => activeStatuses.has(sub.status));
+    const activeSubscription = subscriptions.data.find((sub: Stripe.Subscription) => activeStatuses.has(sub.status));
     const hasActiveSub = !!activeSubscription;
     let productId = null;
     let subscriptionEnd = null;
 
     if (hasActiveSub) {
-      const sub = activeSubscription;
+      const sub = activeSubscription as Stripe.Subscription;
       subscriptionEnd = new Date(sub.current_period_end * 1000).toISOString();
       productId = sub.items.data[0].price.product;
       logStep("Active subscription", { productId, subscriptionEnd });
