@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+.env.rescue
+
 .claude.json
 .phoenix_helper/
 .phoenix_helper_backups/
