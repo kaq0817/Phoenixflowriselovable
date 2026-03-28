@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -90,7 +90,7 @@ export default function MediaPage() {
     })();
   }, [session]);
 
-  const fetchProducts = async (connectionId = selectedConnectionId) => {
+  const fetchProducts = useCallback(async (connectionId = selectedConnectionId) => {
     if (!connectionId) return;
 
     setRefreshing(true);
@@ -106,12 +106,12 @@ export default function MediaPage() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [selectedConnectionId, toast]);
 
   useEffect(() => {
     if (loading || !selectedConnectionId || products.length > 0) return;
     void fetchProducts(selectedConnectionId);
-  }, [loading, selectedConnectionId, products.length]);
+  }, [fetchProducts, loading, selectedConnectionId, products.length]);
 
   const mediaRecords = useMemo<MediaRecord[]>(() => {
     return products.map((product) => {
@@ -123,7 +123,7 @@ export default function MediaPage() {
       return {
         id: product.id,
         title: product.title,
-        subtitle: [product.vendor, product.product_type].filter(Boolean).join(" · ") || product.handle,
+        subtitle: [product.vendor, product.product_type].filter(Boolean).join(" | ") || product.handle,
         imageSrc: product.images?.[0]?.src,
         imageCount,
         missingImages,

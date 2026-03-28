@@ -102,7 +102,7 @@ export default function RadioPage() {
       audio.removeEventListener("durationchange", onDurationChange);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [isRepeating, currentTrackIndex, tracks.length]);
+  }, [isRepeating, playNext]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -110,11 +110,11 @@ export default function RadioPage() {
     }
   }, [volume, isMuted]);
 
-  const playTrack = (index: number) => {
+  const playTrack = useCallback((index: number) => {
     setCurrentTrackIndex(index);
     setIsPlaying(true);
     setTimeout(() => audioRef.current?.play(), 50);
-  };
+  }, []);
 
   const togglePlay = () => {
     if (!audioRef.current || currentTrackIndex < 0) return;
@@ -126,19 +126,19 @@ export default function RadioPage() {
     setIsPlaying(!isPlaying);
   };
 
-  const playNext = () => {
+  const playNext = useCallback(() => {
     if (tracks.length === 0) return;
     const next = isShuffled
       ? Math.floor(Math.random() * tracks.length)
       : (currentTrackIndex + 1) % tracks.length;
     playTrack(next);
-  };
+  }, [currentTrackIndex, isShuffled, playTrack, tracks.length]);
 
-  const playPrev = () => {
+  const playPrev = useCallback(() => {
     if (tracks.length === 0) return;
     const prev = currentTrackIndex <= 0 ? tracks.length - 1 : currentTrackIndex - 1;
     playTrack(prev);
-  };
+  }, [currentTrackIndex, playTrack, tracks.length]);
 
   const seek = (value: number[]) => {
     if (audioRef.current) {

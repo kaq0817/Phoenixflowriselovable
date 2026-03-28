@@ -215,7 +215,7 @@ export function analyzeThemeAssets(input: {
   }
 
   if (belowFoldImagesMissingLazy > 0) {
-    scanIssues.push(`${belowFoldImagesMissingLazy} below-the-fold images are missing loading=\"lazy\"`);
+    scanIssues.push(`${belowFoldImagesMissingLazy} below-the-fold images are missing loading="lazy"`);
   }
   if (hardcodedColors.length > 10) {
     scanIssues.push(`${hardcodedColors.length} hard-coded color values detected; migrate these to CSS variables`);
@@ -444,7 +444,7 @@ function detectCrossStoreLinks(assets: Record<string, string | null>, shopDomain
 function detectBusinessInfo(footerLiquid: string, fallbackName: string): ThemeBusinessInfo {
   const footerText = stripHtml(footerLiquid);
   const legalEntityMatch =
-    footerText.match(/(?:©|copyright)\s*(?:\d{4}\s*)?(.*?(?:LLC|INC|CORP(?:ORATION)?|LTD|CO\.?))/i) ||
+    footerText.match(/(?:\u00A9|copyright)\s*(?:\d{4}\s*)?(.*?(?:LLC|INC|CORP(?:ORATION)?|LTD|CO\.?))/i) ||
     footerText.match(/(.*?(?:LLC|INC|CORP(?:ORATION)?|LTD|CO\.?))/i);
   const stateMatch =
     footerText.match(/\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/) ||
@@ -666,4 +666,3 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-

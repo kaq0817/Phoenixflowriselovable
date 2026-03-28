@@ -10,7 +10,7 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-const logStep = (step: string, details?: any) => {
+const logStep = (step: string, details?: Record<string, unknown>) => {
   const d = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[CHECK-SUBSCRIPTION] ${step}${d}`);
 };
@@ -88,5 +88,3 @@ serve(async (req) => {
     });
   }
 });
-
-

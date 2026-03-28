@@ -16,7 +16,7 @@ const SAFE_PUSH_PATTERNS = [
   /^assets\/[a-z0-9_.-]+\.css$/i,
 ];
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -88,8 +88,9 @@ serve(async (req) => {
           const errData = await putRes.json();
           errors.push(`${key}: ${JSON.stringify(errData.errors || errData)}`);
         }
-      } catch (err: any) {
-        errors.push(`${key}: ${err.message}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${key}: ${message}`);
       }
     }
 
@@ -102,9 +103,10 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err: any) {
-    console.error("push-theme-changes error:", err.message);
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("push-theme-changes error:", message);
+    return new Response(JSON.stringify({ error: message }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

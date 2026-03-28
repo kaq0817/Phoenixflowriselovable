@@ -2,9 +2,32 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 
 // Extend jsPDF type for autotable
+type AutoTableColor = number | [number, number, number];
+
+type AutoTableCellContext = {
+  column: { index: number };
+  section: string;
+  cell: {
+    raw: unknown;
+    styles: {
+      textColor?: AutoTableColor;
+    };
+  };
+};
+
+type AutoTableOptions = {
+  startY?: number;
+  head: string[][];
+  body: string[][];
+  styles?: Record<string, unknown>;
+  headStyles?: Record<string, unknown>;
+  columnStyles?: Record<number, { cellWidth: number }>;
+  didParseCell?: (data: AutoTableCellContext) => void;
+};
+
 declare module "jspdf" {
   interface jsPDF {
-    autoTable: (options: any) => jsPDF;
+    autoTable: (options: AutoTableOptions) => jsPDF;
     lastAutoTable: { finalY: number };
   }
 }
@@ -117,7 +140,7 @@ export function exportCompliancePdf(report: ComplianceReport, storeUrl: string) 
       2: { cellWidth: 70 },
       3: { cellWidth: 60 },
     },
-    didParseCell: (data: any) => {
+    didParseCell: (data: AutoTableCellContext) => {
       if (data.column.index === 0 && data.section === "body") {
         const val = String(data.cell.raw).toLowerCase();
         if (val === "critical") data.cell.styles.textColor = [220, 50, 50];
@@ -217,7 +240,7 @@ export function exportThemePdf(report: ThemeReport, storeUrl: string) {
     body: report.contrast_checks.map((c) => [c.pair, `${c.ratio}:1`, c.wcag_aa.toUpperCase(), c.wcag_aaa.toUpperCase()]),
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [80, 50, 120], textColor: 255 },
-    didParseCell: (data: any) => {
+    didParseCell: (data: AutoTableCellContext) => {
       if ((data.column.index === 2 || data.column.index === 3) && data.section === "body") {
         const val = String(data.cell.raw).toLowerCase();
         if (val === "pass") data.cell.styles.textColor = [50, 180, 50];
@@ -240,7 +263,7 @@ export function exportThemePdf(report: ThemeReport, storeUrl: string) {
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [80, 50, 120], textColor: 255 },
     columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 30 }, 2: { cellWidth: 70 }, 3: { cellWidth: 60 } },
-    didParseCell: (data: any) => {
+    didParseCell: (data: AutoTableCellContext) => {
       if (data.column.index === 0 && data.section === "body") {
         const val = String(data.cell.raw).toLowerCase();
         if (val === "critical") data.cell.styles.textColor = [220, 50, 50];
@@ -262,7 +285,7 @@ interface ListingFinding {
   severity: string;
   field: string;
   message: string;
-  data?: any;
+  data?: unknown;
 }
 
 interface ListingResult {
@@ -324,7 +347,7 @@ export function exportListingScanPdf(findings: ListingResult[], summary: ScanSum
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [80, 50, 120], textColor: 255 },
     columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 22 }, 2: { cellWidth: 30 }, 3: { cellWidth: 90 } },
-    didParseCell: (data: any) => {
+    didParseCell: (data: AutoTableCellContext) => {
       if (data.column.index === 1 && data.section === "body") {
         const val = String(data.cell.raw).toLowerCase();
         if (val === "critical") data.cell.styles.textColor = [220, 50, 50];

@@ -1,6 +1,36 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 
+type ComplianceFinding = {
+  category: string;
+  severity: "critical" | "warning" | "info" | "pass";
+  title: string;
+  description: string;
+  recommendation: string;
+  reference?: string;
+};
+
+type ComplianceReport = {
+  score: number;
+  summary: string;
+  findings: ComplianceFinding[];
+  pages_analyzed: number;
+};
+
+type GeminiFunctionCallPart = {
+  functionCall?: {
+    args: ComplianceReport;
+  };
+};
+
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: GeminiFunctionCallPart[];
+    };
+  }>;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -314,16 +344,16 @@ ${pageLinks.slice(0, 50).join("\n")}`;
       throw new Error("AI analysis failed");
     }
 
-    const aiData = await aiResponse.json();
-    const functionCall = aiData.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall);
+    const aiData = await aiResponse.json() as GeminiResponse;
+    const functionCall = aiData.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)?.functionCall;
     if (!functionCall) throw new Error("No analysis result returned");
 
-    const report = functionCall.functionCall.args;
+    const report = functionCall.args;
 
     // Calculate counts
-    const criticalCount = report.findings.filter((f: any) => f.severity === "critical").length;
-    const warningCount = report.findings.filter((f: any) => f.severity === "warning").length;
-    const passedCount = report.findings.filter((f: any) => f.severity === "pass").length;
+    const criticalCount = report.findings.filter((finding) => finding.severity === "critical").length;
+    const warningCount = report.findings.filter((finding) => finding.severity === "warning").length;
+    const passedCount = report.findings.filter((finding) => finding.severity === "pass").length;
 
     // Update scan with results using service role
     const serviceSupabase = createClient(
@@ -377,8 +407,3 @@ ${pageLinks.slice(0, 50).join("\n")}`;
     });
   }
 });
-
-
-
-
-

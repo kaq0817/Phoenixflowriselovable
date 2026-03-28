@@ -10,40 +10,48 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-const logStep = (step: string, details?: any) => {
+type LogDetails = Record<string, unknown>;
+
+const logStep = (step: string, details?: LogDetails) => {
   const d = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[CREATE-CHECKOUT] ${step}${d}`);
 };
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   const supabaseClient = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_ANON_KEY") ?? ""
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
   );
 
   try {
     logStep("Function started");
 
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
+
     const { priceId, mode } = await req.json();
     if (!priceId) throw new Error("priceId is required");
     logStep("Received request", { priceId, mode });
 
-    const authHeader = req.headers.get("Authorization")!;
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) throw new Error("Authorization header is required");
+
     const token = authHeader.replace("Bearer ", "");
-    const { data } = await supabaseClient.auth.getUser(token);
+    const { data, error } = await supabaseClient.auth.getUser(token);
+    if (error) throw new Error(`Authentication error: ${error.message}`);
+
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { email: user.email });
 
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+    const stripe = new Stripe(stripeKey, {
       apiVersion: "2024-06-20",
     });
 
-    // Find or skip existing customer
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     let customerId: string | undefined;
     if (customers.data.length > 0) {
@@ -52,16 +60,19 @@ serve(async (req) => {
     }
 
     const checkoutMode = mode === "payment" ? "payment" : "subscription";
-    logStep("Creating checkout session", { checkoutMode });
+    const appUrl = req.headers.get("origin") || Deno.env.get("APP_URL") || Deno.env.get("SITE_URL") || "http://localhost:3000";
+    logStep("Creating checkout session", { checkoutMode, appUrl });
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: checkoutMode,
-      success_url: `${req.headers.get("origin")}/pricing?success=true`,
-      cancel_url: `${req.headers.get("origin")}/pricing?canceled=true`,
+      success_url: `${appUrl}/pricing?success=true`,
+      cancel_url: `${appUrl}/pricing?canceled=true`,
     });
+
+    if (!session.url) throw new Error("Stripe did not return a checkout URL");
 
     logStep("Checkout session created", { sessionId: session.id });
 
@@ -78,5 +89,3 @@ serve(async (req) => {
     });
   }
 });
-
-

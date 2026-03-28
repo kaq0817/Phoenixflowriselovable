@@ -1,14 +1,14 @@
 const ASCII_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\u0018|\u0019/g, ""],
-  [/\u000b|\f/g, " "],
+  [(new RegExp(`[${String.fromCharCode(24)}${String.fromCharCode(25)}]`, "g")), ""],
+  [(new RegExp(`[${String.fromCharCode(11)}${String.fromCharCode(12)}]`, "g")), " "],
   [/\r\n?/g, "\n"],
-  [/[“”]/g, '"'],
-  [/[‘’]/g, "'"],
-  [/[–—]/g, "-"],
-  [/•/g, "-"],
-  [/[™®©]/g, ""],
-  [/…/g, "..."],
-  [/\u0000/g, ""],
+  [/[\u201C\u201D]/g, '"'],
+  [/[\u2018\u2019]/g, "'"],
+  [/[\u2013\u2014]/g, "-"],
+  [/\u2022/g, "-"],
+  [/[\u2122\u00AE\u00A9]/g, ""],
+  [/\u2026/g, "..."],
+  [(new RegExp(String.fromCharCode(0), "g")), ""],
 ];
 
 const PROMO_PATTERNS = [
@@ -87,7 +87,13 @@ function replaceAscii(value: string): string {
   for (const [pattern, replacement] of ASCII_REPLACEMENTS) {
     next = next.replace(pattern, replacement);
   }
-  return next.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
+
+  return Array.from(next)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code === 9 || code === 10 || code === 13 || (code >= 32 && code <= 126);
+    })
+    .join("");
 }
 
 function collapseWhitespace(value: string): string {
