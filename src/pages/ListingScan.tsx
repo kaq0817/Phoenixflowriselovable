@@ -173,12 +173,9 @@ export default function ListingScanPage() {
     const firstShopify = rows.find((c) => c.platform === "shopify");
     const firstEtsy = rows.find((c) => c.platform === "etsy");
 
-    if (!hasShopify && hasEtsy) {
-      setPlatform("etsy");
-      setSelectedConnectionId(firstEtsy?.id || "");
-    } else {
-      setSelectedConnectionId(firstShopify?.id || "");
-    }
+    const initialPlatform: Platform = hasEtsy ? "etsy" : hasShopify ? "shopify" : "etsy";
+    setPlatform(initialPlatform);
+    setSelectedConnectionId(initialPlatform === "etsy" ? firstEtsy?.id || "" : firstShopify?.id || "");
     setLoading(false);
   }, []);
 
@@ -283,6 +280,14 @@ export default function ListingScanPage() {
   const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
   const noConnections = storeConnections.length === 0;
+
+  useEffect(() => {
+    const validOptions = platform === "shopify" ? shopifyStoreOptions : etsyStoreOptions;
+    if (validOptions.some((connection) => connection.id === selectedConnectionId)) {
+      return;
+    }
+    setSelectedConnectionId(validOptions[0]?.id || "");
+  }, [etsyStoreOptions, platform, selectedConnectionId, shopifyStoreOptions]);
 
   const handlePlatformChange = (newPlatform: string) => {
     const p = newPlatform as Platform;

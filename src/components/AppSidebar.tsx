@@ -37,8 +37,8 @@ const shopifyItems: SidebarItem[] = [
 ];
 
 const etsyItems: SidebarItem[] = [
-  { title: "Listing Optimizer (Coming Soon)", url: "/etsy-optimizer", icon: Flower2, comingSoon: true },
-  { title: "Product Scanner (Coming Soon)", url: "/listing-scan", icon: Scan, comingSoon: true },
+  { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2 },
+  { title: "Product Scanner", url: "/listing-scan", icon: Scan },
 ];
 
 const generalItems: SidebarItem[] = [
@@ -113,8 +113,8 @@ export function AppSidebar() {
             <Button size="sm" variant={toolsFilter === "shopify" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("shopify")}>
               Shopify
             </Button>
-            <Button size="sm" variant={toolsFilter === "etsy" ? "default" : "outline"} className="h-7 text-xs opacity-50 cursor-not-allowed" disabled>
-              Etsy (Coming Soon)
+            <Button size="sm" variant={toolsFilter === "etsy" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("etsy")}>
+              Etsy
             </Button>
             <Button size="sm" variant={toolsFilter === "general" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setToolsFilter("general")}>
               General

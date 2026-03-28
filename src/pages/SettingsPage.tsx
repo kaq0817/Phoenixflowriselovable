@@ -121,7 +121,15 @@ export default function SettingsPage() {
       if (!data?.url) throw new Error("Etsy authorization URL was not returned");
 
       setShowEtsyForm(false);
-      window.location.href = data.url;
+      const opened = window.open(data.url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        window.location.href = data.url;
+      } else {
+        toast({
+          title: "Etsy login opened",
+          description: "Use an incognito/private window or a different browser profile to switch Etsy accounts.",
+        });
+      }
     } catch (error: unknown) {
       toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Etsy authorization."), variant: "destructive" });
       setEtsyConnecting(false);
@@ -316,6 +324,9 @@ export default function SettingsPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Etsy will ask for `listings_r`, `listings_w`, and `shops_r`, then return here with a signed callback result.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                To connect a different Etsy shop, use an incognito/private window or log out of Etsy before continuing.
               </p>
             </div>
           )}
