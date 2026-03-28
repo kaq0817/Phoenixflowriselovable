@@ -3,8 +3,6 @@
 .env.local
 .env.*.local
 .claude.json
-
-# Phoenix Helper local data/backups (repo-local)
 .phoenix_helper/
 .phoenix_helper_backups/
 
