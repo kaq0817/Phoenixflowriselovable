@@ -3,6 +3,11 @@ export interface ThemeBusinessInfo {
   stateOfIncorporation?: string;
   supportLocation?: string;
   supportNumber?: string;
+  paletteSelection?: {
+    id?: string;
+    colors?: string[];
+  };
+  pillarPalettes?: Record<string, { id?: string; colors?: string[] }>;
 }
 
 export interface ThemeLcpCandidate {
@@ -333,7 +338,55 @@ export function buildThemeFixes(input: {
     }
   }
 
+  const paletteCss = buildPaletteStyles(input.businessInfo);
+  if (paletteCss) {
+    rewrittenFiles["assets/phoenix-palettes.css"] = paletteCss;
+    const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
+    if (themeBase) {
+      const updatedTheme = ensurePaletteStylesheet(themeBase);
+      if (updatedTheme !== themeBase) {
+        rewrittenFiles["layout/theme.liquid"] = updatedTheme;
+      }
+    }
+  }
+
   return rewrittenFiles;
+}
+
+function buildPaletteStyles(businessInfo: ThemeBusinessInfo): string | null {
+  const globalColors = (businessInfo.paletteSelection?.colors || []).filter(Boolean);
+  const pillarPalettes = businessInfo.pillarPalettes || {};
+  const hasPillars = Object.values(pillarPalettes).some((entry) => (entry?.colors || []).length > 0);
+
+  if (globalColors.length === 0 && !hasPillars) return null;
+
+  const lines: string[] = ["/* Phoenix Flow Palette */"];
+
+  if (globalColors.length > 0) {
+    lines.push(
+      `:root{--phoenix-primary:${globalColors[0]};--phoenix-accent:${globalColors[1] || globalColors[0]};--phoenix-highlight:${globalColors[2] || globalColors[1] || globalColors[0]};--phoenix-ink:${globalColors[3] || "#111827"};}`,
+    );
+  }
+
+  for (const [handle, entry] of Object.entries(pillarPalettes)) {
+    const colors = (entry?.colors || []).filter(Boolean);
+    if (colors.length === 0) continue;
+    lines.push(
+      `[data-phoenix-pillar="${handle}"]{--phoenix-primary:${colors[0]};--phoenix-accent:${colors[1] || colors[0]};--phoenix-highlight:${colors[2] || colors[1] || colors[0]};--phoenix-ink:${colors[3] || "#111827"};}`,
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function ensurePaletteStylesheet(themeLiquid: string): string {
+  const tag = "phoenix-palettes.css";
+  if (themeLiquid.includes(tag)) return themeLiquid;
+  const linkTag = `<link rel="stylesheet" href="{{ '${tag}' | asset_url }}" media="all">`;
+  if (themeLiquid.includes("</head>")) {
+    return themeLiquid.replace("</head>", `${linkTag}\n</head>`);
+  }
+  return themeLiquid;
 }
 
 function extractImageCandidates(content: string, assetKey: string, baseRank: number): ImageCandidate[] {
