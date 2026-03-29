@@ -92,6 +92,19 @@ const SAFE_EXTERNAL_DOMAINS = new Set([
   "cdn.shopify.com",
   "fonts.shopifycdn.com",
   "shop.app",
+  "ourphoenixrise.com",
+  "ironphoenixghg.store",
+  "pixelchicbotreasures.etsy.com",
+  "ironphoenixghg.etsy.com",
+  "gohardgamingdiscord.printify.me",
+  "googletagmanager.com",
+  "www.googletagmanager.com",
+  "tagmanager.google.com",
+  "google-analytics.com",
+  "www.google-analytics.com",
+  "analytics.google.com",
+  "schema.org",
+  "www.schema.org",
   "www.youtube.com",
   "youtube.com",
   "youtu.be",
@@ -140,7 +153,7 @@ export function extractTemplateSectionKeys(indexJson: string | null | undefined)
 export function buildCollectionPillars(collections: CollectionInput[], baseDomain?: string): CollectionPillar[] {
   const normalizedBase = (baseDomain || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
 
-  return collections
+  const candidates = collections
     .map((collection) => {
       const title = (collection.title || "").trim();
       const handle = (collection.handle || slugify(title || "pillar")).trim();
@@ -152,9 +165,12 @@ export function buildCollectionPillars(collections: CollectionInput[], baseDomai
         suggestedSubdomain: normalizedBase ? `${handle}.${normalizedBase}` : "",
       };
     })
-    .filter((collection) => collection.title && collection.productsCount > 0)
-    .sort((a, b) => b.productsCount - a.productsCount)
-    .slice(0, 5);
+    .filter((collection) => collection.title);
+
+  const weighted = candidates.filter((collection) => collection.productsCount > 0);
+  const source = weighted.length > 0 ? weighted : candidates;
+
+  return source.sort((a, b) => b.productsCount - a.productsCount).slice(0, 5);
 }
 
 export function analyzeThemeAssets(input: {
@@ -508,10 +524,16 @@ function rewriteFooter(footerLiquid: string, businessInfo: ThemeBusinessInfo): s
     updated = normalizePolicyLink(updated, policy.label, policy.targetPath, policy.matchers);
   }
 
-  const legalName = businessInfo.legalEntityName?.trim() || "Your Legal Entity";
-  const state = normalizeState(businessInfo.stateOfIncorporation);
-  const supportLocation = businessInfo.supportLocation?.trim() || "Your support location";
-  const supportNumber = businessInfo.supportNumber?.trim() || "Your support number";
+  const legalName = businessInfo.legalEntityName?.trim() || "";
+  const stateRaw = businessInfo.stateOfIncorporation?.trim() || "";
+  const supportLocation = businessInfo.supportLocation?.trim() || "";
+  const supportNumber = businessInfo.supportNumber?.trim() || "";
+
+  if (!legalName || !stateRaw || !supportLocation || !supportNumber) {
+    return updated;
+  }
+
+  const state = normalizeState(stateRaw);
 
   const block = [
     "{% comment %} Phoenix Flow automated compliance anchors {% endcomment %}",

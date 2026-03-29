@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle,
   ArrowLeft,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -34,6 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { appIdentityConfig } from "@/config/appIdentity";
+import { appSupportConfig } from "@/config/appSupport";
 
 interface StoreConnection {
   id: string;
@@ -156,10 +159,17 @@ export default function Templanator() {
   const [nichePalette, setNichePalette] = useState("default");
   const [departmentMappings, setDepartmentMappings] = useState<DepartmentMapping[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [fixNowRunning, setFixNowRunning] = useState(false);
   const [fileApprovals, setFileApprovals] = useState<FileApproval[]>([]);
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantAnswer, setAssistantAnswer] = useState("");
+  const identityReady = Boolean(
+    legalEntityName.trim() &&
+      stateOfIncorporation.trim() &&
+      supportLocation.trim() &&
+      supportNumber.trim(),
+  );
 
   const selectedStore = useMemo(
     () => connections.find((connection) => connection.id === selectedConn) ?? null,
@@ -268,55 +278,27 @@ export default function Templanator() {
     }
   };
 
-  const handleFixNow = async () => {
+  const handleExplainFindings = async () => {
     if (!scanResult) return;
-    setFixNowRunning(true);
+    setAssistantLoading(true);
+    setAssistantAnswer("");
 
     try {
-      const { data: preview, error: previewError } = await supabase.functions.invoke("apply-theme-fixes", {
+      const question = buildFindingsQuestion(scanResult, selectedStore);
+      const { data, error } = await supabase.functions.invoke("answer-app-question", {
         body: {
-          connectionId: selectedConn,
-          themeId: scanResult.themeId,
-          assets: scanResult.assets,
-          businessInfo: {
-            legalEntityName,
-            stateOfIncorporation,
-            supportLocation,
-            supportNumber,
-            departmentMappings,
-            nichePalette,
-          },
+          question,
+          identity: appIdentityConfig,
+          support: appSupportConfig,
         },
       });
-      if (previewError) throw previewError;
-
-      const rewrittenFiles = preview?.rewrittenFiles || {};
-      const approvedFiles: Record<string, string> = {};
-      Object.entries(rewrittenFiles).forEach(([key, value]) => {
-        if (typeof value === "string" && value.trim().length > 0) approvedFiles[key] = value;
-      });
-
-      if (Object.keys(approvedFiles).length === 0) {
-        toast({ title: "No fixes generated", description: "Nothing to push for this theme." });
-        return;
-      }
-
-      const { data: push, error: pushError } = await supabase.functions.invoke("push-theme-changes", {
-        body: {
-          connectionId: selectedConn,
-          themeId: scanResult.themeId,
-          approvedFiles,
-        },
-      });
-      if (pushError) throw pushError;
-
-      setPushResult(push as PushResult);
-      setStep(4);
-      toast({ title: "Theme updated", description: `${push.totalModified} files pushed to Shopify.` });
+      if (error) throw error;
+      if (!data?.answer) throw new Error("Assistant did not return an answer");
+      setAssistantAnswer(data.answer as string);
     } catch (err: unknown) {
-      toast({ title: "Auto-fix failed", description: getErrorMessage(err), variant: "destructive" });
+      toast({ title: "Assistant failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
-      setFixNowRunning(false);
+      setAssistantLoading(false);
     }
   };
 
@@ -430,6 +412,17 @@ export default function Templanator() {
                 ))}
                 {scanResult.scanIssues.length === 0 ? <p className="text-sm text-muted-foreground">Theme looks stable. Only opportunistic upgrades remain.</p> : null}
               </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">Want the plain-English breakdown of what to fix first?</p>
+                <Button size="sm" variant="outline" onClick={handleExplainFindings} disabled={assistantLoading}>
+                  {assistantLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Explaining...</> : <><Bot className="mr-2 h-4 w-4" /> Explain Findings</>}
+                </Button>
+              </div>
+              {assistantAnswer ? (
+                <div className="whitespace-pre-wrap rounded-lg bg-muted/20 p-4 text-sm text-foreground">
+                  {assistantAnswer}
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
                 <StatBox label="Images" value={scanResult.stats.totalImages} sub={`${scanResult.stats.belowFoldImagesMissingLazy} below-fold missing lazy`} />
                 <StatBox label="Hard Colors" value={scanResult.stats.hardcodedColors} />
@@ -566,6 +559,11 @@ export default function Templanator() {
             />
             <p className="text-xs text-muted-foreground">Subdomain suggestions will not run until this is filled.</p>
           </div>
+          {!identityReady ? (
+            <p className="text-xs text-muted-foreground">
+              Fill legal entity, state, support location, and support number to enable preview and push.
+            </p>
+          ) : null}
 
           <div className="space-y-3">
             <h3 className="font-semibold text-sm flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Identity Palette</h3>
@@ -609,11 +607,8 @@ export default function Templanator() {
             <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Back
             </Button>
-            <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating} onClick={handleGeneratePreview}>
+            <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={handleGeneratePreview}>
               {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Preview</>}
-            </Button>
-            <Button className="flex-1 bg-primary text-primary-foreground" size="lg" disabled={fixNowRunning} onClick={handleFixNow}>
-              {fixNowRunning ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Fixing...</> : <><Shield className="h-5 w-5 mr-2" /> Fix Now</>}
             </Button>
           </div>
 
@@ -830,6 +825,36 @@ function truncateCode(code: string, maxLen: number): string {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null): string {
+  const storeLabel = store?.shop_name || store?.shop_domain || "Shopify store";
+  const issueLines = scan.scanIssues.length > 0
+    ? scan.scanIssues.map((issue, index) => `${index + 1}. ${issue}`).join("\n")
+    : "No issues were reported.";
+  const lcp = scan.lcpCandidate
+    ? `LCP candidate asset: ${scan.lcpCandidate.assetKey}; loading=${scan.lcpCandidate.loadingMode}; fetchpriority_high=${scan.lcpCandidate.hasFetchPriorityHigh}; preload=${scan.lcpCandidate.preloadDetected}.`
+    : "No LCP candidate detected.";
+  const crossStore = scan.crossStoreLinks.length > 0
+    ? scan.crossStoreLinks.slice(0, 5).map((link) => `${link.domain} (${link.assetKey})`).join("; ")
+    : "No cross-store links detected.";
+  const policy = scan.policyLinks.length > 0
+    ? scan.policyLinks.map((link) => `${link.label}: ${link.status}`).join("; ")
+    : "No policy link data.";
+
+  return [
+    `Explain the Templanator Architect Findings for ${storeLabel}.`,
+    "Use plain English and short bullets.",
+    "List each finding with what it means and the first fix to apply.",
+    "Do not invent data or routes.",
+    "",
+    "Findings:",
+    issueLines,
+    "",
+    `Details: ${lcp}`,
+    `Policy links: ${policy}`,
+    `Cross-store links: ${crossStore}`,
+  ].join("\n");
 }
 
 function StatBox({ label, value, sub }: { label: string; value: number; sub?: string }) {
