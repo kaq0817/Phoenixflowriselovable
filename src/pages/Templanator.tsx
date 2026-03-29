@@ -139,9 +139,9 @@ const NICHE_PALETTES = [
 
 const STEPS = [
   { num: 1, label: "Theme Handshake" },
-  { num: 2, label: "Architect Scan" },
-  { num: 3, label: "Identity & Niche" },
-  { num: 4, label: "Preview Changes" },
+  { num: 2, label: "Policy Verification" },
+  { num: 3, label: "Theme Fixes" },
+  { num: 4, label: "Subdomain Separation" },
   { num: 5, label: "Push to Store" },
 ];
 
@@ -177,6 +177,13 @@ export default function Templanator() {
     [connections, selectedConn],
   );
   const approvedCount = fileApprovals.filter((file) => file.approved).length;
+  const policyGeneratorUrl = selectedStore?.shop_domain
+    ? `https://${selectedStore.shop_domain}/admin/settings/legal`
+    : "";
+  const allPoliciesReady = Boolean(
+    scanResult?.policyLinks?.length &&
+      scanResult.policyLinks.every((link) => link.status === "ok"),
+  );
 
   useEffect(() => {
     const fetchConns = async () => {
@@ -270,7 +277,7 @@ export default function Templanator() {
 
       setPushResult(null);
       setFileApprovals(approvals);
-      setStep(4);
+      setStep(3);
       toast({ title: "Preview ready", description: `${approvals.length} files staged for review.` });
     } catch (err: unknown) {
       toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
@@ -400,8 +407,75 @@ export default function Templanator() {
           <Card className="bg-card/50 border-border/30">
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center gap-3">
+                <Shield className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold">Policy Verification</h3>
+                <Badge variant="secondary" className="ml-auto">{scanResult.themeName}</Badge>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Verify that the required Shopify policy pages are present. If any are missing, open Shopify's policy generator.
+              </p>
+
+              {allPoliciesReady ? (
+                <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-500">
+                  All policies verified: pass.
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                {scanResult.policyLinks.map((link) => (
+                  <div key={link.label} className="rounded-md bg-muted/20 p-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">{link.label}</span>
+                      <Badge variant={link.status === "ok" ? "secondary" : "destructive"}>
+                        {link.status === "ok" ? "pass" : link.status === "missing" ? "missing" : "normalize"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Target: {link.targetPath}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {allPoliciesReady
+                    ? "Policies verified. Continue to Theme Fixes."
+                    : "Missing policies can be generated in Shopify Admin and then linked in the footer."}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => policyGeneratorUrl && window.open(policyGeneratorUrl, "_blank", "noopener")}
+                  disabled={!policyGeneratorUrl}
+                >
+                  Open Shopify Policy Generator
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-3 justify-between">
+            <Button variant="outline" onClick={() => setStep(1)}>
+              <ArrowLeft className="h-4 w-4 mr-2" /> Back
+            </Button>
+            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(3)} disabled={!allPoliciesReady}>
+              Continue to Theme Fixes
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </motion.div>
+  );
+
+  const renderStep3 = () => (
+    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
+      {scanResult ? (
+        <>
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                <h3 className="font-semibold">Architect Findings</h3>
+                <h3 className="font-semibold">Theme Fix Targets</h3>
                 <Badge variant="secondary" className="ml-auto">{scanResult.themeName}</Badge>
               </div>
 
@@ -412,10 +486,13 @@ export default function Templanator() {
                     <span className="text-muted-foreground">{issue}</span>
                   </div>
                 ))}
+                {scanResult.scanIssues.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No critical fix targets were detected in this scan.</p>
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">Want the plain-English breakdown of what to fix first?</p>
+                <p className="text-xs text-muted-foreground">Need a plain-English breakdown of what to fix first?</p>
                 <Button size="sm" variant="outline" onClick={handleExplainFindings} disabled={assistantLoading}>
                   {assistantLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Explaining...</> : <><Bot className="mr-2 h-4 w-4" /> Explain Findings</>}
                 </Button>
@@ -444,10 +521,12 @@ export default function Templanator() {
                   <p className="text-sm"><span className="font-medium">LCP asset:</span> <span className="text-muted-foreground break-all">{scanResult.lcpCandidate.assetKey}</span></p>
                   <p className="text-sm"><span className="font-medium">Priority:</span> <StatusText ok={scanResult.lcpCandidate.hasFetchPriorityHigh} okLabel="fetchpriority=high present" badLabel="needs fetchpriority=high" /></p>
                   <p className="text-sm"><span className="font-medium">Loading:</span> <StatusText ok={scanResult.lcpCandidate.loadingMode === "eager"} okLabel="loading=eager present" badLabel={`currently ${scanResult.lcpCandidate.loadingMode}`} /></p>
+                  <p className="text-sm"><span className="font-medium">Preload:</span> <StatusText ok={scanResult.lcpCandidate.preloadDetected} okLabel="head preload found" badLabel="preload missing" /></p>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">No strong above-the-fold image candidate found.</p>
               )}
+              <p className="text-sm"><span className="font-medium">Below fold:</span> <span className="text-muted-foreground">{scanResult.stats.belowFoldImagesMissingLazy} images still need loading="lazy".</span></p>
             </ArchitectPanel>
 
             {scanResult.crossStoreLinks.length > 0 ? (
@@ -458,7 +537,7 @@ export default function Templanator() {
                     <h3 className="font-semibold">Cross-Store Leak Watch</h3>
                   </div>
                   <div className="space-y-2">
-                    {scanResult.crossStoreLinks.slice(0, 3).map((link) => (
+                    {scanResult.crossStoreLinks.slice(0, 5).map((link) => (
                       <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
                         <p className="font-medium">{link.domain}</p>
                         <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
@@ -470,9 +549,160 @@ export default function Templanator() {
             ) : null}
           </div>
 
-          <div className="flex gap-3 justify-end mt-6">
-            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(3)}>
-              Configure Fixes & Domains ->
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-6 space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg">Step 3: Theme Fix Inputs</h2>
+                  <p className="text-sm text-muted-foreground">Set legal anchors, support copy, and palette before generating the rewrite preview.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4 p-4 rounded-lg border border-primary/20 bg-primary/5">
+                  <h3 className="font-semibold text-sm flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Legal Anchors</h3>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Legal Entity Name</label>
+                    <Input placeholder="e.g. Go Hard Gaming Discord" className="bg-background/50" value={legalEntityName} onChange={(e) => setLegalEntityName(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">State of Incorporation</label>
+                    <Input placeholder="e.g. WY" className="bg-background/50" value={stateOfIncorporation} onChange={(e) => setStateOfIncorporation(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="space-y-4 p-4 rounded-lg border border-accent/20 bg-accent/5">
+                  <h3 className="font-semibold text-sm flex items-center gap-2"><Zap className="h-4 w-4 text-accent" /> Support Silo</h3>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Support Location</label>
+                    <Input placeholder="e.g. Saratoga County, NY" className="bg-background/50" value={supportLocation} onChange={(e) => setSupportLocation(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Support Number</label>
+                    <Input placeholder="e.g. (518) 555-0100" className="bg-background/50" value={supportNumber} onChange={(e) => setSupportNumber(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-sm flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Identity Palette</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {NICHE_PALETTES.map((palette) => (
+                    <button
+                      key={palette.value}
+                      onClick={() => setNichePalette(palette.value)}
+                      className={`p-3 rounded-lg border text-left transition-all ${nichePalette === palette.value ? "border-primary bg-primary/10" : "border-border/30 bg-muted/20 hover:bg-muted/40"}`}
+                    >
+                      <p className="text-sm font-medium">{palette.label}</p>
+                      <p className="text-xs text-muted-foreground">{palette.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {departmentMappings.length > 0 ? (
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-sm">Department Mapping</h3>
+                  <p className="text-xs text-muted-foreground">Detected sections from the imported theme. Map them before generating the preview.</p>
+                  {departmentMappings.map((mapping, index) => (
+                    <div key={index} className="flex items-center gap-3">
+                      <span className="text-sm flex-1 truncate">{mapping.name}</span>
+                      <Input
+                        className="max-w-[180px] bg-muted/50"
+                        value={mapping.department}
+                        onChange={(e) => {
+                          const updated = [...departmentMappings];
+                          updated[index].department = e.target.value;
+                          setDepartmentMappings(updated);
+                        }}
+                        placeholder="Department"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {!identityReady ? (
+                <p className="text-xs text-muted-foreground">
+                  Fill legal entity, state, support location, and support number to enable preview and push.
+                </p>
+              ) : null}
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setStep(2)}>
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Back
+                </Button>
+                <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={handleGeneratePreview}>
+                  {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Theme Rewrites</>}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Eye className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg">Preview Changes</h2>
+                  <p className="text-sm text-muted-foreground">Review the generated rewrites before proceeding.</p>
+                </div>
+                <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
+              </div>
+
+              <div className="space-y-3">
+                {fileApprovals.map((file, index) => (
+                  <div key={file.key} className={`rounded-lg border transition-all ${file.approved ? "border-green-500/30 bg-green-500/5" : "border-border/20 bg-muted/10 opacity-60"}`}>
+                    <div className="flex items-center gap-3 p-4">
+                      <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
+                      <code className="text-sm font-mono flex-1">{file.key}</code>
+                      <Button variant="ghost" size="sm" onClick={() => toggleFileExpanded(index)}>
+                        {file.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        <span className="ml-1 text-xs">{file.expanded ? "Hide" : "Diff"}</span>
+                      </Button>
+                    </div>
+
+                    {file.expanded ? (
+                      <div className="border-t border-border/20">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/20">
+                          <div className="p-3">
+                            <p className="text-xs font-semibold text-destructive mb-2">BEFORE</p>
+                            <pre className="text-xs bg-destructive/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-muted-foreground">
+                              {file.original ? truncateCode(file.original, 3000) : "(file not previously loaded)"}
+                            </pre>
+                          </div>
+                          <div className="p-3">
+                            <p className="text-xs font-semibold text-green-500 mb-2">AFTER</p>
+                            <pre className="text-xs bg-green-500/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-foreground">
+                              {truncateCode(file.rewritten, 3000)}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+
+                {fileApprovals.length === 0 ? (
+                  <div className="rounded-lg border border-border/30 bg-muted/10 p-6 text-sm text-muted-foreground">
+                    No rewrites generated yet. Run "Generate Theme Rewrites" to preview changes.
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={() => setStep(2)}>
+              Back to Policy Verification
+            </Button>
+            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(4)}>
+              Continue to Subdomain Separation
             </Button>
           </div>
         </>
@@ -480,259 +710,173 @@ export default function Templanator() {
     </motion.div>
   );
 
-  const renderStep3 = () => (
-    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
-      <Card className="bg-card/50 border-border/30">
-        <CardContent className="p-6 space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-              <Shield className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Step 3: Identity & Niche Configuration</h2>
-              <p className="text-sm text-muted-foreground">Feed the identity layer that will be stamped into footer anchors and support copy.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4 p-4 rounded-lg border border-primary/20 bg-primary/5">
-              <h3 className="font-semibold text-sm flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Legal Anchors</h3>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Legal Entity Name</label>
-                <Input placeholder="e.g. Go Hard Gaming Discord" className="bg-background/50" value={legalEntityName} onChange={(e) => setLegalEntityName(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">State of Incorporation</label>
-                <Input placeholder="e.g. WY" className="bg-background/50" value={stateOfIncorporation} onChange={(e) => setStateOfIncorporation(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="space-y-4 p-4 rounded-lg border border-accent/20 bg-accent/5">
-              <h3 className="font-semibold text-sm flex items-center gap-2"><Zap className="h-4 w-4 text-accent" /> Support Silo</h3>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Support Location</label>
-                <Input placeholder="e.g. Saratoga County, NY" className="bg-background/50" value={supportLocation} onChange={(e) => setSupportLocation(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Support Number</label>
-                <Input placeholder="e.g. (518) 555-0100" className="bg-background/50" value={supportNumber} onChange={(e) => setSupportNumber(e.target.value)} />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4 p-4 rounded-lg border border-border/30 bg-muted/10">
-            <h3 className="font-semibold text-sm flex items-center gap-2"><Workflow className="h-4 w-4" /> Domain & Pillar Configuration</h3>
-            <div className="space-y-2">
-              <label className="text-xs font-medium">Base Domain for Subdomains</label>
-              <Input placeholder="e.g. ourphoenixrise.com" className="bg-background/50" value={baseDomain} onChange={(e) => setBaseDomain(e.target.value)} />
-            </div>
-            {scanResult?.collectionPillars && scanResult.collectionPillars.length > 0 ? (
-              <div className="space-y-2 mt-4">
-                <p className="text-xs font-medium">Detected Pillar Opportunities:</p>
-                {scanResult.collectionPillars.map((pillar) => (
-                  <div key={pillar.handle} className="rounded-md bg-muted/20 p-2 text-xs flex justify-between items-center">
-                    <span>{pillar.title} ({pillar.productsCount} items)</span>
-                    <code className="text-muted-foreground">
-                      {baseDomain.trim() ? `${pillar.handle}.${baseDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")}` : "Needs base domain"}
-                    </code>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Identity Palette</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {NICHE_PALETTES.map((palette) => (
-                <button
-                  key={palette.value}
-                  onClick={() => setNichePalette(palette.value)}
-                  className={`p-3 rounded-lg border text-left transition-all ${nichePalette === palette.value ? "border-primary bg-primary/10" : "border-border/30 bg-muted/20 hover:bg-muted/40"}`}
-                >
-                  <p className="text-sm font-medium">{palette.label}</p>
-                  <p className="text-xs text-muted-foreground">{palette.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {departmentMappings.length > 0 ? (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-sm">Department Mapping</h3>
-              <p className="text-xs text-muted-foreground">Detected sections from the imported theme. Map them before generating the preview.</p>
-              {departmentMappings.map((mapping, index) => (
-                <div key={index} className="flex items-center gap-3">
-                  <span className="text-sm flex-1 truncate">{mapping.name}</span>
-                  <Input
-                    className="max-w-[180px] bg-muted/50"
-                    value={mapping.department}
-                    onChange={(e) => {
-                      const updated = [...departmentMappings];
-                      updated[index].department = e.target.value;
-                      setDepartmentMappings(updated);
-                    }}
-                    placeholder="Department"
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {!identityReady ? (
-            <p className="text-xs text-muted-foreground">
-              Fill legal entity, state, support location, and support number to enable preview and push.
-            </p>
-          ) : null}
-
-          <div className="flex gap-3 pt-4">
-            <Button variant="outline" onClick={() => setStep(2)}>
-              <ArrowLeft className="h-4 w-4 mr-2" /> Back
-            </Button>
-            <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={handleGeneratePreview}>
-              {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Theme Rewrites</>}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-
   const renderStep4 = () => (
     <motion.div key="step4" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
-      <Card className="bg-card/50 border-border/30">
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-              <Eye className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Step 4: Review Changes</h2>
-              <p className="text-sm text-muted-foreground">Approve or reject each generated file before it is pushed.</p>
-            </div>
-            <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
-          </div>
-
-          <div className="space-y-3">
-            {fileApprovals.map((file, index) => (
-              <div key={file.key} className={`rounded-lg border transition-all ${file.approved ? "border-green-500/30 bg-green-500/5" : "border-border/20 bg-muted/10 opacity-60"}`}>
-                <div className="flex items-center gap-3 p-4">
-                  <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
-                  <code className="text-sm font-mono flex-1">{file.key}</code>
-                  <Button variant="ghost" size="sm" onClick={() => toggleFileExpanded(index)}>
-                    {file.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    <span className="ml-1 text-xs">{file.expanded ? "Hide" : "Diff"}</span>
-                  </Button>
+      {scanResult ? (
+        <>
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-6 space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Workflow className="h-5 w-5 text-primary" />
                 </div>
+                <div>
+                  <h2 className="font-bold text-lg">Step 4: Subdomain & Content Separation</h2>
+                  <p className="text-sm text-muted-foreground">Define your base domain and review pillar separation for content routing.</p>
+                </div>
+              </div>
 
-                {file.expanded ? (
-                  <div className="border-t border-border/20">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/20">
-                      <div className="p-3">
-                        <p className="text-xs font-semibold text-destructive mb-2">BEFORE</p>
-                        <pre className="text-xs bg-destructive/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-muted-foreground">
-                          {file.original ? truncateCode(file.original, 3000) : "(file not previously loaded)"}
-                        </pre>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Base Domain for Subdomains</label>
+                <Input
+                  placeholder="e.g. ourphoenixrise.com"
+                  className="bg-background/50"
+                  value={baseDomain}
+                  onChange={(e) => setBaseDomain(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Subdomain suggestions will not run until this is filled.</p>
+              </div>
+
+              {scanResult.collectionPillars.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium">Detected Pillar Opportunities</p>
+                  {scanResult.collectionPillars.map((pillar) => (
+                    <div key={pillar.handle} className="rounded-md bg-muted/20 p-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{pillar.title}</span>
+                        <Badge variant="secondary">{pillar.productsCount} products</Badge>
                       </div>
-                      <div className="p-3">
-                        <p className="text-xs font-semibold text-green-500 mb-2">AFTER</p>
-                        <pre className="text-xs bg-green-500/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-foreground">
-                          {truncateCode(file.rewritten, 3000)}
-                        </pre>
-                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {baseDomain.trim()
+                          ? `${pillar.handle}.${baseDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")}`
+                          : "Enter a base domain to compute subdomains."}
+                      </p>
                     </div>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No collection weights were returned from Shopify, so pillar suggestions are not ready yet.</p>
+              )}
+            </CardContent>
+          </Card>
 
-            {fileApprovals.length === 0 ? (
-              <div className="rounded-lg border border-border/30 bg-muted/10 p-6 text-sm text-muted-foreground">
-                No safe rewrites were necessary from this scan.
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 justify-between">
             <Button variant="outline" onClick={() => setStep(3)}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Back
             </Button>
-            <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={pushing || approvedCount === 0} onClick={handlePushApproved}>
-              {pushing ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Pushing to Shopify...</> : <><Send className="h-5 w-5 mr-2" /> Push {approvedCount} File{approvedCount !== 1 ? "s" : ""} to Store</>}
+            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(5)}>
+              Continue to Push
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </>
+      ) : null}
     </motion.div>
   );
 
   const renderStep5 = () => (
     <motion.div key="step5" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
-      <Card className="bg-card/50 border-border/30">
-        <CardContent className="p-6 space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-lg gradient-phoenix flex items-center justify-center">
-              <CheckCircle2 className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h2 className="font-bold text-xl">Theme Updated</h2>
-              <p className="text-sm text-muted-foreground">Approved Automated Architect changes have been pushed to Shopify.</p>
-            </div>
-          </div>
-
-          {pushResult ? (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
-                  <p className="text-2xl font-bold text-green-500">{pushResult.totalModified}</p>
-                  <p className="text-xs text-muted-foreground">Files Pushed</p>
-                </div>
-                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-center">
-                  <p className="text-2xl font-bold text-destructive">{pushResult.errors?.length || 0}</p>
-                  <p className="text-xs text-muted-foreground">Errors</p>
-                </div>
+      {!pushResult ? (
+        <Card className="bg-card/50 border-border/30">
+          <CardContent className="p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                <Send className="h-5 w-5 text-primary" />
               </div>
+              <div>
+                <h2 className="font-bold text-lg">Step 5: Push to Store</h2>
+                <p className="text-sm text-muted-foreground">Push the approved rewrites to Shopify.</p>
+              </div>
+            </div>
 
-              {pushResult.appliedFiles?.length ? (
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-sm">Applied Files</h3>
-                  {pushResult.appliedFiles.map((file) => (
-                    <div key={file} className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-green-500" />
-                      <code className="text-xs bg-muted/50 px-2 py-0.5 rounded">{file}</code>
-                    </div>
+            <div className="rounded-lg bg-muted/20 p-4 text-sm">
+              <p className="font-medium">Approved files: {approvedCount}/{fileApprovals.length}</p>
+              {approvedCount > 0 ? (
+                <div className="mt-2 space-y-1">
+                  {fileApprovals.filter((file) => file.approved).map((file) => (
+                    <div key={file.key} className="text-xs text-muted-foreground">{file.key}</div>
                   ))}
                 </div>
-              ) : null}
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">No files approved yet. Go back to Theme Fixes to approve changes.</p>
+              )}
+            </div>
 
-              {pushResult.errors?.length ? (
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-sm text-destructive">Errors</h3>
-                  {pushResult.errors.map((error, index) => (
-                    <p key={index} className="text-xs text-destructive/80">{error}</p>
-                  ))}
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setStep(4)}>
+                <ArrowLeft className="h-4 w-4 mr-2" /> Back
+              </Button>
+              <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={pushing || approvedCount === 0} onClick={handlePushApproved}>
+                {pushing ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Pushing to Shopify...</> : <><Send className="h-5 w-5 mr-2" /> Push Approved Files</>}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-card/50 border-border/30">
+          <CardContent className="p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-lg gradient-phoenix flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <div>
+                <h2 className="font-bold text-xl">Theme Updated</h2>
+                <p className="text-sm text-muted-foreground">Approved Automated Architect changes have been pushed to Shopify.</p>
+              </div>
+            </div>
+
+            {pushResult ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
+                    <p className="text-2xl font-bold text-green-500">{pushResult.totalModified}</p>
+                    <p className="text-xs text-muted-foreground">Files Pushed</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-center">
+                    <p className="text-2xl font-bold text-destructive">{pushResult.errors?.length || 0}</p>
+                    <p className="text-xs text-muted-foreground">Errors</p>
+                  </div>
                 </div>
-              ) : null}
-            </>
-          ) : null}
 
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              setStep(1);
-              setScanResult(null);
-              setFileApprovals([]);
-              setPushResult(null);
-            }}
-          >
-            <Flame className="h-4 w-4 mr-2" /> Start New Session
-          </Button>
-        </CardContent>
-      </Card>
+                {pushResult.appliedFiles?.length ? (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-sm">Applied Files</h3>
+                    {pushResult.appliedFiles.map((file) => (
+                      <div key={file} className="flex items-center gap-2 text-sm">
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <code className="text-xs bg-muted/50 px-2 py-0.5 rounded">{file}</code>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {pushResult.errors?.length ? (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-sm text-destructive">Errors</h3>
+                    {pushResult.errors.map((error, index) => (
+                      <p key={index} className="text-xs text-destructive/80">{error}</p>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setStep(1);
+                setScanResult(null);
+                setFileApprovals([]);
+                setPushResult(null);
+              }}
+            >
+              <Flame className="h-4 w-4 mr-2" /> Start New Session
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </motion.div>
   );
-
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -847,6 +991,10 @@ function StatBox({ label, value, sub }: { label: string; value: number; sub?: st
     </div>
   );
 }
+
+
+
+
 
 
 
