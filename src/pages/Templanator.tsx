@@ -140,8 +140,9 @@ const NICHE_PALETTES = [
 const STEPS = [
   { num: 1, label: "Theme Handshake" },
   { num: 2, label: "Architect Scan" },
-  { num: 3, label: "Preview Changes" },
-  { num: 4, label: "Push to Store" },
+  { num: 3, label: "Identity & Niche" },
+  { num: 4, label: "Preview Changes" },
+  { num: 5, label: "Push to Store" },
 ];
 
 export default function Templanator() {
@@ -269,7 +270,7 @@ export default function Templanator() {
 
       setPushResult(null);
       setFileApprovals(approvals);
-      setStep(3);
+      setStep(4);
       toast({ title: "Preview ready", description: `${approvals.length} files staged for review.` });
     } catch (err: unknown) {
       toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
@@ -327,7 +328,7 @@ export default function Templanator() {
       if (error) throw error;
 
       setPushResult(result as PushResult);
-      setStep(4);
+      setStep(5);
       toast({ title: "Theme updated", description: `${result.totalModified} files pushed to Shopify.` });
     } catch (err: unknown) {
       toast({ title: "Push failed", description: getErrorMessage(err), variant: "destructive" });
@@ -403,6 +404,7 @@ export default function Templanator() {
                 <h3 className="font-semibold">Architect Findings</h3>
                 <Badge variant="secondary" className="ml-auto">{scanResult.themeName}</Badge>
               </div>
+
               <div className="space-y-2">
                 {scanResult.scanIssues.map((issue, index) => (
                   <div key={index} className="flex items-start gap-2 text-sm">
@@ -410,19 +412,21 @@ export default function Templanator() {
                     <span className="text-muted-foreground">{issue}</span>
                   </div>
                 ))}
-                {scanResult.scanIssues.length === 0 ? <p className="text-sm text-muted-foreground">Theme looks stable. Only opportunistic upgrades remain.</p> : null}
               </div>
+
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">Want the plain-English breakdown of what to fix first?</p>
                 <Button size="sm" variant="outline" onClick={handleExplainFindings} disabled={assistantLoading}>
                   {assistantLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Explaining...</> : <><Bot className="mr-2 h-4 w-4" /> Explain Findings</>}
                 </Button>
               </div>
+
               {assistantAnswer ? (
                 <div className="whitespace-pre-wrap rounded-lg bg-muted/20 p-4 text-sm text-foreground">
                   {assistantAnswer}
                 </div>
               ) : null}
+
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
                 <StatBox label="Images" value={scanResult.stats.totalImages} sub={`${scanResult.stats.belowFoldImagesMissingLazy} below-fold missing lazy`} />
                 <StatBox label="Hard Colors" value={scanResult.stats.hardcodedColors} />
@@ -433,84 +437,51 @@ export default function Templanator() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-2">
             <ArchitectPanel icon={Gauge} title="Speed Layer" subtitle="LCP and lazy-loading audit">
               {scanResult.lcpCandidate ? (
                 <>
                   <p className="text-sm"><span className="font-medium">LCP asset:</span> <span className="text-muted-foreground break-all">{scanResult.lcpCandidate.assetKey}</span></p>
                   <p className="text-sm"><span className="font-medium">Priority:</span> <StatusText ok={scanResult.lcpCandidate.hasFetchPriorityHigh} okLabel="fetchpriority=high present" badLabel="needs fetchpriority=high" /></p>
                   <p className="text-sm"><span className="font-medium">Loading:</span> <StatusText ok={scanResult.lcpCandidate.loadingMode === "eager"} okLabel="loading=eager present" badLabel={`currently ${scanResult.lcpCandidate.loadingMode}`} /></p>
-                  <p className="text-sm"><span className="font-medium">Preload:</span> <StatusText ok={scanResult.lcpCandidate.preloadDetected} okLabel="head preload found" badLabel="preload missing" /></p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">No strong above-the-fold image candidate found in the imported homepage sections.</p>
+                <p className="text-sm text-muted-foreground">No strong above-the-fold image candidate found.</p>
               )}
-              <p className="text-sm"><span className="font-medium">Below fold:</span> <span className="text-muted-foreground">{scanResult.stats.belowFoldImagesMissingLazy} images still need `loading="lazy"`.</span></p>
             </ArchitectPanel>
 
-            <ArchitectPanel icon={Shield} title="Wyoming Layer" subtitle="Identity, policy, and support verification">
-              <p className="text-sm"><span className="font-medium">Legal anchor:</span> <span className="text-muted-foreground">{legalEntityName || "Pending"} | {stateOfIncorporation || "WY"}</span></p>
-              <p className="text-sm"><span className="font-medium">Support silo:</span> <StatusText ok={scanResult.supportSiloStatus?.matchesLocation ?? true} okLabel="location matches active store" badLabel={`expected ${scanResult.supportSiloStatus?.expectedStoreMarker || "store-specific"} support copy`} /></p>
-              <div className="space-y-2 pt-1">
-                {scanResult.policyLinks.map((link) => (
-                  <div key={link.label} className="rounded-md bg-muted/20 p-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-medium">{link.label}</span>
-                      <Badge variant={link.status === "ok" ? "secondary" : "destructive"}>{link.status === "ok" ? "ready" : link.status === "missing" ? "missing" : "normalize"}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Target: {link.targetPath}</p>
+            {scanResult.crossStoreLinks.length > 0 ? (
+              <Card className="bg-card/50 border-border/30">
+                <CardContent className="p-6 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Globe className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold">Cross-Store Leak Watch</h3>
                   </div>
-                ))}
-              </div>
-            </ArchitectPanel>
-
-            <ArchitectPanel icon={Workflow} title="Pillar Layer" subtitle="Collection weights and subdomain prep">
-              {scanResult.collectionPillars.length > 0 ? (
-                <div className="space-y-2">
-                  {scanResult.collectionPillars.map((pillar) => (
-                    <div key={pillar.handle} className="rounded-md bg-muted/20 p-2 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium">{pillar.title}</span>
-                        <Badge variant="secondary">{pillar.productsCount} products</Badge>
+                  <div className="space-y-2">
+                    {scanResult.crossStoreLinks.slice(0, 3).map((link) => (
+                      <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
+                        <p className="font-medium">{link.domain}</p>
+                        <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {baseDomain.trim()
-                          ? `${pillar.handle}.${baseDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")}`
-                          : "Enter a base domain to compute subdomains."}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No collection weights were returned from Shopify, so pillar suggestions are not ready yet.</p>
-              )}
-              {baseDomain.trim() ? (
-                <p className="text-xs text-muted-foreground">CNAME target for Shopify: `shops.myshopify.com`.</p>
-              ) : null}
-            </ArchitectPanel>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
 
-          {scanResult.crossStoreLinks.length > 0 ? (
-            <Card className="bg-card/50 border-border/30">
-              <CardContent className="p-6 space-y-3">
-                <div className="flex items-center gap-3">
-                  <Globe className="h-5 w-5 text-primary" />
-                  <h3 className="font-semibold">Cross-Store Leak Watch</h3>
-                </div>
-                <div className="space-y-2">
-                  {scanResult.crossStoreLinks.slice(0, 5).map((link) => (
-                    <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-3 text-sm">
-                      <p className="font-medium">{link.domain}</p>
-                      <p className="text-xs text-muted-foreground break-all">{link.assetKey}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
+          <div className="flex gap-3 justify-end mt-6">
+            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(3)}>
+              Configure Fixes & Domains ->
+            </Button>
+          </div>
         </>
       ) : null}
+    </motion.div>
+  );
 
+  const renderStep3 = () => (
+    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
       <Card className="bg-card/50 border-border/30">
         <CardContent className="p-6 space-y-6">
           <div className="flex items-center gap-3">
@@ -518,7 +489,7 @@ export default function Templanator() {
               <Shield className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-bold text-lg">Step 2: Configure the Rewrite</h2>
+              <h2 className="font-bold text-lg">Step 3: Identity & Niche Configuration</h2>
               <p className="text-sm text-muted-foreground">Feed the identity layer that will be stamped into footer anchors and support copy.</p>
             </div>
           </div>
@@ -528,7 +499,7 @@ export default function Templanator() {
               <h3 className="font-semibold text-sm flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Legal Anchors</h3>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">Legal Entity Name</label>
-                <Input placeholder="e.g. Iron Phoenix Flow LLC" className="bg-background/50" value={legalEntityName} onChange={(e) => setLegalEntityName(e.target.value)} />
+                <Input placeholder="e.g. Go Hard Gaming Discord" className="bg-background/50" value={legalEntityName} onChange={(e) => setLegalEntityName(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">State of Incorporation</label>
@@ -549,21 +520,26 @@ export default function Templanator() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-medium">Base Domain for Subdomains</label>
-            <Input
-              placeholder="e.g. ourphoenixrise.com"
-              className="bg-background/50"
-              value={baseDomain}
-              onChange={(e) => setBaseDomain(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">Subdomain suggestions will not run until this is filled.</p>
+          <div className="space-y-4 p-4 rounded-lg border border-border/30 bg-muted/10">
+            <h3 className="font-semibold text-sm flex items-center gap-2"><Workflow className="h-4 w-4" /> Domain & Pillar Configuration</h3>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Base Domain for Subdomains</label>
+              <Input placeholder="e.g. ourphoenixrise.com" className="bg-background/50" value={baseDomain} onChange={(e) => setBaseDomain(e.target.value)} />
+            </div>
+            {scanResult?.collectionPillars && scanResult.collectionPillars.length > 0 ? (
+              <div className="space-y-2 mt-4">
+                <p className="text-xs font-medium">Detected Pillar Opportunities:</p>
+                {scanResult.collectionPillars.map((pillar) => (
+                  <div key={pillar.handle} className="rounded-md bg-muted/20 p-2 text-xs flex justify-between items-center">
+                    <span>{pillar.title} ({pillar.productsCount} items)</span>
+                    <code className="text-muted-foreground">
+                      {baseDomain.trim() ? `${pillar.handle}.${baseDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")}` : "Needs base domain"}
+                    </code>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
-          {!identityReady ? (
-            <p className="text-xs text-muted-foreground">
-              Fill legal entity, state, support location, and support number to enable preview and push.
-            </p>
-          ) : null}
 
           <div className="space-y-3">
             <h3 className="font-semibold text-sm flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Identity Palette</h3>
@@ -603,23 +579,27 @@ export default function Templanator() {
             </div>
           ) : null}
 
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep(1)}>
+          {!identityReady ? (
+            <p className="text-xs text-muted-foreground">
+              Fill legal entity, state, support location, and support number to enable preview and push.
+            </p>
+          ) : null}
+
+          <div className="flex gap-3 pt-4">
+            <Button variant="outline" onClick={() => setStep(2)}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Back
             </Button>
             <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={handleGeneratePreview}>
-              {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Preview</>}
+              {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Theme Rewrites</>}
             </Button>
           </div>
-
-          <p className="text-xs text-muted-foreground text-center">Policy content is not authored here. This flow only normalizes the footer anchors and legal/support presentation.</p>
         </CardContent>
       </Card>
     </motion.div>
   );
 
-  const renderStep3 = () => (
-    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
+  const renderStep4 = () => (
+    <motion.div key="step4" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
       <Card className="bg-card/50 border-border/30">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center gap-3">
@@ -627,7 +607,7 @@ export default function Templanator() {
               <Eye className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-bold text-lg">Step 3: Review Changes</h2>
+              <h2 className="font-bold text-lg">Step 4: Review Changes</h2>
               <p className="text-sm text-muted-foreground">Approve or reject each generated file before it is pushed.</p>
             </div>
             <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
@@ -674,7 +654,7 @@ export default function Templanator() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button variant="outline" onClick={() => setStep(2)}>
+            <Button variant="outline" onClick={() => setStep(3)}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Back
             </Button>
             <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={pushing || approvedCount === 0} onClick={handlePushApproved}>
@@ -686,8 +666,8 @@ export default function Templanator() {
     </motion.div>
   );
 
-  const renderStep4 = () => (
-    <motion.div key="step4" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
+  const renderStep5 = () => (
+    <motion.div key="step5" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
       <Card className="bg-card/50 border-border/30">
         <CardContent className="p-6 space-y-6">
           <div className="flex items-center gap-3">
@@ -780,6 +760,7 @@ export default function Templanator() {
         {step === 2 ? renderStep2() : null}
         {step === 3 ? renderStep3() : null}
         {step === 4 ? renderStep4() : null}
+        {step === 5 ? renderStep5() : null}
       </AnimatePresence>
     </div>
   );
@@ -866,3 +847,7 @@ function StatBox({ label, value, sub }: { label: string; value: number; sub?: st
     </div>
   );
 }
+
+
+
+
