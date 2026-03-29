@@ -36,10 +36,10 @@ serve(async (req) => {
     const systemPrompt = `You are an expert Etsy SEO optimizer. Given a listing's current title, description, tags, and materials, produce optimized versions that improve search ranking and conversion.
 
 Rules:
-- Etsy titles: max 140 characters, but prioritize the first few words because shoppers see those first in search
-- Make the title easy to scan and clearly name the item for sale
-- Include the most important traits early, such as color, material, size, recipient, or occasion, only when they are truly relevant
-- Try to keep titles concise and readable instead of cramming in every keyword variation
+- Etsy titles: max 140 characters, but aim for under 15 words when possible; shoppers only see the first 50-60 characters in search
+- Make the title easy to scan and clearly name the item for sale in the first few words
+- Include the most important traits early, such as color, material, and size, only when truly relevant
+- Keep titles concise and readable instead of cramming every keyword variation
 - Tags: exactly 13 tags, each max 20 characters
 - Prefer multi-word tags made of 2-4 natural words when possible
 - Tags should sound like real search phrases a buyer could type into Etsy or Google
@@ -48,7 +48,7 @@ Rules:
 - Do not create near-duplicate tags that only swap word order or singular/plural form
 - It is acceptable for multiple tags to share a core noun if each phrase targets a distinct long-tail search intent
 - Do not waste tags by repeating words already heavily covered in the title unless the phrase becomes a stronger long-tail search term
-- Description: short, informative, and engaging
+- Description: informative and engaging, with a strong first sentence that clearly states what the item is
 - Put essential details near the top, such as size, dimensions, color, ordering notes, or customization details
 - Work relevant keywords naturally into the first few sentences without copying the title verbatim
 - Use short paragraphs or bullet-style formatting when it improves readability

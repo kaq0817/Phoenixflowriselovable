@@ -156,6 +156,39 @@ function trimPhraseToLength(value: string, maxLength: number): string {
   return (next || value.slice(0, maxLength)).trim();
 }
 
+function trimToWordCount(value: string, maxWords: number): string {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return value;
+  return words.slice(0, maxWords).join(" ").trim();
+}
+
+function firstSentence(value: string): string {
+  const match = value.match(/^(.*?)([.!?]\s|$)/);
+  return (match ? match[1] : value).trim();
+}
+
+function extractTitleKeywords(title: string): string[] {
+  return sanitizePlainText(title)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+    .slice(0, 6);
+}
+
+function ensureEtsyDescriptionLead(title: string, description: string): { description: string; addedLead: boolean } {
+  const keywords = extractTitleKeywords(title);
+  if (keywords.length === 0) {
+    return { description, addedLead: false };
+  }
+
+  const lead = firstSentence(description).toLowerCase();
+  const hasKeyword = keywords.some((keyword) => lead.includes(keyword));
+  if (hasKeyword) return { description, addedLead: false };
+
+  const prefixed = `${title}. ${description}`.trim();
+  return { description: prefixed, addedLead: true };
+}
+
 function dedupeBySignature(values: string[], maxLength: number): string[] {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -309,11 +342,16 @@ function appendValidationNotes(reasoning: string | undefined, notes: string[]): 
 export function normalizeEtsySuggestions(listing: EtsyListingLike, raw: EtsySuggestionShape): EtsySuggestionShape {
   const notes: string[] = [];
   const sourceTitle = sanitizePlainText(listing.title || "", 140);
-  const title = sanitizePlainText(raw.title || sourceTitle, 140) || sourceTitle;
-  if ((raw.title || "") !== title) notes.push("title normalized to Etsy-safe length and ASCII");
+  const rawTitle = sanitizePlainText(raw.title || sourceTitle, 140) || sourceTitle;
+  const trimmedTitle = trimToWordCount(rawTitle, 15);
+  const title = sanitizePlainText(trimmedTitle, 140) || sourceTitle;
+  if (rawTitle !== title) notes.push("title trimmed to under 15 words and Etsy-safe length");
 
-  const description = sanitizePlainText(raw.description || listing.description || buildDefaultEtsyDescription(listing), 900);
+  const baseDescription = sanitizePlainText(raw.description || listing.description || buildDefaultEtsyDescription(listing), 900);
+  const leadCheck = ensureEtsyDescriptionLead(title, baseDescription);
+  const description = sanitizePlainText(leadCheck.description, 900);
   if (!raw.description) notes.push("description filled from existing listing context");
+  if (leadCheck.addedLead) notes.push("first sentence now clearly states the item");
 
   let tags = dedupeBySignature([...(Array.isArray(raw.tags) ? raw.tags : []), ...buildEtsyFallbackTags(listing)], 20).slice(0, 13);
   if (tags.length < 13) {
