@@ -86,16 +86,50 @@ function isApparelProduct(product: ShopifyProduct): boolean {
   return ["shirt", "tee", "hoodie", "sweatshirt", "sweater", "jacket", "dress", "pants", "leggings", "shorts", "top", "tank", "skirt", "apparel", "clothing", "beanie", "hat", "cap", "jersey"].some((term) => haystack.includes(term));
 }
 
+const APPAREL_COLORS = [
+  "black", "white", "red", "blue", "green", "yellow", "orange", "purple", "pink", "brown", "tan", "beige",
+  "gold", "silver", "gray", "grey", "navy", "teal", "maroon", "burgundy", "olive", "cream", "ivory", "khaki",
+  "charcoal", "lavender", "mint", "coral", "turquoise", "bronze", "rose gold",
+];
+
+const APPAREL_SIZES = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl", "4xl", "5xl"];
+
+function titleHasApparelColor(title: string): boolean {
+  const normalized = title.toLowerCase();
+  return APPAREL_COLORS.some((color) => normalized.includes(color));
+}
+
+function titleHasApparelSize(title: string): boolean {
+  const normalized = title.toLowerCase();
+  const rangeMatch = normalized.match(/\b((?:xxs|xs|s|m|l|xl|xxl|xxxl|4xl|5xl|\d+))\s*-\s*((?:xxs|xs|s|m|l|xl|xxl|xxxl|4xl|5xl|\d+))\b/);
+  if (rangeMatch) return true;
+  for (const size of APPAREL_SIZES) {
+    const pattern = new RegExp(`(^|[^a-z0-9])${size}([^a-z0-9]|$)`, "i");
+    if (pattern.test(normalized)) return true;
+  }
+  return /\b\d{1,3}\b/.test(normalized);
+}
+
 function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const issues: string[] = [];
   const suggestions: string[] = [];
   let points = 0;
-  const maxPoints = 8;
+  const maxPoints = 7;
   const title = p.title?.trim() || "";
   const hasTitle = title.length > 0;
   const titleLength = title.length >= 10 && title.length <= 70;
   if (hasTitle) points++; else issues.push("Missing product title");
   if (titleLength) points++; else if (hasTitle) { issues.push(`Title ${title.length < 10 ? "too short" : "too long"} (${title.length} chars)`); suggestions.push("Aim for 10-70 chars with key attributes"); }
+  if (hasTitle && isApparelProduct(p)) {
+    const hasColor = titleHasApparelColor(title);
+    const hasSize = titleHasApparelSize(title);
+    if (!hasColor || !hasSize) {
+      issues.push("Apparel titles must include the real color and size/size range to avoid misrepresentation.");
+      suggestions.push("Add the actual color and size/size range to the title (e.g., Brand Product Black M-XL).");
+      // Penalize if apparel title is missing required attributes.
+      if (titleLength) points = Math.max(0, points - 1);
+    }
+  }
   const hasImages = (p.images?.length || 0) > 0;
   const altText = hasImages && p.images.some((img) => img.alt && img.alt.trim().length > 0);
   if (altText) points++; else if (hasImages) { issues.push("Images missing alt text"); suggestions.push("Add descriptive alt text"); }
@@ -105,10 +139,10 @@ function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const descLength = desc.length >= 50;
   if (hasDesc) points++; else issues.push("Missing description");
   if (descLength) points++; else if (hasDesc) { issues.push(`Description too short (${desc.length} chars)`); suggestions.push("Expand with benefits, materials, sizing"); }
-  const hasTags = (p.tags?.trim()?.length || 0) > 0;
-  if (hasTags) points++; else { issues.push("No tags"); suggestions.push("Add relevant tags"); }
   const hasVariants = (p.variants?.length || 0) > 1;
   if (hasVariants) points++; else suggestions.push("Consider adding variants");
+  const hasTags = (p.tags?.trim()?.length || 0) > 0;
+  if (!hasTags) suggestions.push("Add product tags for internal collections and filters (not primary SEO).");
   const total = Math.round((points / maxPoints) * 100);
   return { total, title: hasTitle, titleLength, altText, description: hasDesc, descriptionLength: descLength, tags: hasTags, variants: hasVariants, images: hasImages, issues, suggestions };
 }

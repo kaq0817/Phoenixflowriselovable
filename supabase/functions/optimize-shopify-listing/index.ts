@@ -20,12 +20,48 @@ interface GeminiFunctionCallPart {
   };
 }
 
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestionShape {
+  const title = product.title || "Product";
+  const cleanBody = stripHtml(product.body_html || "");
+  const seoDescription = cleanBody
+    ? cleanBody.slice(0, 300)
+    : `${title} is ready for a quick Shopify SEO pass.`;
+
+  const tagParts = [
+    product.product_type,
+    ...String(product.title || "")
+      .split(/[-,|/]/)
+      .map((part) => part.trim()),
+  ]
+    .filter(Boolean)
+    .map((part) => String(part));
+
+  const tags = Array.from(new Set(tagParts)).slice(0, 12).join(", ");
+
+  return {
+    title,
+    body_html: product.body_html || `<p>${title} is ready for a clearer, buyer-friendly description.</p>`,
+    seo_title: title,
+    seo_description: seoDescription,
+    product_type: product.product_type || "",
+    tags,
+    variant_suggestions: "",
+    reasoning: "AI optimization service was unavailable. Generated a baseline, rules-safe optimization so you can still apply a fix.",
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
+    if (!GEMINI_API_KEY) {
+      console.warn("Gemini API key not configured. Falling back to baseline optimization.");
+    }
 
     const { product } = await req.json() as { product?: ShopifyProductLike };
     if (!product) {
@@ -81,68 +117,73 @@ ${variantInfo || "No variants"}
 Current SEO Title: ${product.metafields_global_title_tag || product.title || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": GEMINI_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] },
-          ],
-          tools: [
-            {
-              functionDeclarations: [
+    let suggestions: ShopifySuggestionShape | null = null;
+
+    if (GEMINI_API_KEY) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": GEMINI_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [
+                { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] },
+              ],
+              tools: [
                 {
-                  name: "suggest_shopify_optimizations",
-                  description: "Return optimized Shopify product fields",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      title: { type: "string", description: "Optimized product title (max 70 chars, no keyword stuffing)" },
-                      body_html: { type: "string", description: "Optimized HTML body description with bullet points and benefits" },
-                      seo_title: { type: "string", description: "SEO meta title (max 70 chars)" },
-                      seo_description: { type: "string", description: "SEO meta description (max 320 chars)" },
-                      product_type: { type: "string", description: "Optimized product type/category" },
-                      tags: { type: "string", description: "Comma-separated optimized tags with clear, non-duplicated phrasing" },
-                      variant_suggestions: { type: "string", description: "Suggestions for variant naming (Color/Size/Gender conventions)" },
-                      reasoning: { type: "string", description: "Brief explanation of changes made" },
+                  functionDeclarations: [
+                    {
+                      name: "suggest_shopify_optimizations",
+                      description: "Return optimized Shopify product fields",
+                      parameters: {
+                        type: "object",
+                        properties: {
+                          title: { type: "string", description: "Optimized product title (max 70 chars, no keyword stuffing)" },
+                          body_html: { type: "string", description: "Optimized HTML body description with bullet points and benefits" },
+                          seo_title: { type: "string", description: "SEO meta title (max 70 chars)" },
+                          seo_description: { type: "string", description: "SEO meta description (max 320 chars)" },
+                          product_type: { type: "string", description: "Optimized product type/category" },
+                          tags: { type: "string", description: "Comma-separated optimized tags with clear, non-duplicated phrasing" },
+                          variant_suggestions: { type: "string", description: "Suggestions for variant naming (Color/Size/Gender conventions)" },
+                          reasoning: { type: "string", description: "Brief explanation of changes made" },
+                        },
+                        required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "reasoning"],
+                      },
                     },
-                    required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "reasoning"],
-                  },
+                  ],
                 },
               ],
-            },
-          ],
-          toolConfig: {
-            functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] },
+              toolConfig: {
+                functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] },
+              },
+            }),
           },
-        }),
-      },
-    );
+        );
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error("Gemini error:", response.status, errText);
+        } else {
+          const data = await response.json();
+          const functionCall = data.candidates?.[0]?.content?.parts?.find((part: GeminiFunctionCallPart) => part.functionCall) as GeminiFunctionCallPart | undefined;
+          if (!functionCall?.functionCall?.args) {
+            console.error("Gemini response missing function call:", JSON.stringify(data).slice(0, 2000));
+          } else {
+            suggestions = normalizeShopifySuggestions(product, functionCall.functionCall.args);
+          }
+        }
+      } catch (error) {
+        console.error("Gemini request failed:", error);
       }
-      const errText = await response.text();
-      console.error("Gemini error:", response.status, errText);
-      throw new Error(`AI optimization failed (${response.status}): ${errText.slice(0, 300)}`);
     }
 
-    const data = await response.json();
-    const functionCall = data.candidates?.[0]?.content?.parts?.find((part: GeminiFunctionCallPart) => part.functionCall) as GeminiFunctionCallPart | undefined;
-    if (!functionCall?.functionCall?.args) {
-      console.error("Gemini response missing function call:", JSON.stringify(data).slice(0, 2000));
-      throw new Error("AI returned an unexpected format");
+    if (!suggestions) {
+      suggestions = normalizeShopifySuggestions(product, buildFallbackSuggestions(product));
     }
-
-    const suggestions = normalizeShopifySuggestions(product, functionCall.functionCall.args);
 
     return new Response(JSON.stringify({ suggestions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

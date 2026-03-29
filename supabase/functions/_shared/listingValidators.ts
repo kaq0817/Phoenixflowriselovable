@@ -34,6 +34,7 @@ const COLOR_WORDS = [
 ];
 
 const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl", "4xl", "5xl"];
+const BANNED_TAGS = ["cjdropshipping", "cj dropshipping", "cj-drop shipping", "cj-drop shipping", "cj dropship", "cjdropship", "dropshipping", "drop shipping"];
 
 export interface EtsyListingLike {
   title?: string;
@@ -169,6 +170,17 @@ function dedupeBySignature(values: string[], maxLength: number): string[] {
   return output;
 }
 
+function isBannedTag(value: string, vendor?: string): boolean {
+  const normalized = normalizeKeywordPhrase(value);
+  if (!normalized) return true;
+  if (BANNED_TAGS.some((tag) => normalizeKeywordPhrase(tag) === normalized)) return true;
+  if (vendor) {
+    const normalizedVendor = normalizeKeywordPhrase(vendor);
+    if (normalizedVendor && normalized === normalizedVendor) return true;
+  }
+  return false;
+}
+
 function buildEtsyFallbackTags(listing: EtsyListingLike): string[] {
   const sourceItems = [
     ...(listing.tags || []),
@@ -201,6 +213,42 @@ function buildDefaultEtsyDescription(listing: EtsyListingLike): string {
   return sanitizePlainText(
     `${lead} Review the sizing, materials, finish, and ordering details at the top, then use the rest of the description to explain what makes the item feel useful, giftable, or distinctive.`,
     900,
+  );
+}
+
+function buildShopifyFallbackTags(product: ShopifyProductLike): string[] {
+  const sourceItems: string[] = [
+    ...(product.tags ? String(product.tags).split(",") : []),
+    product.product_type || "",
+    product.vendor || "",
+    product.title || "",
+  ]
+    .map((item) => String(item))
+    .filter(Boolean);
+
+  const titleWords = sanitizePlainText(product.title || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word.length > 2);
+
+  const phrases: string[] = [];
+  for (let size = 3; size >= 2; size -= 1) {
+    for (let index = 0; index <= titleWords.length - size; index += 1) {
+      phrases.push(titleWords.slice(index, index + size).join(" "));
+    }
+  }
+
+  const variantTokens = (product.variants || [])
+    .flatMap((variant) =>
+      [variant.title, variant.option1, variant.option2, variant.option3]
+        .filter(Boolean)
+        .map((value) => String(value)),
+    )
+    .map((value) => sanitizePlainText(value));
+
+  return dedupeBySignature(
+    [...sourceItems, ...variantTokens, ...phrases, ...titleWords],
+    40,
   );
 }
 
@@ -309,13 +357,23 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 320);
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
-  let tags = dedupeBySignature(String(raw.tags || product.tags || "").split(","), 40);
+  let tags = dedupeBySignature(String(raw.tags || product.tags || "").split(","), 40)
+    .filter((tag) => !isBannedTag(tag, product.vendor));
   if (apparel && requiredSuffix) {
     const color = extractColor(requiredSuffix);
     if (color && !tags.some((tag) => normalizeKeywordPhrase(tag) === normalizeKeywordPhrase(color))) {
       tags = dedupeBySignature([...tags, color], 40);
       notes.push("color tag restored for apparel");
     }
+  }
+
+  if (tags.length < 8) {
+    const fallbackTags = buildShopifyFallbackTags(product)
+      .filter((tag) => !isBannedTag(tag, product.vendor));
+    tags = dedupeBySignature([...tags, ...fallbackTags], 40)
+      .filter((tag) => !isBannedTag(tag, product.vendor))
+      .slice(0, 15);
+    notes.push("tags padded from product title, type, and variants");
   }
 
   return {

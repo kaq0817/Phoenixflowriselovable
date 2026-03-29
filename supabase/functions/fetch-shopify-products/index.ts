@@ -67,9 +67,10 @@ serve(async (req) => {
     // Debug log: resolved shop domain
     console.log('[fetch-shopify-products] resolved shop domain:', shop);
 
-    let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}`;
+    const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle";
+    let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}&fields=${encodeURIComponent(fields)}`;
     if (page_info) {
-      apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}&page_info=${page_info}`;
+      apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}&page_info=${page_info}&fields=${encodeURIComponent(fields)}`;
     }
 
     const response = await fetch(apiUrl, {
