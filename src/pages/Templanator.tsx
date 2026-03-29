@@ -152,9 +152,11 @@ export default function Templanator() {
   const [stateOfIncorporation, setStateOfIncorporation] = useState("");
   const [supportLocation, setSupportLocation] = useState("");
   const [supportNumber, setSupportNumber] = useState("");
+  const [baseDomain, setBaseDomain] = useState("");
   const [nichePalette, setNichePalette] = useState("default");
   const [departmentMappings, setDepartmentMappings] = useState<DepartmentMapping[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [fixNowRunning, setFixNowRunning] = useState(false);
   const [fileApprovals, setFileApprovals] = useState<FileApproval[]>([]);
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
@@ -263,6 +265,58 @@ export default function Templanator() {
       toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleFixNow = async () => {
+    if (!scanResult) return;
+    setFixNowRunning(true);
+
+    try {
+      const { data: preview, error: previewError } = await supabase.functions.invoke("apply-theme-fixes", {
+        body: {
+          connectionId: selectedConn,
+          themeId: scanResult.themeId,
+          assets: scanResult.assets,
+          businessInfo: {
+            legalEntityName,
+            stateOfIncorporation,
+            supportLocation,
+            supportNumber,
+            departmentMappings,
+            nichePalette,
+          },
+        },
+      });
+      if (previewError) throw previewError;
+
+      const rewrittenFiles = preview?.rewrittenFiles || {};
+      const approvedFiles: Record<string, string> = {};
+      Object.entries(rewrittenFiles).forEach(([key, value]) => {
+        if (typeof value === "string" && value.trim().length > 0) approvedFiles[key] = value;
+      });
+
+      if (Object.keys(approvedFiles).length === 0) {
+        toast({ title: "No fixes generated", description: "Nothing to push for this theme." });
+        return;
+      }
+
+      const { data: push, error: pushError } = await supabase.functions.invoke("push-theme-changes", {
+        body: {
+          connectionId: selectedConn,
+          themeId: scanResult.themeId,
+          approvedFiles,
+        },
+      });
+      if (pushError) throw pushError;
+
+      setPushResult(push as PushResult);
+      setStep(4);
+      toast({ title: "Theme updated", description: `${push.totalModified} files pushed to Shopify.` });
+    } catch (err: unknown) {
+      toast({ title: "Auto-fix failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setFixNowRunning(false);
     }
   };
 
@@ -426,14 +480,20 @@ export default function Templanator() {
                         <span className="font-medium">{pillar.title}</span>
                         <Badge variant="secondary">{pillar.productsCount} products</Badge>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{pillar.suggestedSubdomain}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {baseDomain.trim()
+                          ? `${pillar.handle}.${baseDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")}`
+                          : "Enter a base domain to compute subdomains."}
+                      </p>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No collection weights were returned from Shopify, so pillar suggestions are not ready yet.</p>
               )}
-              <p className="text-xs text-muted-foreground">Cloudflare bridge target: `shops.myshopify.com` via CNAME. Shopify TXT verification still happens in Shopify Admin.</p>
+              {baseDomain.trim() ? (
+                <p className="text-xs text-muted-foreground">CNAME target for Shopify: `shops.myshopify.com`.</p>
+              ) : null}
             </ArchitectPanel>
           </div>
 
@@ -496,6 +556,17 @@ export default function Templanator() {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Base Domain for Subdomains</label>
+            <Input
+              placeholder="e.g. ourphoenixrise.com"
+              className="bg-background/50"
+              value={baseDomain}
+              onChange={(e) => setBaseDomain(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Subdomain suggestions will not run until this is filled.</p>
+          </div>
+
           <div className="space-y-3">
             <h3 className="font-semibold text-sm flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Identity Palette</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -540,6 +611,9 @@ export default function Templanator() {
             </Button>
             <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating} onClick={handleGeneratePreview}>
               {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Preview</>}
+            </Button>
+            <Button className="flex-1 bg-primary text-primary-foreground" size="lg" disabled={fixNowRunning} onClick={handleFixNow}>
+              {fixNowRunning ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Fixing...</> : <><Shield className="h-5 w-5 mr-2" /> Fix Now</>}
             </Button>
           </div>
 

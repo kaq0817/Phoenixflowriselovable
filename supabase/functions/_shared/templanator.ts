@@ -137,7 +137,9 @@ export function extractTemplateSectionKeys(indexJson: string | null | undefined)
   }
 }
 
-export function buildCollectionPillars(collections: CollectionInput[]): CollectionPillar[] {
+export function buildCollectionPillars(collections: CollectionInput[], baseDomain?: string): CollectionPillar[] {
+  const normalizedBase = (baseDomain || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+
   return collections
     .map((collection) => {
       const title = (collection.title || "").trim();
@@ -147,7 +149,7 @@ export function buildCollectionPillars(collections: CollectionInput[]): Collecti
         title: title || handle,
         handle,
         productsCount,
-        suggestedSubdomain: `${handle}.ironphoenixflow.com`,
+        suggestedSubdomain: normalizedBase ? `${handle}.${normalizedBase}` : "",
       };
     })
     .filter((collection) => collection.title && collection.productsCount > 0)
@@ -451,11 +453,16 @@ function detectBusinessInfo(footerLiquid: string, fallbackName: string): ThemeBu
     footerText.match(/\b(?:California|New York|Texas|Florida|Wyoming|Washington|Oregon|Colorado)\b/i);
   const phoneMatch = footerText.match(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
   const supportLocationMatch = footerText.match(/(?:support|serving|located in|from)\s+([A-Za-z\s]+,\s*[A-Za-z]{2})/i);
+  const addressLocationMatch = footerText.match(/address:\s*(?:.*?)([A-Za-z][A-Za-z\s.-]+,\s*[A-Za-z]{2})/i);
+  const operationsLocationMatch = footerText.match(/operations:\s*([A-Za-z\s]+county,\s*[A-Za-z]{2})/i);
 
   return {
-    legalEntityName: legalEntityMatch?.[1]?.trim() || fallbackName || "",
+    legalEntityName: legalEntityMatch?.[1]?.trim() || "",
     stateOfIncorporation: stateMatch?.[0]?.trim() || "",
-    supportLocation: supportLocationMatch?.[1]?.trim() || "",
+    supportLocation: operationsLocationMatch?.[1]?.trim()
+      || addressLocationMatch?.[1]?.trim()
+      || supportLocationMatch?.[1]?.trim()
+      || "",
     supportNumber: phoneMatch?.[1]?.trim() || "",
   };
 }
@@ -481,9 +488,15 @@ function evaluateSupportSilo(input: {
   }
 
   const marker = expectedStoreMarker.toLowerCase();
+  const normalizedSupport = input.supportLocation.toLowerCase();
+  const saratogaAliases = ["saratoga", "saratoga county", "ballston spa"];
+  const matchesSaratoga = expectedStoreMarker === "Saratoga"
+    ? saratogaAliases.some((alias) => normalizedSupport.includes(alias))
+    : false;
+
   return {
     expectedStoreMarker,
-    matchesLocation: input.supportLocation.toLowerCase().includes(marker),
+    matchesLocation: matchesSaratoga || normalizedSupport.includes(marker),
     matchesPhoneContext: input.supportNumber.trim().length > 0,
   };
 }
