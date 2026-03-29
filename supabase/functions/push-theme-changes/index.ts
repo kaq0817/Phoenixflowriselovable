@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,7 +74,7 @@ serve(async (req: Request) => {
     for (const [key, value] of Object.entries(safeApprovedFiles)) {
       try {
         const putRes = await fetch(
-          `https://${shopDomain}/admin/api/2024-01/themes/${themeId}/assets.json`,
+          `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/themes/${themeId}/assets.json`,
           {
             method: "PUT",
             headers: {

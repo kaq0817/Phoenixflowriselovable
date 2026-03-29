@@ -1,7 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 import { getEtsyApiKeyHeader, getEtsyClientId } from "../_shared/etsy.ts";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
 import { getKeywordInsights, hasTikTokTrendsEnv, type TikTokKeywordInsight } from "../_shared/tiktokTrends.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -397,7 +400,7 @@ serve(async (req: Request) => {
     if (conn.platform === "shopify" && conn.shop_domain) {
       const MAX_PRODUCTS = 500;
       let url: string | null =
-        `https://${conn.shop_domain}/admin/api/2024-01/products.json?limit=250&status=active`;
+        `https://${conn.shop_domain}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250&status=active`;
       
       while (url && listings.length < MAX_PRODUCTS) {
         const shopRes: Response = await fetch(url, {
@@ -693,7 +696,6 @@ serve(async (req: Request) => {
     });
   }
 });
-
 
 
 

@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,9 +67,9 @@ serve(async (req) => {
     // Debug log: resolved shop domain
     console.log('[fetch-shopify-products] resolved shop domain:', shop);
 
-    let apiUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${limit}`;
+    let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}`;
     if (page_info) {
-      apiUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${limit}&page_info=${page_info}`;
+      apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}&page_info=${page_info}`;
     }
 
     const response = await fetch(apiUrl, {

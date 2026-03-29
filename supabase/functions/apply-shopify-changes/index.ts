@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,7 +77,7 @@ serve(async (req) => {
 
     // Update product via Shopify API
     const updateRes = await fetch(
-      `https://${shop}/admin/api/2024-01/products/${productId}.json`,
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}.json`,
       {
         method: "PUT",
         headers: {
@@ -115,7 +118,7 @@ serve(async (req) => {
 
       for (const mf of metafieldsToSet) {
         await fetch(
-          `https://${shop}/admin/api/2024-01/products/${productId}/metafields.json`,
+          `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/metafields.json`,
           {
             method: "POST",
             headers: {

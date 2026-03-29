@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,7 +62,7 @@ serve(async (req) => {
       });
     }
 
-    const shopRes = await fetch(`https://${normalizedShop}/admin/api/2024-01/shop.json`, {
+    const shopRes = await fetch(`https://${normalizedShop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
       headers: {
         "X-Shopify-Access-Token": accessToken,
       },

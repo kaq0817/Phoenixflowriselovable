@@ -5,6 +5,9 @@ import {
   buildCollectionPillars,
   extractTemplateSectionKeys,
 } from "../_shared/templanator.ts";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,7 +54,7 @@ serve(async (req) => {
     const accessToken = conn.access_token;
 
     const themesRes = await fetch(
-      `https://${shopDomain}/admin/api/2024-01/themes.json`,
+      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/themes.json`,
       { headers: { "X-Shopify-Access-Token": accessToken } }
     );
     const themesData = await themesRes.json();
@@ -135,7 +138,7 @@ async function fetchThemeAsset(input: {
 }): Promise<string | null> {
   try {
     const res = await fetch(
-      `https://${input.shopDomain}/admin/api/2024-01/themes/${input.themeId}/assets.json?asset[key]=${encodeURIComponent(input.key)}`,
+      `https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/themes/${input.themeId}/assets.json?asset[key]=${encodeURIComponent(input.key)}`,
       { headers: { "X-Shopify-Access-Token": input.accessToken } }
     );
     if (!res.ok) return null;
@@ -151,10 +154,10 @@ async function fetchCollections(input: {
   accessToken: string;
 }): Promise<Array<{ title?: string; handle?: string; products_count?: number }>> {
   const responses = await Promise.all([
-    fetch(`https://${input.shopDomain}/admin/api/2024-01/custom_collections.json?limit=250`, {
+    fetch(`https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/custom_collections.json?limit=250`, {
       headers: { "X-Shopify-Access-Token": input.accessToken },
     }),
-    fetch(`https://${input.shopDomain}/admin/api/2024-01/smart_collections.json?limit=250`, {
+    fetch(`https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/smart_collections.json?limit=250`, {
       headers: { "X-Shopify-Access-Token": input.accessToken },
     }),
   ]);
