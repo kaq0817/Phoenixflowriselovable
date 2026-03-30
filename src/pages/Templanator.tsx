@@ -127,6 +127,8 @@ interface PushResult {
   errors?: string[];
 }
 
+type FixTrack = "lcp" | "remaining";
+
 const NICHE_PALETTES = [
   { label: "Keep Current", value: "default", desc: "Preserve existing store color scheme", colors: [], tags: ["neutral"] },
   { label: "Minimal / Clean", value: "minimal", desc: "White, light gray, subtle blue accents", colors: [], tags: ["neutral"] },
@@ -156,11 +158,11 @@ const NICHE_PALETTES = [
 ];
 
 const STEPS = [
-  { num: 1, label: "Theme Handshake" },
-  { num: 2, label: "Policy Verification" },
-  { num: 3, label: "Theme Fixes" },
-  { num: 4, label: "Subdomain Separation" },
-  { num: 5, label: "Push to Store" },
+  { num: 1, label: "Theme Handshake", summary: "Import the live Shopify theme into the workflow." },
+  { num: 2, label: "Policy Verification", summary: "Confirm policy links before applying any rewrites." },
+  { num: 3, label: "Theme Fixes", summary: "Run the LCP pass first, then handle the remaining fixes." },
+  { num: 4, label: "Subdomain Separation", summary: "Review domain and pillar routing suggestions." },
+  { num: 5, label: "Push to Store", summary: "Ship only the approved files back to Shopify." },
 ];
 
 export default function Templanator() {
@@ -181,7 +183,8 @@ export default function Templanator() {
   const [paletteColorOverrides, setPaletteColorOverrides] = useState<Record<string, string[]>>({});
   const [pillarPaletteOverrides, setPillarPaletteOverrides] = useState<Record<string, string>>({});
   const [departmentMappings, setDepartmentMappings] = useState<DepartmentMapping[]>([]);
-  const [generating, setGenerating] = useState(false);
+  const [generatingTrack, setGeneratingTrack] = useState<FixTrack | null>(null);
+  const [previewTrack, setPreviewTrack] = useState<FixTrack | null>(null);
   const [fileApprovals, setFileApprovals] = useState<FileApproval[]>([]);
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
@@ -206,6 +209,18 @@ export default function Templanator() {
     scanResult?.policyLinks?.length &&
       scanResult.policyLinks.every((link) => link.status === "ok"),
   );
+  const previewTitle = previewTrack === "lcp" ? "LCP Preview" : previewTrack === "remaining" ? "Remaining Fixes Preview" : "Preview Changes";
+  const previewDescription = previewTrack === "lcp"
+    ? "Review the LCP-only rewrite before moving to the broader cleanup pass."
+    : previewTrack === "remaining"
+      ? "Review the non-LCP rewrites before proceeding."
+      : "Review the generated rewrites before proceeding.";
+  const previewEmptyState = previewTrack === "lcp"
+    ? "No LCP rewrite was needed. The detected LCP path is already clean."
+    : previewTrack === "remaining"
+      ? "No remaining non-LCP rewrites were generated for this pass."
+      : "No rewrites generated yet. Run a preview pass to inspect changes.";
+  const pushTrackLabel = previewTrack === "lcp" ? "LCP pass" : previewTrack === "remaining" ? "remaining fixes pass" : "approved changes";
   const visiblePalettes = useMemo(
     () =>
       NICHE_PALETTES.filter((palette) => {
@@ -279,6 +294,7 @@ export default function Templanator() {
       if (error) throw error;
 
       setPushResult(null);
+      setPreviewTrack(null);
       setFileApprovals([]);
       setScanResult(result);
 
@@ -306,14 +322,14 @@ export default function Templanator() {
     }
   };
 
-  const handleGeneratePreview = async (nextStep = 3) => {
+  const handleGeneratePreview = async (track: FixTrack, nextStep = 3) => {
     if (!scanResult) return;
-    if (generating) return;
-    if (!identityReady) {
+    if (generatingTrack) return;
+    if (track === "remaining" && !identityReady) {
       toast({ title: "Missing legal/support info", description: "Fill legal entity, state, support location, and support number.", variant: "destructive" });
       return;
     }
-    setGenerating(true);
+    setGeneratingTrack(track);
 
     try {
       const paletteSelection = {
@@ -336,6 +352,7 @@ export default function Templanator() {
           connectionId: selectedConn,
           themeId: scanResult.themeId,
           assets: scanResult.assets,
+          mode: track,
           businessInfo: {
             legalEntityName,
             stateOfIncorporation,
@@ -361,13 +378,21 @@ export default function Templanator() {
       );
 
       setPushResult(null);
+      setPreviewTrack(track);
       setFileApprovals(approvals);
       setStep(nextStep);
-      toast({ title: "Preview ready", description: `${approvals.length} files staged for review.` });
+      toast({
+        title: track === "lcp" ? "LCP preview ready" : "Preview ready",
+        description: approvals.length > 0
+          ? `${approvals.length} files staged for review.`
+          : track === "lcp"
+            ? "No LCP rewrite was needed."
+            : "No remaining non-LCP rewrites were needed.",
+      });
     } catch (err: unknown) {
       toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
-      setGenerating(false);
+      setGeneratingTrack(null);
     }
   };
 
@@ -421,6 +446,17 @@ export default function Templanator() {
       });
       if (error) throw error;
 
+      setScanResult((prev) => (
+        prev
+          ? {
+              ...prev,
+              assets: {
+                ...prev.assets,
+                ...approvedFiles,
+              },
+            }
+          : prev
+      ));
       setPushResult(result as PushResult);
       setStep(5);
       toast({ title: "Theme updated", description: `${result.totalModified} files pushed to Shopify.` });
@@ -437,6 +473,16 @@ export default function Templanator() {
 
   const toggleFileExpanded = (index: number) => {
     setFileApprovals((prev) => prev.map((file, i) => (i === index ? { ...file, expanded: !file.expanded } : file)));
+  };
+
+  const resetSession = () => {
+    setStep(1);
+    setScanResult(null);
+    setFileApprovals([]);
+    setPushResult(null);
+    setGeneratingTrack(null);
+    setPreviewTrack(null);
+    setAssistantAnswer("");
   };
 
   const renderStep1 = () => (
@@ -612,6 +658,19 @@ export default function Templanator() {
               ) : (
                 <p className="text-sm text-muted-foreground">No strong above-the-fold image candidate found.</p>
               )}
+              <div className="pt-2">
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  disabled={Boolean(generatingTrack)}
+                  onClick={() => handleGeneratePreview("lcp")}
+                >
+                  {generatingTrack === "lcp"
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Building LCP-only preview...</>
+                    : <><Eye className="h-4 w-4 mr-2" /> Preview LCP Fix Only</>}
+                </Button>
+                <p className="text-xs text-muted-foreground">This pass only touches the detected LCP asset and any missing preload tag.</p>
+              </div>
             </ArchitectPanel>
 
             <ArchitectPanel icon={Gauge} title="Lazy-Loading Sweep" subtitle="Below-the-fold image hygiene">
@@ -713,7 +772,7 @@ export default function Templanator() {
 
               {!identityReady ? (
                 <p className="text-xs text-muted-foreground">
-                  Fill legal entity, state, support location, and support number to enable preview and push.
+                  Fill legal entity, state, support location, and support number to unlock the remaining non-LCP fix pass.
                 </p>
               ) : null}
 
@@ -721,8 +780,15 @@ export default function Templanator() {
                 <Button variant="outline" onClick={() => setStep(2)}>
                   <ArrowLeft className="h-4 w-4 mr-2" /> Back
                 </Button>
-                <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" onClick={() => handleGeneratePreview()}>
-                  {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Theme Rewrites</>}
+                <Button
+                  className="flex-1 gradient-phoenix text-primary-foreground"
+                  size="lg"
+                  disabled={Boolean(generatingTrack)}
+                  onClick={() => handleGeneratePreview("remaining")}
+                >
+                  {generatingTrack === "remaining"
+                    ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building remaining fixes...</>
+                    : <><Eye className="h-5 w-5 mr-2" /> Preview Remaining Fixes</>}
                 </Button>
               </div>
             </CardContent>
@@ -735,9 +801,9 @@ export default function Templanator() {
                   <Eye className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-lg">Preview Changes</h2>
-                  <p className="text-sm text-muted-foreground">Review the generated rewrites before proceeding.</p>
-                  <p className="text-xs text-muted-foreground">Approve each section individually. Nothing is pre-approved.</p>
+                  <h2 className="font-bold text-lg">{previewTitle}</h2>
+                  <p className="text-sm text-muted-foreground">{previewDescription}</p>
+                  <p className="text-xs text-muted-foreground">Approve each file individually. Nothing is pre-approved.</p>
                 </div>
                 <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
               </div>
@@ -777,7 +843,7 @@ export default function Templanator() {
 
                 {fileApprovals.length === 0 ? (
                   <div className="rounded-lg border border-border/30 bg-muted/10 p-6 text-sm text-muted-foreground">
-                    No rewrites generated yet. Run "Generate Theme Rewrites" to preview changes.
+                    {previewEmptyState}
                   </div>
                 ) : null}
               </div>
@@ -880,6 +946,7 @@ export default function Templanator() {
             </div>
 
             <div className="rounded-lg bg-muted/20 p-4 text-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{pushTrackLabel}</p>
               <p className="font-medium">Approved sections: {approvedCount}/{fileApprovals.length}</p>
               {approvedCount > 0 ? (
                 <div className="mt-2 space-y-1">
@@ -910,8 +977,12 @@ export default function Templanator() {
                 <CheckCircle2 className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="font-bold text-xl">Theme Updated</h2>
-                <p className="text-sm text-muted-foreground">Approved Automated Architect changes have been pushed to Shopify.</p>
+                <h2 className="font-bold text-xl">{previewTrack === "lcp" ? "LCP Pass Updated" : "Theme Updated"}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {previewTrack === "lcp"
+                    ? "The LCP-only pass has been pushed. You can return to Theme Fixes for the remaining cleanup pass."
+                    : "Approved Automated Architect changes have been pushed to Shopify."}
+                </p>
               </div>
             </div>
 
@@ -951,52 +1022,156 @@ export default function Templanator() {
               </>
             ) : null}
 
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                setStep(1);
-                setScanResult(null);
-                setFileApprovals([]);
-                setPushResult(null);
-              }}
-            >
-              <Flame className="h-4 w-4 mr-2" /> Start New Session
-            </Button>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setStep(3)}>
+                {previewTrack === "lcp" ? "Continue to Remaining Fixes" : "Back to Theme Fixes"}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={resetSession}>
+                <Flame className="h-4 w-4 mr-2" /> Start New Session
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
     </motion.div>
   );
+
+  const renderCurrentStep = () => {
+    if (step === 1) return renderStep1();
+    if (step === 2) return renderStep2();
+    if (step === 3) return renderStep3();
+    if (step === 4) return renderStep4();
+    return renderStep5();
+  };
+
+  const sessionLabel = selectedStore?.shop_name || selectedStore?.shop_domain || "New session";
+  const completedSteps = STEPS.filter((item) => step > item.num).length;
+  const sessionStatus = pushResult ? "Updated" : previewTrack === "lcp" ? "LCP pass complete" : scanResult ? "In progress" : "Pending";
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Flame className="h-6 w-6 text-primary" /> Phoenix Flow Templanator
-        </h1>
-        <p className="text-muted-foreground mt-1">Automated Architect mode for speed integrity, legal anchors, and niche partition prep.</p>
-        {selectedStore ? <p className="text-xs text-muted-foreground mt-2">Active store: {selectedStore.shop_name || selectedStore.shop_domain || "Shopify store"}</p> : null}
-      </motion.div>
+    <div className="mx-auto max-w-7xl">
+      <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <motion.aside initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+          <Card className="border-border/40 bg-card/80 shadow-sm">
+            <CardContent className="space-y-5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl gradient-phoenix">
+                  <Flame className="h-5 w-5 text-primary-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Phoenix Flow</p>
+                  <p className="text-xs text-muted-foreground">Templanator</p>
+                </div>
+              </div>
 
-      <div className="flex items-center gap-2">
-        {STEPS.map((stepItem, index) => (
-          <div key={stepItem.num} className="flex items-center gap-2 flex-1">
-            <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${step >= stepItem.num ? "gradient-phoenix text-primary-foreground" : "bg-muted/50 text-muted-foreground"}`}>
-              {step > stepItem.num ? <CheckCircle2 className="h-4 w-4" /> : stepItem.num}
-            </div>
-            <span className={`text-xs font-medium hidden sm:inline ${step >= stepItem.num ? "text-foreground" : "text-muted-foreground"}`}>{stepItem.label}</span>
-            {index < STEPS.length - 1 ? <div className={`flex-1 h-px ${step > stepItem.num ? "bg-primary" : "bg-border/30"}`} /> : null}
+              <Button className="w-full gradient-phoenix text-primary-foreground" size="lg" onClick={resetSession}>
+                <Flame className="mr-2 h-4 w-4" /> New Session
+              </Button>
+
+              <div className="space-y-2 border-t border-border/40 pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Menu</p>
+                <div className="rounded-xl border border-border/30 bg-muted/20 p-3">
+                  <p className="text-sm font-medium">Overview</p>
+                  <p className="mt-1 text-xs text-muted-foreground">LCP-first theme repair workflow for Shopify storefronts.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border/40 pt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Active Session</p>
+                  <Badge variant="secondary">{completedSteps}/{STEPS.length} done</Badge>
+                </div>
+
+                <button
+                  type="button"
+                  className="w-full rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-left transition-colors hover:bg-primary/15"
+                  onClick={() => setStep(Math.max(step, 1))}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">{sessionLabel}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{sessionStatus}</p>
+                    </div>
+                    <Store className="mt-0.5 h-4 w-4 text-primary" />
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {selectedStore?.shop_domain || "Connect a Shopify store, run the LCP pass, then clear the remaining fixes."}
+                  </p>
+                </button>
+
+                {connections.filter((connection) => connection.id !== selectedConn).slice(0, 2).map((connection) => (
+                  <div key={connection.id} className="rounded-2xl border border-border/30 bg-muted/10 px-4 py-3">
+                    <p className="text-sm font-medium">{connection.shop_name || connection.shop_domain || "Shopify store"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Available</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.aside>
+
+        <div className="space-y-6">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <Flame className="h-6 w-6 text-primary" /> Phoenix Flow Templanator
+            </h1>
+            <p className="text-muted-foreground">Keep the current site colors, but move through the repair flow one step at a time with LCP isolated from the rest.</p>
+            {selectedStore ? <p className="text-xs text-muted-foreground">Active store: {selectedStore.shop_name || selectedStore.shop_domain || "Shopify store"}</p> : null}
+          </motion.div>
+
+          <div className="relative pl-6 sm:pl-10">
+            <div className="absolute bottom-0 left-[11px] top-0 w-px bg-border/40 sm:left-[19px]" />
+            <AnimatePresence mode="wait" initial={false}>
+              <div className="space-y-5">
+                {STEPS.map((stepItem) => {
+                  const isActive = step === stepItem.num;
+                  const isComplete = step > stepItem.num;
+
+                  return (
+                    <div key={stepItem.num} className="relative">
+                      <div className={`absolute left-[-6px] top-5 flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold sm:left-[-2px] sm:h-10 sm:w-10 sm:text-sm ${
+                        isComplete
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : isActive
+                            ? "border-primary/50 bg-primary/15 text-primary"
+                            : "border-border/50 bg-background text-muted-foreground"
+                      }`}>
+                        {isComplete ? <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : stepItem.num}
+                      </div>
+
+                      <div className="pl-8 sm:pl-12">
+                        {isActive ? (
+                          <div className="space-y-3">
+                            <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                              <p className="text-sm font-semibold">{stepItem.num}. {stepItem.label}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{stepItem.summary}</p>
+                            </div>
+                            {renderCurrentStep()}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="w-full rounded-2xl border border-border/40 bg-card/70 px-4 py-5 text-left shadow-sm transition-colors hover:bg-card"
+                            onClick={() => setStep(stepItem.num)}
+                          >
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <p className="text-base font-semibold">{stepItem.num}. {stepItem.label}</p>
+                                <p className="mt-1 text-sm text-muted-foreground">{stepItem.summary}</p>
+                              </div>
+                              <Badge variant={isComplete ? "secondary" : "outline"}>{isComplete ? "Done" : "Open"}</Badge>
+                            </div>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </AnimatePresence>
           </div>
-        ))}
+        </div>
       </div>
-
-      <AnimatePresence mode="wait">
-        {step === 1 ? renderStep1() : null}
-        {step === 2 ? renderStep2() : null}
-        {step === 3 ? renderStep3() : null}
-        {step === 4 ? renderStep4() : null}
-        {step === 5 ? renderStep5() : null}
-      </AnimatePresence>
     </div>
   );
 }

@@ -30,7 +30,7 @@ serve(async (req) => {
     } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
 
-    const { connectionId, themeId, assets, businessInfo } = await req.json();
+    const { connectionId, themeId, assets, businessInfo, mode } = await req.json();
 
     if (!connectionId || !themeId || !assets || !businessInfo) {
       throw new Error("Missing required fields");
@@ -50,7 +50,7 @@ serve(async (req) => {
       shopDomain: conn.shop_domain,
       shopName: conn.shop_name,
     });
-    const rewrittenFiles = buildThemeFixes({ assets, businessInfo, scan });
+    const rewrittenFiles = buildThemeFixes({ assets, businessInfo, scan, mode });
 
     return new Response(
       JSON.stringify({

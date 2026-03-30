@@ -69,6 +69,8 @@ export interface ThemeAnalysis {
   };
 }
 
+export type ThemeFixMode = "all" | "lcp" | "remaining";
+
 interface ImageCandidate {
   assetKey: string;
   tag: string;
@@ -297,19 +299,23 @@ export function buildThemeFixes(input: {
   assets: Record<string, string | null>;
   businessInfo: ThemeBusinessInfo;
   scan: ThemeAnalysis;
+  mode?: ThemeFixMode;
 }): Record<string, string> {
+  const mode = input.mode || "all";
+  const includesLcp = mode === "all" || mode === "lcp";
+  const includesRemaining = mode === "all" || mode === "remaining";
   const rewrittenFiles: Record<string, string> = {};
   const footerOriginal = input.assets["sections/footer.liquid"] || "";
   const themeOriginal = input.assets["layout/theme.liquid"] || "";
 
-  if (footerOriginal) {
+  if (includesRemaining && footerOriginal) {
     const footerUpdated = rewriteFooter(footerOriginal, input.businessInfo);
     if (footerUpdated !== footerOriginal) {
       rewrittenFiles["sections/footer.liquid"] = footerUpdated;
     }
   }
 
-  if (input.scan.lcpCandidate) {
+  if (includesLcp && input.scan.lcpCandidate) {
     const candidate = input.scan.lcpCandidate;
     const originalAsset = input.assets[candidate.assetKey] || "";
     const updatedAsset = rewriteLcpAsset(originalAsset, candidate);
@@ -326,26 +332,30 @@ export function buildThemeFixes(input: {
     }
   }
 
-  const lazyTargets = new Set(
-    input.scan.sections.filter((key) => key.startsWith("sections/") && key !== input.scan.lcpCandidate?.assetKey),
-  );
-  for (const key of lazyTargets) {
-    const base = rewrittenFiles[key] ?? input.assets[key];
-    if (!base) continue;
-    const updated = ensureLazyLoadingForSection(base);
-    if (updated !== base) {
-      rewrittenFiles[key] = updated;
+  if (includesRemaining) {
+    const lazyTargets = new Set(
+      input.scan.sections.filter((key) => key.startsWith("sections/") && key !== input.scan.lcpCandidate?.assetKey),
+    );
+    for (const key of lazyTargets) {
+      const base = rewrittenFiles[key] ?? input.assets[key];
+      if (!base) continue;
+      const updated = ensureLazyLoadingForSection(base);
+      if (updated !== base) {
+        rewrittenFiles[key] = updated;
+      }
     }
   }
 
-  const paletteCss = buildPaletteStyles(input.businessInfo);
-  if (paletteCss) {
-    rewrittenFiles["assets/phoenix-palettes.css"] = paletteCss;
-    const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
-    if (themeBase) {
-      const updatedTheme = ensurePaletteStylesheet(themeBase);
-      if (updatedTheme !== themeBase) {
-        rewrittenFiles["layout/theme.liquid"] = updatedTheme;
+  if (includesRemaining) {
+    const paletteCss = buildPaletteStyles(input.businessInfo);
+    if (paletteCss) {
+      rewrittenFiles["assets/phoenix-palettes.css"] = paletteCss;
+      const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
+      if (themeBase) {
+        const updatedTheme = ensurePaletteStylesheet(themeBase);
+        if (updatedTheme !== themeBase) {
+          rewrittenFiles["layout/theme.liquid"] = updatedTheme;
+        }
       }
     }
   }
