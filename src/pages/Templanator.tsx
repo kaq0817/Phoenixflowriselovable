@@ -497,6 +497,99 @@ export default function Templanator() {
     setAssistantAnswer("");
   };
 
+  const renderPreviewCard = (track: FixTrack) => {
+    if (previewTrack !== track) return null;
+
+    return (
+      <Card className="bg-card/50 border-border/30">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+              <Eye className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">{previewTitle}</h2>
+              <p className="text-sm text-muted-foreground">{previewDescription}</p>
+              <p className="text-xs text-muted-foreground">Approve each file individually. Nothing is pre-approved.</p>
+            </div>
+            <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
+          </div>
+
+          {fileApprovals.length > 0 ? (
+            <div className="flex flex-wrap gap-3">
+              <Button variant="outline" size="sm" onClick={() => setAllFileApprovals(true)}>
+                Approve All
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAllFileApprovals(false)}>
+                Clear Approvals
+              </Button>
+              <Button
+                className="gradient-phoenix text-primary-foreground"
+                size="sm"
+                disabled={approvedCount === 0}
+                onClick={() => setStep(5)}
+              >
+                Continue to Push This Pass
+              </Button>
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            {fileApprovals.map((file, index) => (
+              <div key={file.key} className={`rounded-lg border transition-all ${file.approved ? "border-green-500/30 bg-green-500/5" : "border-border/20 bg-muted/10 opacity-60"}`}>
+                <div className="flex items-center gap-3 p-4">
+                  <div className="flex min-w-[80px] items-center gap-2">
+                    <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
+                    <span className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Approve</span>
+                  </div>
+                  <div className="flex-1">
+                    <code className="text-sm font-mono">{file.key}</code>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {summarizePreviewChanges({
+                        file,
+                        previewTrack,
+                        lcpAssetKey: scanResult?.lcpCandidate?.assetKey || null,
+                      })}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => toggleFileExpanded(index)}>
+                    {file.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    <span className="ml-1 text-xs">{file.expanded ? "Hide" : "Diff"}</span>
+                  </Button>
+                </div>
+
+                {file.expanded ? (
+                  <div className="border-t border-border/20">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/20">
+                      <div className="p-3">
+                        <p className="text-xs font-semibold text-destructive mb-2">BEFORE</p>
+                        <pre className="text-xs bg-destructive/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-muted-foreground">
+                          {file.original ? truncateCode(file.original, 3000) : "(file not previously loaded)"}
+                        </pre>
+                      </div>
+                      <div className="p-3">
+                        <p className="text-xs font-semibold text-green-500 mb-2">AFTER</p>
+                        <pre className="text-xs bg-green-500/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-foreground">
+                          {truncateCode(file.rewritten, 3000)}
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+
+            {fileApprovals.length === 0 ? (
+              <div className="rounded-lg border border-border/30 bg-muted/10 p-6 text-sm text-muted-foreground">
+                {previewEmptyState}
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   const renderStep1 = () => (
     <motion.div key="step1" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
       <Card className="bg-card/50 border-border/30">
@@ -701,6 +794,8 @@ export default function Templanator() {
             </ArchitectPanel>
           </div>
 
+          {renderPreviewCard("lcp")}
+
           {brokenLinkCount > 0 ? (
             <Card className="bg-card/50 border-border/30">
               <CardContent className="p-6 space-y-3">
@@ -770,6 +865,8 @@ export default function Templanator() {
               </CardContent>
             </Card>
           ) : null}
+
+          {renderPreviewCard("domains")}
 
           <Card className="bg-card/50 border-border/30">
             <CardContent className="p-6 space-y-6">
@@ -855,92 +952,7 @@ export default function Templanator() {
             </CardContent>
           </Card>
 
-          <Card className="bg-card/50 border-border/30">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                  <Eye className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-lg">{previewTitle}</h2>
-                  <p className="text-sm text-muted-foreground">{previewDescription}</p>
-                  <p className="text-xs text-muted-foreground">Approve each file individually. Nothing is pre-approved.</p>
-                </div>
-                <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
-              </div>
-
-              {fileApprovals.length > 0 ? (
-                <div className="flex flex-wrap gap-3">
-                  <Button variant="outline" size="sm" onClick={() => setAllFileApprovals(true)}>
-                    Approve All
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setAllFileApprovals(false)}>
-                    Clear Approvals
-                  </Button>
-                  <Button
-                    className="gradient-phoenix text-primary-foreground"
-                    size="sm"
-                    disabled={approvedCount === 0}
-                    onClick={() => setStep(5)}
-                  >
-                    Continue to Push This Pass
-                  </Button>
-                </div>
-              ) : null}
-
-              <div className="space-y-3">
-                {fileApprovals.map((file, index) => (
-                  <div key={file.key} className={`rounded-lg border transition-all ${file.approved ? "border-green-500/30 bg-green-500/5" : "border-border/20 bg-muted/10 opacity-60"}`}>
-                    <div className="flex items-center gap-3 p-4">
-                      <div className="flex min-w-[80px] items-center gap-2">
-                        <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
-                        <span className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Approve</span>
-                      </div>
-                      <div className="flex-1">
-                        <code className="text-sm font-mono">{file.key}</code>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {summarizePreviewChanges({
-                            file,
-                            previewTrack,
-                            lcpAssetKey: scanResult?.lcpCandidate?.assetKey || null,
-                          })}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => toggleFileExpanded(index)}>
-                        {file.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        <span className="ml-1 text-xs">{file.expanded ? "Hide" : "Diff"}</span>
-                      </Button>
-                    </div>
-
-                    {file.expanded ? (
-                      <div className="border-t border-border/20">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border/20">
-                          <div className="p-3">
-                            <p className="text-xs font-semibold text-destructive mb-2">BEFORE</p>
-                            <pre className="text-xs bg-destructive/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-muted-foreground">
-                              {file.original ? truncateCode(file.original, 3000) : "(file not previously loaded)"}
-                            </pre>
-                          </div>
-                          <div className="p-3">
-                            <p className="text-xs font-semibold text-green-500 mb-2">AFTER</p>
-                            <pre className="text-xs bg-green-500/5 rounded p-3 overflow-x-auto max-h-72 whitespace-pre-wrap break-all font-mono text-foreground">
-                              {truncateCode(file.rewritten, 3000)}
-                            </pre>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-
-                {fileApprovals.length === 0 ? (
-                  <div className="rounded-lg border border-border/30 bg-muted/10 p-6 text-sm text-muted-foreground">
-                    {previewEmptyState}
-                  </div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+          {renderPreviewCard("remaining")}
 
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={() => setStep(2)}>
