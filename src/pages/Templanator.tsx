@@ -265,6 +265,7 @@ export default function Templanator() {
   }, [blockWarmTones, nichePalette, visiblePalettes]);
 
   const handleImportTheme = async () => {
+    if (scanning) return;
     if (!selectedConn) {
       toast({ title: "Select a store", variant: "destructive" });
       return;
@@ -307,6 +308,11 @@ export default function Templanator() {
 
   const handleGeneratePreview = async (nextStep = 3) => {
     if (!scanResult) return;
+    if (generating) return;
+    if (!identityReady) {
+      toast({ title: "Missing legal/support info", description: "Fill legal entity, state, support location, and support number.", variant: "destructive" });
+      return;
+    }
     setGenerating(true);
 
     try {
@@ -367,6 +373,7 @@ export default function Templanator() {
 
   const handleExplainFindings = async () => {
     if (!scanResult) return;
+    if (assistantLoading) return;
     setAssistantLoading(true);
     setAssistantAnswer("");
 
@@ -391,6 +398,7 @@ export default function Templanator() {
 
   const handlePushApproved = async () => {
     if (!scanResult) return;
+    if (pushing) return;
     const approved = fileApprovals.filter((file) => file.approved);
     if (approved.length === 0) {
       toast({ title: "No files approved", description: "Toggle on at least one file to push.", variant: "destructive" });
@@ -469,7 +477,7 @@ export default function Templanator() {
             )}
           </div>
 
-          <Button className="w-full gradient-phoenix text-primary-foreground" size="lg" disabled={!selectedConn || scanning} onClick={handleImportTheme}>
+          <Button className="w-full gradient-phoenix text-primary-foreground" size="lg" onClick={handleImportTheme}>
             {scanning ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Pulling Theme Files...</> : <><FileCode className="h-5 w-5 mr-2" /> Import Current Theme</>}
           </Button>
 
@@ -525,7 +533,6 @@ export default function Templanator() {
                   size="sm"
                   variant="outline"
                   onClick={() => policyGeneratorUrl && window.open(policyGeneratorUrl, "_blank", "noopener")}
-                  disabled={!policyGeneratorUrl}
                 >
                   Open Shopify Policy Generator
                 </Button>
@@ -537,7 +544,7 @@ export default function Templanator() {
             <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Back
             </Button>
-            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(3)} disabled={!allPoliciesReady}>
+            <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(3)}>
               Continue to Theme Fixes
             </Button>
           </div>
@@ -572,7 +579,7 @@ export default function Templanator() {
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">Need a plain-English breakdown of what to fix first?</p>
-                <Button size="sm" variant="outline" onClick={handleExplainFindings} disabled={assistantLoading}>
+                <Button size="sm" variant="outline" onClick={handleExplainFindings}>
                   {assistantLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Explaining...</> : <><Bot className="mr-2 h-4 w-4" /> Explain Findings</>}
                 </Button>
               </div>
@@ -713,7 +720,7 @@ export default function Templanator() {
                 <Button variant="outline" onClick={() => setStep(2)}>
                   <ArrowLeft className="h-4 w-4 mr-2" /> Back
                 </Button>
-                <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={() => handleGeneratePreview()}>
+                <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" onClick={() => handleGeneratePreview()}>
                   {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Theme Rewrites</>}
                 </Button>
               </div>
@@ -888,7 +895,7 @@ export default function Templanator() {
               <Button variant="outline" onClick={() => setStep(4)}>
                 <ArrowLeft className="h-4 w-4 mr-2" /> Back
               </Button>
-              <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={pushing || approvedCount === 0} onClick={handlePushApproved}>
+              <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" onClick={handlePushApproved}>
                 {pushing ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Pushing to Shopify...</> : <><Send className="h-5 w-5 mr-2" /> Push Approved Files</>}
               </Button>
             </div>
