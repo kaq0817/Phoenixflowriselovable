@@ -1362,7 +1362,12 @@ function summarizePreviewChanges(input: {
     if (input.file.key === "sections/footer.liquid" && rewritten.includes("phoenix-flow-identity-block")) {
       notes.push("Updates the footer support and policy markup.");
     } else {
-      notes.push("Review the diff for the exact markup changes in this file.");
+      const exactChanges = summarizeExactLineChanges(original, rewritten);
+      if (exactChanges.length > 0) {
+        notes.push(...exactChanges);
+      } else {
+        notes.push("Exact change summary unavailable. Open Diff for the concrete markup edit.");
+      }
     }
   }
 
@@ -1371,6 +1376,38 @@ function summarizePreviewChanges(input: {
 
 function addsPattern(original: string, rewritten: string, pattern: RegExp): boolean {
   return !pattern.test(original) && pattern.test(rewritten);
+}
+
+function summarizeExactLineChanges(original: string, rewritten: string): string[] {
+  const before = normalizeDiffLines(original);
+  const after = normalizeDiffLines(rewritten);
+
+  const added = after.filter((line) => !before.includes(line)).slice(0, 2);
+  const removed = before.filter((line) => !after.includes(line)).slice(0, 2);
+  const changes: string[] = [];
+
+  for (const line of added) {
+    changes.push(`Adds ${formatDiffSnippet(line)}.`);
+  }
+
+  for (const line of removed) {
+    changes.push(`Removes ${formatDiffSnippet(line)}.`);
+  }
+
+  return changes;
+}
+
+function normalizeDiffLines(source: string): string[] {
+  return source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^\{%\s*comment/i.test(line) && !/^\{%\s*endcomment/i.test(line));
+}
+
+function formatDiffSnippet(line: string): string {
+  const collapsed = line.replace(/\s+/g, " ").trim();
+  const shortened = collapsed.length > 90 ? `${collapsed.slice(0, 87)}...` : collapsed;
+  return `\`${shortened}\``;
 }
 
 function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null): string {
