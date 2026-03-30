@@ -311,7 +311,7 @@ export default function Templanator() {
         );
         const routePath = normalizeRouteInput(
           pillarRouteOverrides[pillar.handle],
-          `/collections/${pillar.handle}`,
+          shortenCollectionRoute(pillar.handle),
         );
 
         return {
@@ -1817,6 +1817,15 @@ function normalizeRouteInput(value: string | undefined, fallback: string): strin
   if (!candidate) return "/";
   const prefixed = candidate.startsWith("/") ? candidate : `/${candidate}`;
   return prefixed.replace(/\/{2,}/g, "/");
+}
+
+function shortenCollectionRoute(handle: string): string {
+  const compact = sanitizeSubdomainLabel(handle)
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 4)
+    .join("-");
+  return `/collections/${compact || "collection"}`;
 }
 
 function formatCloudflareRecord(item: SubdomainPlanItem): string {
