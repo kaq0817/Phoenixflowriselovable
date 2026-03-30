@@ -208,6 +208,7 @@ export default function Templanator() {
   const [cloudflareRecordType, setCloudflareRecordType] = useState<RecordType>("CNAME");
   const [cloudflareProxyEnabled, setCloudflareProxyEnabled] = useState(false);
   const [plannerCategories, setPlannerCategories] = useState<PlannerCategory[]>([]);
+  const [showDetectedSuggestions, setShowDetectedSuggestions] = useState(false);
   const [manualCategoryDraft, setManualCategoryDraft] = useState("");
   const [pillarSubdomainOverrides, setPillarSubdomainOverrides] = useState<Record<string, string>>({});
   const [pillarRouteOverrides, setPillarRouteOverrides] = useState<Record<string, string>>({});
@@ -1155,22 +1156,27 @@ export default function Templanator() {
                 </div>
                 <div>
                   <h2 className="font-bold text-lg">Step 4: Subdomain & Content Separation</h2>
-                  <p className="text-sm text-muted-foreground">Set the domain, add categories, build the DNS plan.</p>
+                  <p className="text-sm text-muted-foreground">Set domain. Add categories. Copy DNS.</p>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="ml-auto"
                   onClick={() => window.open("https://dash.cloudflare.com/", "_blank", "noopener")}
                 >
                   Open Cloudflare
                 </Button>
+                <CopyButton text={cloudflareDnsPlan} label="DNS records" />
+                <CopyButton text={cloudflareRoutingBrief} label="Routing brief" />
+                <CopyButton text={cloudflarePlanPacket} label="Full plan" />
               </div>
 
               <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
                 {knownStoreDomains.length > 0
                   ? `Known store domains: ${knownStoreDomains.join(", ")}`
-                  : "No store_domain facts are configured yet, so Step 4 only uses domains you explicitly confirm here."}
+                  : "No store-domain facts configured."}
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
@@ -1263,7 +1269,7 @@ export default function Templanator() {
                   </div>
                   <Textarea
                     className="min-h-[120px] bg-background/50"
-                    placeholder={"Sports & Outdoors\nHealth & Wellness\nChildren"}
+                    placeholder={"Category One\nCategory Two\nCategory Three"}
                     value={manualCategoryDraft}
                     onChange={(e) => setManualCategoryDraft(e.target.value)}
                   />
@@ -1276,31 +1282,42 @@ export default function Templanator() {
                 </div>
 
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
-                  <div>
-                    <p className="text-sm font-semibold">Detected Suggestions</p>
-                    <p className="text-xs text-muted-foreground">Add only if correct.</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">Scan Suggestions</p>
+                      <p className="text-xs text-muted-foreground">Optional.</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowDetectedSuggestions((prev) => !prev)}>
+                      {showDetectedSuggestions ? "Hide Suggestions" : "Show Suggestions"}
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    {(scanResult.collectionPillars ?? []).length > 0 ? (
-                      scanResult.collectionPillars.map((pillar) => (
-                        <div key={pillar.handle} className="flex items-center justify-between gap-3 rounded-xl border border-border/30 bg-background/40 p-3">
-                          <div>
-                            <p className="text-sm font-medium">{pillar.title}</p>
-                            <p className="text-xs text-muted-foreground">{pillar.productsCount} products</p>
+                  {showDetectedSuggestions ? (
+                    <div className="space-y-2">
+                      {(scanResult.collectionPillars ?? []).length > 0 ? (
+                        scanResult.collectionPillars.map((pillar) => (
+                          <div key={pillar.handle} className="flex items-center justify-between gap-3 rounded-xl border border-border/30 bg-background/40 p-3">
+                            <div>
+                              <p className="text-sm font-medium">{pillar.title}</p>
+                              <p className="text-xs text-muted-foreground">{pillar.productsCount} products</p>
+                            </div>
+                            <Button
+                              size="sm"
+                              className="gradient-phoenix text-primary-foreground"
+                              onClick={() => addDetectedPlannerCategory(pillar.title, pillar.handle, pillar.productsCount)}
+                            >
+                              Add
+                            </Button>
                           </div>
-                          <Button
-                            size="sm"
-                            className="gradient-phoenix text-primary-foreground"
-                            onClick={() => addDetectedPlannerCategory(pillar.title, pillar.handle, pillar.productsCount)}
-                          >
-                            Add To Planner
-                          </Button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No detected category suggestions came back from the scan.</p>
-                    )}
-                  </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No suggestions returned.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
+                      Hidden until you ask for them.
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1333,10 +1350,6 @@ export default function Templanator() {
                     <div>
                       <p className="text-sm font-semibold">Cloudflare DNS Plan</p>
                       <p className="text-xs text-muted-foreground">Copy-ready records.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <CopyButton text={cloudflareDnsPlan} label="DNS records" />
-                      <CopyButton text={cloudflarePlanPacket} label="Full subdomain plan" />
                     </div>
                   </div>
 
@@ -1391,7 +1404,6 @@ export default function Templanator() {
                   <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-background/50 p-3 text-xs text-muted-foreground">
                     {cloudflareRoutingBrief || "Add a base domain to generate the routing brief."}
                   </pre>
-                  <CopyButton text={cloudflareRoutingBrief} label="Routing brief" className="w-full" />
                 </div>
               </div>
 
