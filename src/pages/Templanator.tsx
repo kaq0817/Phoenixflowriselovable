@@ -577,7 +577,7 @@ export default function Templanator() {
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Verify that the required Shopify policy pages are present. If any are missing, open Shopify's policy generator.
+                Verify that the required Shopify policy pages are present. Existing footer links with the wrong target can be auto-fixed. Only truly missing policies need Shopify Admin.
               </p>
 
               {allPoliciesReady ? (
@@ -592,10 +592,17 @@ export default function Templanator() {
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-medium">{link.label}</span>
                       <Badge variant={link.status === "ok" ? "secondary" : "destructive"}>
-                        {link.status === "ok" ? "pass" : link.status === "missing" ? "missing" : "normalize"}
+                        {link.status === "ok" ? "pass" : link.status === "missing" ? "missing" : "fixable"}
                       </Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">Target: {link.targetPath}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {link.status === "ok"
+                        ? "Already points to the correct Shopify policy route."
+                        : link.status === "missing"
+                          ? "No matching footer link was found. Create the policy in Shopify Admin if it does not exist yet."
+                          : `Existing footer link found. Templanator can rewrite it to ${link.targetPath}.`}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -604,7 +611,7 @@ export default function Templanator() {
                 <p className="text-xs text-muted-foreground">
                   {allPoliciesReady
                     ? "Policies verified. Continue to Theme Fixes."
-                    : "Missing policies can be generated in Shopify Admin and then linked in the footer."}
+                    : "Fixable policy URLs can be rewritten automatically. Missing policies still need Shopify Admin."}
                 </p>
                 <Button
                   size="sm"
