@@ -1161,13 +1161,16 @@ export default function Templanator() {
 
               <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
                 {knownStoreDomains.length > 0
-                  ? `Store-domain source of truth: ${knownStoreDomains.join(", ")}`
-                  : "No store_domain facts are configured yet in app identity, so Step 4 will only use domains you explicitly confirm here."}
+                  ? `Known store domains: ${knownStoreDomains.join(", ")}`
+                  : "No store_domain facts are configured yet, so Step 4 only uses domains you explicitly confirm here."}
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium">Base Domain for Subdomains</label>
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">1. Is This The Correct Base Domain?</p>
+                    <p className="text-xs text-muted-foreground">This is the root that each subdomain will sit under.</p>
+                  </div>
                   <Input
                     placeholder="e.g. ourphoenixrise.com"
                     className="bg-background/50"
@@ -1177,19 +1180,37 @@ export default function Templanator() {
                       setBaseDomainConfirmed(false);
                     }}
                   />
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setBaseDomainConfirmed(Boolean(normalizeDomainInput(baseDomain)))}>
-                      Confirm Base Domain
-                    </Button>
-                    <Badge variant={baseDomainConfirmed ? "secondary" : "outline"}>
-                      {baseDomainConfirmed ? "verified" : "needs confirmation"}
-                    </Badge>
+                  <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Use This Base Domain</p>
+                      <p className="text-xs text-muted-foreground">
+                        {normalizeDomainInput(baseDomain) || "Enter a base domain first."}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        className="gradient-phoenix text-primary-foreground"
+                        disabled={!normalizeDomainInput(baseDomain)}
+                        onClick={() => setBaseDomainConfirmed(true)}
+                      >
+                        Use This Base Domain
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setBaseDomainConfirmed(false)}>
+                        Clear
+                      </Button>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Templanator will not use this base domain until you confirm it is correct.</p>
+                  <Badge variant={baseDomainConfirmed ? "secondary" : "outline"}>
+                    {baseDomainConfirmed ? "base domain verified" : "base domain not verified"}
+                  </Badge>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium">Cloudflare Target Host</label>
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">2. Is This The Correct Target Host?</p>
+                    <p className="text-xs text-muted-foreground">This is the Cloudflare DNS destination for the subdomains.</p>
+                  </div>
                   <Input
                     placeholder="e.g. storefront-origin.example.com"
                     className="bg-background/50"
@@ -1199,23 +1220,38 @@ export default function Templanator() {
                       setCloudflareTargetConfirmed(false);
                     }}
                   />
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setCloudflareTargetConfirmed(Boolean(normalizeDomainInput(cloudflareTargetHost)))}>
-                      Confirm Target Host
-                    </Button>
-                    <Badge variant={cloudflareTargetConfirmed ? "secondary" : "outline"}>
-                      {cloudflareTargetConfirmed ? "verified" : "needs confirmation"}
-                    </Badge>
+                  <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Use This Target Host</p>
+                      <p className="text-xs text-muted-foreground">
+                        {normalizeDomainInput(cloudflareTargetHost) || "Enter a target host first."}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        className="gradient-phoenix text-primary-foreground"
+                        disabled={!normalizeDomainInput(cloudflareTargetHost)}
+                        onClick={() => setCloudflareTargetConfirmed(true)}
+                      >
+                        Use This Target Host
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setCloudflareTargetConfirmed(false)}>
+                        Clear
+                      </Button>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Templanator will not use this DNS target until you confirm it is correct.</p>
+                  <Badge variant={cloudflareTargetConfirmed ? "secondary" : "outline"}>
+                    {cloudflareTargetConfirmed ? "target host verified" : "target host not verified"}
+                  </Badge>
                 </div>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
-                    <p className="text-sm font-semibold">Tell Me The Categories To Plan</p>
-                    <p className="text-xs text-muted-foreground">One per line. Nothing gets added unless you type it or click a detected suggestion.</p>
+                    <p className="text-sm font-semibold">3. What Categories Do You Want To Split Out?</p>
+                    <p className="text-xs text-muted-foreground">One per line. Nothing is added unless you type it or explicitly add a suggestion.</p>
                   </div>
                   <Textarea
                     className="min-h-[120px] bg-background/50"
@@ -1223,9 +1259,12 @@ export default function Templanator() {
                     value={manualCategoryDraft}
                     onChange={(e) => setManualCategoryDraft(e.target.value)}
                   />
-                  <Button variant="outline" onClick={addManualPlannerCategories}>
-                    Add Categories To Plan
-                  </Button>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">You are in control of the category list.</p>
+                    <Button className="gradient-phoenix text-primary-foreground" onClick={addManualPlannerCategories}>
+                      Add Categories To Planner
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
@@ -1243,10 +1282,10 @@ export default function Templanator() {
                           </div>
                           <Button
                             size="sm"
-                            variant="outline"
+                            className="gradient-phoenix text-primary-foreground"
                             onClick={() => addDetectedPlannerCategory(pillar.title, pillar.handle, pillar.productsCount)}
                           >
-                            Add
+                            Add To Planner
                           </Button>
                         </div>
                       ))
@@ -1263,6 +1302,22 @@ export default function Templanator() {
                 <StatBox label="Proxy" value={cloudflareProxyEnabled ? 1 : 0} sub={cloudflareProxyEnabled ? "proxied" : "dns only"} />
                 <StatBox label="Target Host" value={normalizedTargetHost ? 1 : 0} sub={normalizedTargetHost || "not set"} />
               </div>
+
+              {plannerCategories.length > 0 ? (
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Current Planning Queue</p>
+                    <p className="text-xs text-muted-foreground">These are the categories currently included in the subdomain plan.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {plannerCategories.map((category) => (
+                      <Badge key={category.id} variant="secondary" className="px-3 py-1">
+                        {category.title}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-4">
