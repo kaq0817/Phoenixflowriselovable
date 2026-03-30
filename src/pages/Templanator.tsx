@@ -1183,8 +1183,8 @@ export default function Templanator() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
-                    <p className="text-sm font-semibold">1. Is This The Correct Base Domain?</p>
-                    <p className="text-xs text-muted-foreground">Root domain.</p>
+                    <p className="text-sm font-semibold">1. Zone</p>
+                    <p className="text-xs text-muted-foreground">Cloudflare zone.</p>
                   </div>
                   <Input
                     placeholder="e.g. ourphoenixrise.com"
@@ -1197,7 +1197,7 @@ export default function Templanator() {
                   />
                   <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-3">
                     <div>
-                      <p className="text-sm font-medium">Use This Base Domain</p>
+                      <p className="text-sm font-medium">Use This Zone</p>
                       <p className="text-xs text-muted-foreground">
                         {normalizeDomainInput(baseDomain) || "Enter a base domain first."}
                       </p>
@@ -1209,7 +1209,7 @@ export default function Templanator() {
                         disabled={!normalizeDomainInput(baseDomain)}
                         onClick={() => setBaseDomainConfirmed(true)}
                       >
-                        Use This Base Domain
+                        Use This Zone
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setBaseDomainConfirmed(false)}>
                         Clear
@@ -1217,14 +1217,14 @@ export default function Templanator() {
                     </div>
                   </div>
                   <Badge variant={baseDomainConfirmed ? "secondary" : "outline"}>
-                    {baseDomainConfirmed ? "base domain verified" : "base domain not verified"}
+                    {baseDomainConfirmed ? "zone verified" : "zone not verified"}
                   </Badge>
                 </div>
 
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
-                    <p className="text-sm font-semibold">2. Is This The Correct Target Host?</p>
-                    <p className="text-xs text-muted-foreground">DNS target.</p>
+                    <p className="text-sm font-semibold">2. Target</p>
+                    <p className="text-xs text-muted-foreground">Cloudflare target.</p>
                   </div>
                   <Input
                     placeholder="e.g. storefront-origin.example.com"
@@ -1237,7 +1237,7 @@ export default function Templanator() {
                   />
                   <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-3">
                     <div>
-                      <p className="text-sm font-medium">Use This Target Host</p>
+                      <p className="text-sm font-medium">Use This Target</p>
                       <p className="text-xs text-muted-foreground">
                         {normalizeDomainInput(cloudflareTargetHost) || "Enter a target host first."}
                       </p>
@@ -1249,7 +1249,7 @@ export default function Templanator() {
                         disabled={!normalizeDomainInput(cloudflareTargetHost)}
                         onClick={() => setCloudflareTargetConfirmed(true)}
                       >
-                        Use This Target Host
+                        Use This Target
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setCloudflareTargetConfirmed(false)}>
                         Clear
@@ -1257,7 +1257,7 @@ export default function Templanator() {
                     </div>
                   </div>
                   <Badge variant={cloudflareTargetConfirmed ? "secondary" : "outline"}>
-                    {cloudflareTargetConfirmed ? "target host verified" : "target host not verified"}
+                    {cloudflareTargetConfirmed ? "target verified" : "target not verified"}
                   </Badge>
                 </div>
               </div>
@@ -1356,7 +1356,7 @@ export default function Templanator() {
 
                   <div className="grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]">
                     <div className="space-y-2">
-                      <label className="text-xs font-medium">Record Type</label>
+                      <label className="text-xs font-medium">Type</label>
                       <Select value={cloudflareRecordType} onValueChange={(value: RecordType) => setCloudflareRecordType(value)}>
                         <SelectTrigger className="bg-background/50">
                           <SelectValue />
@@ -1371,7 +1371,7 @@ export default function Templanator() {
                     <div className="rounded-xl border border-border/30 bg-background/40 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium">Proxy Through Cloudflare</p>
+                          <p className="text-sm font-medium">Proxy Status</p>
                           <p className="text-xs text-muted-foreground">Default: DNS only.</p>
                         </div>
                         <Switch checked={cloudflareProxyEnabled} onCheckedChange={setCloudflareProxyEnabled} />
@@ -1435,7 +1435,7 @@ export default function Templanator() {
 
                       <div className="grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
-                          <label className="text-xs font-medium">Subdomain Label</label>
+                          <label className="text-xs font-medium">Name</label>
                           <Input
                             className="bg-background/50"
                             placeholder={pillar.suggestedLabel || "set-subdomain"}
@@ -1458,10 +1458,10 @@ export default function Templanator() {
                                 }))
                               }
                             >
-                              Use Suggested Label
+                              Use Suggested Name
                             </Button>
                           </div>
-                          <p className="text-xs text-muted-foreground">Full host: {pillar.hostname || "Set the base domain to compute the hostname."}</p>
+                          <p className="text-xs text-muted-foreground">Full hostname: {pillar.hostname || "Set zone + name."}</p>
                         </div>
 
                         <div className="space-y-2">
@@ -1483,7 +1483,7 @@ export default function Templanator() {
                       <div className="rounded-xl border border-border/30 bg-background/40 p-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cloudflare Record</p>
                         <p className="mt-2 break-all font-mono text-xs text-foreground">
-                          {formatCloudflareRecord(pillar) || "Set the base domain and target host to generate the DNS record."}
+                          {formatCloudflareRecord(pillar) || "Set zone, name, and target to generate the DNS record."}
                         </p>
                       </div>
                     </div>
