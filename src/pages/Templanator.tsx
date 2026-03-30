@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { CopyButton, copyAllFields } from "@/components/CopyButton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -126,6 +128,19 @@ interface PushResult {
 }
 
 type FixTrack = "lcp" | "domains" | "remaining";
+type RecordType = "CNAME" | "A";
+
+interface SubdomainPlanItem {
+  title: string;
+  handle: string;
+  productsCount: number;
+  subdomainLabel: string;
+  hostname: string;
+  routePath: string;
+  recordType: RecordType;
+  target: string;
+  proxied: boolean;
+}
 
 const NICHE_PALETTES = [
   { label: "Keep Current", value: "default", desc: "Preserve existing store color scheme", colors: [], tags: ["neutral"] },
@@ -175,6 +190,12 @@ export default function Templanator() {
   const [supportLocation, setSupportLocation] = useState("");
   const [supportNumber, setSupportNumber] = useState("");
   const [baseDomain, setBaseDomain] = useState("");
+  const [cloudflareTargetHost, setCloudflareTargetHost] = useState("");
+  const [cloudflareRecordType, setCloudflareRecordType] = useState<RecordType>("CNAME");
+  const [cloudflareProxyEnabled, setCloudflareProxyEnabled] = useState(true);
+  const [pillarSubdomainOverrides, setPillarSubdomainOverrides] = useState<Record<string, string>>({});
+  const [pillarRouteOverrides, setPillarRouteOverrides] = useState<Record<string, string>>({});
+  const [subdomainNotes, setSubdomainNotes] = useState("");
   const [nichePalette, setNichePalette] = useState("default");
   const [blockWarmTones, setBlockWarmTones] = useState(true);
   const [customPalette, setCustomPalette] = useState(["#0B1D3A", "#7CFF00", "#00E5FF", "#F8FAFC"]);
@@ -258,6 +279,81 @@ export default function Templanator() {
     ],
     [visiblePalettes, customPalette],
   );
+  const normalizedBaseDomain = useMemo(() => normalizeDomainInput(baseDomain), [baseDomain]);
+  const normalizedTargetHost = useMemo(() => normalizeDomainInput(cloudflareTargetHost), [cloudflareTargetHost]);
+  const subdomainPlan = useMemo<SubdomainPlanItem[]>(
+    () =>
+      (scanResult?.collectionPillars ?? []).map((pillar) => {
+        const subdomainLabel = sanitizeSubdomainLabel(
+          pillarSubdomainOverrides[pillar.handle] || pillar.handle || pillar.title,
+        );
+        const routePath = normalizeRouteInput(
+          pillarRouteOverrides[pillar.handle],
+          `/collections/${pillar.handle}`,
+        );
+
+        return {
+          title: pillar.title,
+          handle: pillar.handle,
+          productsCount: pillar.productsCount,
+          subdomainLabel,
+          hostname: normalizedBaseDomain ? `${subdomainLabel}.${normalizedBaseDomain}` : "",
+          routePath,
+          recordType: cloudflareRecordType,
+          target: normalizedTargetHost,
+          proxied: cloudflareProxyEnabled,
+        };
+      }),
+    [
+      scanResult,
+      pillarSubdomainOverrides,
+      pillarRouteOverrides,
+      normalizedBaseDomain,
+      cloudflareRecordType,
+      normalizedTargetHost,
+      cloudflareProxyEnabled,
+    ],
+  );
+  const cloudflareDnsPlan = useMemo(
+    () =>
+      subdomainPlan
+        .filter((item) => item.hostname && item.target)
+        .map((item) => formatCloudflareRecord(item))
+        .join("\n"),
+    [subdomainPlan],
+  );
+  const cloudflareRoutingBrief = useMemo(
+    () =>
+      subdomainPlan
+        .map((item, index) => {
+          const hostLabel = item.hostname || `[set-subdomain-${index + 1}]`;
+          const targetLabel = item.target || "[set-target-host]";
+          return `${index + 1}. ${item.title}\nHost: ${hostLabel}\nDNS: ${item.recordType} -> ${targetLabel} (${item.proxied ? "Proxied" : "DNS only"})\nStorefront route: ${item.routePath}`;
+        })
+        .join("\n\n"),
+    [subdomainPlan],
+  );
+  const cloudflarePlanPacket = useMemo(
+    () =>
+      copyAllFields([
+        { label: "Base Domain", value: normalizedBaseDomain },
+        { label: "Cloudflare Target Host", value: normalizedTargetHost },
+        { label: "Record Type", value: cloudflareRecordType },
+        { label: "Proxy Mode", value: cloudflareProxyEnabled ? "Proxied" : "DNS only" },
+        { label: "DNS Records", value: cloudflareDnsPlan },
+        { label: "Routing Brief", value: cloudflareRoutingBrief },
+        { label: "Launch Notes", value: subdomainNotes.trim() },
+      ]),
+    [
+      normalizedBaseDomain,
+      normalizedTargetHost,
+      cloudflareRecordType,
+      cloudflareProxyEnabled,
+      cloudflareDnsPlan,
+      cloudflareRoutingBrief,
+      subdomainNotes,
+    ],
+  );
 
   const resolvePaletteColors = (value: string) => {
     if (value === "custom") return customPalette;
@@ -283,6 +379,11 @@ export default function Templanator() {
       setSelectedConn(connections[0].id);
     }
   }, [connections, selectedConn]);
+
+  useEffect(() => {
+    if (!selectedStore?.shop_domain) return;
+    setCloudflareTargetHost((prev) => prev || selectedStore.shop_domain || "");
+  }, [selectedStore]);
 
   useEffect(() => {
     const selected = NICHE_PALETTES.find((palette) => palette.value === nichePalette);
@@ -979,35 +1080,158 @@ export default function Templanator() {
                 </div>
                 <div>
                   <h2 className="font-bold text-lg">Step 4: Subdomain & Content Separation</h2>
-                  <p className="text-sm text-muted-foreground">Define your base domain and review pillar separation for content routing.</p>
+                  <p className="text-sm text-muted-foreground">Plan the Cloudflare DNS records and storefront routes you want before pushing live.</p>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Base Domain for Subdomains</label>
-                <Input
-                  placeholder="e.g. ourphoenixrise.com"
-                  className="bg-background/50"
-                  value={baseDomain}
-                  onChange={(e) => setBaseDomain(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Subdomain suggestions will not run until this is filled.</p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Base Domain for Subdomains</label>
+                  <Input
+                    placeholder="e.g. ourphoenixrise.com"
+                    className="bg-background/50"
+                    value={baseDomain}
+                    onChange={(e) => setBaseDomain(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Templanator uses this root to build every planned Cloudflare hostname.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Cloudflare Target Host</label>
+                  <Input
+                    placeholder="e.g. 715b22-4.myshopify.com"
+                    className="bg-background/50"
+                    value={cloudflareTargetHost}
+                    onChange={(e) => setCloudflareTargetHost(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">The DNS destination each subdomain record should point to.</p>
+                </div>
               </div>
 
-              {scanResult.collectionPillars.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium">Detected Pillar Opportunities</p>
-                  {scanResult.collectionPillars.map((pillar) => (
-                    <div key={pillar.handle} className="rounded-md bg-muted/20 p-2 text-sm">
+              <div className="grid gap-4 lg:grid-cols-4">
+                <StatBox label="Pillars" value={subdomainPlan.length} sub="planned hosts" />
+                <StatBox label="DNS Records" value={subdomainPlan.filter((item) => item.hostname && item.target).length} sub={cloudflareRecordType} />
+                <StatBox label="Proxy" value={cloudflareProxyEnabled ? 1 : 0} sub={cloudflareProxyEnabled ? "proxied" : "dns only"} />
+                <StatBox label="Target Host" value={normalizedTargetHost ? 1 : 0} sub={normalizedTargetHost || "not set"} />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">Cloudflare DNS Plan</p>
+                      <p className="text-xs text-muted-foreground">Set your defaults once, then tune each pillar below.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <CopyButton text={cloudflareDnsPlan} label="DNS records" />
+                      <CopyButton text={cloudflarePlanPacket} label="Full subdomain plan" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium">Record Type</label>
+                      <Select value={cloudflareRecordType} onValueChange={(value: RecordType) => setCloudflareRecordType(value)}>
+                        <SelectTrigger className="bg-background/50">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CNAME">CNAME</SelectItem>
+                          <SelectItem value="A">A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="rounded-xl border border-border/30 bg-background/40 p-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium">{pillar.title}</span>
-                        <Badge variant="secondary">{pillar.productsCount} products</Badge>
+                        <div>
+                          <p className="text-sm font-medium">Proxy Through Cloudflare</p>
+                          <p className="text-xs text-muted-foreground">Orange cloud on or DNS-only for all planned records.</p>
+                        </div>
+                        <Switch checked={cloudflareProxyEnabled} onCheckedChange={setCloudflareProxyEnabled} />
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {baseDomain.trim()
-                          ? `${pillar.handle}.${baseDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")}`
-                          : "Enter a base domain to compute subdomains."}
-                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Execution Sequence</p>
+                    <p className="text-sm">1. Create each DNS record for <span className="font-medium">{normalizedBaseDomain || "[set base domain]"}</span>.</p>
+                    <p className="text-sm">2. Point them to <span className="font-medium">{normalizedTargetHost || "[set target host]"}</span> using <span className="font-medium">{cloudflareRecordType}</span>.</p>
+                    <p className="text-sm">3. Use the route plan below to decide what each host should land on in the storefront.</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold">Routing Brief</p>
+                    <p className="text-xs text-muted-foreground">Copy this into Cloudflare notes, launch notes, or your task tracker.</p>
+                  </div>
+                  <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-background/50 p-3 text-xs text-muted-foreground">
+                    {cloudflareRoutingBrief || "Add a base domain to generate the routing brief."}
+                  </pre>
+                  <CopyButton text={cloudflareRoutingBrief} label="Routing brief" className="w-full" />
+                </div>
+              </div>
+
+              {subdomainPlan.length > 0 ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Detected Pillar Opportunities</p>
+                    <p className="text-xs text-muted-foreground">Edit the hostname label and storefront route for each pillar.</p>
+                  </div>
+
+                  {subdomainPlan.map((pillar) => (
+                    <div key={pillar.handle} className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <p className="font-medium">{pillar.title}</p>
+                          <p className="text-xs text-muted-foreground">Collection handle: {pillar.handle}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">{pillar.productsCount} products</Badge>
+                          <Badge variant="outline">{pillar.recordType}</Badge>
+                          <Badge variant="outline">{pillar.proxied ? "Proxied" : "DNS only"}</Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium">Subdomain Label</label>
+                          <Input
+                            className="bg-background/50"
+                            value={pillarSubdomainOverrides[pillar.handle] ?? pillar.subdomainLabel}
+                            onChange={(e) =>
+                              setPillarSubdomainOverrides((prev) => ({
+                                ...prev,
+                                [pillar.handle]: e.target.value,
+                              }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Full host: {pillar.hostname || "Set the base domain to compute the hostname."}</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium">Storefront Route</label>
+                          <Input
+                            className="bg-background/50"
+                            value={pillarRouteOverrides[pillar.handle] ?? pillar.routePath}
+                            onChange={(e) =>
+                              setPillarRouteOverrides((prev) => ({
+                                ...prev,
+                                [pillar.handle]: e.target.value,
+                              }))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">Landing path this subdomain should serve inside the storefront.</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border/30 bg-background/40 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cloudflare Record</p>
+                        <p className="mt-2 break-all font-mono text-xs text-foreground">
+                          {formatCloudflareRecord(pillar) || "Set the base domain and target host to generate the DNS record."}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1015,8 +1239,15 @@ export default function Templanator() {
                 <p className="text-sm text-muted-foreground">No collection weights were returned from Shopify, so pillar suggestions are not ready yet.</p>
               )}
 
-              <div className="text-xs text-muted-foreground">
-                Palette controls are managed in the theme editor and not set in this step.
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Launch Notes</label>
+                <Textarea
+                  className="min-h-[110px] bg-background/50"
+                  placeholder="Write which subdomains go live first, what stays parked, and any Cloudflare exceptions."
+                  value={subdomainNotes}
+                  onChange={(e) => setSubdomainNotes(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">This gets included in the copied subdomain packet.</p>
               </div>
             </CardContent>
           </Card>
@@ -1328,6 +1559,36 @@ function StatusText({ ok, okLabel, badLabel }: { ok: boolean; okLabel: string; b
 function truncateCode(code: string, maxLen: number): string {
   if (code.length <= maxLen) return code;
   return `${code.slice(0, maxLen)}\n\n... (truncated for display)`;
+}
+
+function normalizeDomainInput(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.$/, "");
+}
+
+function sanitizeSubdomainLabel(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function normalizeRouteInput(value: string | undefined, fallback: string): string {
+  const candidate = (value || fallback || "").trim();
+  if (!candidate) return "/";
+  const prefixed = candidate.startsWith("/") ? candidate : `/${candidate}`;
+  return prefixed.replace(/\/{2,}/g, "/");
+}
+
+function formatCloudflareRecord(item: SubdomainPlanItem): string {
+  if (!item.hostname || !item.target) return "";
+  return `${item.recordType} ${item.hostname} -> ${item.target} (${item.proxied ? "Proxied" : "DNS only"})`;
 }
 
 function getErrorMessage(error: unknown): string {
