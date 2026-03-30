@@ -20,7 +20,6 @@ import {
   Gauge,
   Globe,
   Loader2,
-  Palette,
   Send,
   Shield,
   Store,
@@ -350,7 +349,7 @@ export default function Templanator() {
           key,
           original: scanResult.assets[key] || null,
           rewritten: rewritten as string,
-          approved: true,
+          approved: false,
           expanded: false,
         })
       );
@@ -589,13 +588,13 @@ export default function Templanator() {
                 <StatBox label="Hard Colors" value={scanResult.stats.hardcodedColors} />
                 <StatBox label="Inline Styles" value={scanResult.stats.inlineStyles} />
                 <StatBox label="Untracked Forms" value={scanResult.stats.formsWithoutTracking} />
-                <StatBox label="Cross-Store Links" value={scanResult.stats.crossStoreLinkCount} />
+                <StatBox label="Backlinks" value={scanResult.stats.crossStoreLinkCount} />
               </div>
             </CardContent>
           </Card>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <ArchitectPanel icon={Gauge} title="Speed Layer" subtitle="LCP and lazy-loading audit">
+            <ArchitectPanel icon={Gauge} title="LCP Focus" subtitle="Largest Contentful Paint candidate only">
               {scanResult.lcpCandidate ? (
                 <>
                   <p className="text-sm"><span className="font-medium">LCP asset:</span> <span className="text-muted-foreground break-all">{scanResult.lcpCandidate.assetKey}</span></p>
@@ -606,28 +605,43 @@ export default function Templanator() {
               ) : (
                 <p className="text-sm text-muted-foreground">No strong above-the-fold image candidate found.</p>
               )}
-              <p className="text-sm"><span className="font-medium">Below fold:</span> <span className="text-muted-foreground">{scanResult.stats.belowFoldImagesMissingLazy} images still need loading="lazy".</span></p>
             </ArchitectPanel>
 
-            {scanResult.crossStoreLinks.length > 0 ? (
-              <Card className="bg-card/50 border-border/30">
-                <CardContent className="p-6 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Globe className="h-5 w-5 text-primary" />
-                    <h3 className="font-semibold">Cross-Store Leak Watch</h3>
-                  </div>
-                  <div className="space-y-2">
-                    {scanResult.crossStoreLinks.slice(0, 5).map((link) => (
-                      <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
-                        <p className="font-medium">{link.domain}</p>
-                        <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
+            <ArchitectPanel icon={Gauge} title="Lazy-Loading Sweep" subtitle="Below-the-fold image hygiene">
+              <p className="text-sm">
+                <span className="font-medium">Below fold:</span>{" "}
+                <span className="text-muted-foreground">{scanResult.stats.belowFoldImagesMissingLazy} images still need loading="lazy".</span>
+              </p>
+              <p className="text-xs text-muted-foreground">This is separate from LCP and can be handled independently.</p>
+            </ArchitectPanel>
           </div>
+
+          {scanResult.crossStoreLinks.length > 0 ? (
+            <Card className="bg-card/50 border-border/30">
+              <CardContent className="p-6 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Globe className="h-5 w-5 text-primary" />
+                  <div>
+                    <h3 className="font-semibold">Backlinks</h3>
+                    <p className="text-xs text-muted-foreground">Not errors. Review for routing consistency and brand separation.</p>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground space-y-2">
+                  <p>Backlinks are votes of confidence from other sites.</p>
+                  <p>High-quality links lift SEO and send qualified referral traffic for Phoenix Flow.</p>
+                  <p>Quality beats quantity. One strong ecommerce link outperforms dozens of weak directories.</p>
+                </div>
+                <div className="space-y-2">
+                  {scanResult.crossStoreLinks.slice(0, 5).map((link) => (
+                    <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
+                      <p className="font-medium">{link.domain}</p>
+                      <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card className="bg-card/50 border-border/30">
             <CardContent className="p-6 space-y-6">
@@ -699,7 +713,7 @@ export default function Templanator() {
                 <Button variant="outline" onClick={() => setStep(2)}>
                   <ArrowLeft className="h-4 w-4 mr-2" /> Back
                 </Button>
-                <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={handleGeneratePreview}>
+                <Button className="flex-1 gradient-phoenix text-primary-foreground" size="lg" disabled={generating || !identityReady} onClick={() => handleGeneratePreview()}>
                   {generating ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Building deterministic fixes...</> : <><Eye className="h-5 w-5 mr-2" /> Generate Theme Rewrites</>}
                 </Button>
               </div>
@@ -715,6 +729,7 @@ export default function Templanator() {
                 <div>
                   <h2 className="font-bold text-lg">Preview Changes</h2>
                   <p className="text-sm text-muted-foreground">Review the generated rewrites before proceeding.</p>
+                  <p className="text-xs text-muted-foreground">Approve each section individually. Nothing is pre-approved.</p>
                 </div>
                 <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
               </div>
@@ -822,154 +837,8 @@ export default function Templanator() {
                 <p className="text-sm text-muted-foreground">No collection weights were returned from Shopify, so pillar suggestions are not ready yet.</p>
               )}
 
-              <div className="space-y-3 pt-2">
-                <h3 className="font-semibold text-sm flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /> Identity Palette</h3>
-                <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={blockWarmTones} onCheckedChange={setBlockWarmTones} />
-                    <span>Hide orange/brown palettes</span>
-                  </div>
-                  <span className="text-[11px]">Palette is always user-selected. No auto-picks.</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {paletteChoices.map((palette) => {
-                    const paletteColors = resolvePaletteColors(palette.value);
-                    return (
-                    <button
-                      key={palette.value}
-                      onClick={() => setNichePalette(palette.value)}
-                      className={`p-3 rounded-lg border text-left transition-all ${nichePalette === palette.value ? "border-primary bg-primary/10" : "border-border/30 bg-muted/20 hover:bg-muted/40"}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{palette.label}</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{palette.desc}</p>
-                      {palette.value === "default" ? (
-                        <p className="mt-2 text-[11px] text-muted-foreground">Uses current colors</p>
-                      ) : paletteColors.length ? (
-                        <div className="mt-2 flex items-center gap-1">
-                          {paletteColors.map((color) => (
-                            <span
-                              key={`${palette.value}-${color}`}
-                              className="h-4 w-4 rounded-full border border-border/40"
-                              style={{ backgroundColor: color }}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-[11px] text-muted-foreground">Set colors to activate</p>
-                      )}
-                    </button>
-                    );
-                  })}
-                </div>
-
-                {nichePalette !== "default" ? (
-                  <div className="rounded-lg border border-border/30 bg-muted/10 p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium">Set colors for {paletteChoices.find((p) => p.value === nichePalette)?.label || nichePalette}</p>
-                      <Badge variant="secondary" className="text-[10px]">4 hex colors</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {[0, 1, 2, 3].map((index) => {
-                        const colors =
-                          nichePalette === "custom"
-                            ? customPalette
-                            : paletteColorOverrides[nichePalette] ?? [];
-                        const value = colors[index] || "";
-                        const isHex = /^#[0-9a-fA-F]{6}$/.test(value);
-                        return (
-                          <div key={`${nichePalette}-color-${index}`} className="space-y-1">
-                            <label className="text-[11px] text-muted-foreground">Color {index + 1}</label>
-                            <Input
-                              placeholder="#112233"
-                              value={value}
-                              onChange={(e) => {
-                                const next = e.target.value.trim();
-                                if (nichePalette === "custom") {
-                                  const updated = [...customPalette];
-                                  updated[index] = next;
-                                  setCustomPalette(updated);
-                                } else {
-                                  const updated = [...(paletteColorOverrides[nichePalette] ?? ["", "", "", ""])];
-                                  updated[index] = next;
-                                  setPaletteColorOverrides((prev) => ({ ...prev, [nichePalette]: updated }));
-                                }
-                              }}
-                              className="bg-background/60"
-                            />
-                            <div className="h-3 rounded" style={{ backgroundColor: isHex ? value : "transparent" }} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">Only hex colors (#RRGGBB) are accepted.</p>
-                  </div>
-                ) : null}
-
-                {scanResult.collectionPillars.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium">Per-Pillar Palette Overrides</p>
-                    {scanResult.collectionPillars.map((pillar) => {
-                      const override = pillarPaletteOverrides[pillar.handle] || "inherit";
-                      const effectivePalette = override === "inherit" ? nichePalette : override;
-                      const previewColors = resolvePaletteColors(effectivePalette);
-                      return (
-                        <div key={`palette-${pillar.handle}`} className="flex flex-col gap-2 rounded-md border border-border/20 bg-muted/10 p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-sm font-medium">{pillar.title}</span>
-                            <Select
-                              value={override}
-                              onValueChange={(value) =>
-                                setPillarPaletteOverrides((prev) => ({ ...prev, [pillar.handle]: value }))
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-[220px] bg-muted/30">
-                                <SelectValue placeholder="Use global palette" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="inherit">Use global palette</SelectItem>
-                                {paletteChoices.map((palette) => (
-                                  <SelectItem key={`pillar-${pillar.handle}-${palette.value}`} value={palette.value}>
-                                    {palette.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {previewColors.length ? (
-                            <div className="flex items-center gap-1">
-                              {previewColors.map((color) => (
-                                <span
-                                  key={`${pillar.handle}-${color}`}
-                                  className="h-3 w-3 rounded-full border border-border/40"
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-[11px] text-muted-foreground">Set colors for this palette to activate.</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                <div className="flex flex-col gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleGeneratePreview(4)}
-                    disabled={generating || !identityReady}
-                  >
-                    {generating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating rewrite preview...</> : "Update Theme Rewrites with Palette"}
-                  </Button>
-                  {!identityReady ? (
-                    <p className="text-[11px] text-muted-foreground">
-                      Legal entity + support fields are required before generating rewrites.
-                    </p>
-                  ) : null}
-                </div>
+              <div className="text-xs text-muted-foreground">
+                Palette controls are managed in the theme editor and not set in this step.
               </div>
             </CardContent>
           </Card>
@@ -1003,7 +872,7 @@ export default function Templanator() {
             </div>
 
             <div className="rounded-lg bg-muted/20 p-4 text-sm">
-              <p className="font-medium">Approved files: {approvedCount}/{fileApprovals.length}</p>
+              <p className="font-medium">Approved sections: {approvedCount}/{fileApprovals.length}</p>
               {approvedCount > 0 ? (
                 <div className="mt-2 space-y-1">
                   {fileApprovals.filter((file) => file.approved).map((file) => (
