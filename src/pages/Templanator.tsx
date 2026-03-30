@@ -1155,8 +1155,16 @@ export default function Templanator() {
                 </div>
                 <div>
                   <h2 className="font-bold text-lg">Step 4: Subdomain & Content Separation</h2>
-                  <p className="text-sm text-muted-foreground">Plan the Cloudflare DNS records and storefront routes you want before pushing live.</p>
+                  <p className="text-sm text-muted-foreground">Set the domain, add categories, build the DNS plan.</p>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => window.open("https://dash.cloudflare.com/", "_blank", "noopener")}
+                >
+                  Open Cloudflare
+                </Button>
               </div>
 
               <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
@@ -1169,7 +1177,7 @@ export default function Templanator() {
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
                     <p className="text-sm font-semibold">1. Is This The Correct Base Domain?</p>
-                    <p className="text-xs text-muted-foreground">This is the root that each subdomain will sit under.</p>
+                    <p className="text-xs text-muted-foreground">Root domain.</p>
                   </div>
                   <Input
                     placeholder="e.g. ourphoenixrise.com"
@@ -1209,7 +1217,7 @@ export default function Templanator() {
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
                     <p className="text-sm font-semibold">2. Is This The Correct Target Host?</p>
-                    <p className="text-xs text-muted-foreground">This is the Cloudflare DNS destination for the subdomains.</p>
+                    <p className="text-xs text-muted-foreground">DNS target.</p>
                   </div>
                   <Input
                     placeholder="e.g. storefront-origin.example.com"
@@ -1251,7 +1259,7 @@ export default function Templanator() {
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
                     <p className="text-sm font-semibold">3. What Categories Do You Want To Split Out?</p>
-                    <p className="text-xs text-muted-foreground">One per line. Nothing is added unless you type it or explicitly add a suggestion.</p>
+                    <p className="text-xs text-muted-foreground">One per line.</p>
                   </div>
                   <Textarea
                     className="min-h-[120px] bg-background/50"
@@ -1260,7 +1268,7 @@ export default function Templanator() {
                     onChange={(e) => setManualCategoryDraft(e.target.value)}
                   />
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">You are in control of the category list.</p>
+                    <p className="text-xs text-muted-foreground">Manual list.</p>
                     <Button className="gradient-phoenix text-primary-foreground" onClick={addManualPlannerCategories}>
                       Add Categories To Planner
                     </Button>
@@ -1270,7 +1278,7 @@ export default function Templanator() {
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
                     <p className="text-sm font-semibold">Detected Suggestions</p>
-                    <p className="text-xs text-muted-foreground">Use these only if they match what you actually want.</p>
+                    <p className="text-xs text-muted-foreground">Add only if correct.</p>
                   </div>
                   <div className="space-y-2">
                     {(scanResult.collectionPillars ?? []).length > 0 ? (
@@ -1307,7 +1315,7 @@ export default function Templanator() {
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
                     <p className="text-sm font-semibold">Current Planning Queue</p>
-                    <p className="text-xs text-muted-foreground">These are the categories currently included in the subdomain plan.</p>
+                    <p className="text-xs text-muted-foreground">Current categories.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {plannerCategories.map((category) => (
@@ -1324,7 +1332,7 @@ export default function Templanator() {
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <p className="text-sm font-semibold">Cloudflare DNS Plan</p>
-                      <p className="text-xs text-muted-foreground">Set your defaults once, then tune each pillar below.</p>
+                      <p className="text-xs text-muted-foreground">Copy-ready records.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <CopyButton text={cloudflareDnsPlan} label="DNS records" />
@@ -1350,7 +1358,7 @@ export default function Templanator() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium">Proxy Through Cloudflare</p>
-                          <p className="text-xs text-muted-foreground">Default is DNS only. Only enable proxy if you intentionally run a compatible Shopify + Cloudflare setup.</p>
+                          <p className="text-xs text-muted-foreground">Default: DNS only.</p>
                         </div>
                         <Switch checked={cloudflareProxyEnabled} onCheckedChange={setCloudflareProxyEnabled} />
                       </div>
@@ -1359,26 +1367,26 @@ export default function Templanator() {
 
                   {cloudflareProxyEnabled ? (
                     <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-500">
-                      Proxy is enabled. For a normal Shopify storefront, keep Cloudflare on DNS only unless you explicitly know you need proxy mode.
+                      Proxy is on. Standard Shopify usually stays DNS only.
                     </div>
                   ) : (
                     <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-500">
-                      DNS only is active. This is the safe default for standard Shopify domain routing.
+                      DNS only is active.
                     </div>
                   )}
 
                   <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Execution Sequence</p>
-                    <p className="text-sm">1. Create each DNS record for <span className="font-medium">{normalizedBaseDomain || "[set base domain]"}</span>.</p>
-                    <p className="text-sm">2. Point them to <span className="font-medium">{normalizedTargetHost || "[set target host]"}</span> using <span className="font-medium">{cloudflareRecordType}</span>.</p>
-                    <p className="text-sm">3. Use the route plan below to decide what each host should land on in the storefront.</p>
+                    <p className="text-sm">1. Create records for <span className="font-medium">{normalizedBaseDomain || "[set base domain]"}</span>.</p>
+                    <p className="text-sm">2. Point them to <span className="font-medium">{normalizedTargetHost || "[set target host]"}</span>.</p>
+                    <p className="text-sm">3. Review routes below.</p>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-4">
                   <div>
                     <p className="text-sm font-semibold">Routing Brief</p>
-                    <p className="text-xs text-muted-foreground">Copy this into Cloudflare notes, launch notes, or your task tracker.</p>
+                    <p className="text-xs text-muted-foreground">Short copy block.</p>
                   </div>
                   <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-background/50 p-3 text-xs text-muted-foreground">
                     {cloudflareRoutingBrief || "Add a base domain to generate the routing brief."}
@@ -1391,7 +1399,7 @@ export default function Templanator() {
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm font-semibold">Planned Categories</p>
-                    <p className="text-xs text-muted-foreground">These are the only categories currently in the Cloudflare plan.</p>
+                    <p className="text-xs text-muted-foreground">Only these are in plan.</p>
                   </div>
 
                   {subdomainPlan.map((pillar) => (
