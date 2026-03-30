@@ -100,6 +100,12 @@ const SAFE_EXTERNAL_DOMAINS = new Set([
   "fonts.shopifycdn.com",
   "shop.app",
   "ourphoenixrise.com",
+  "gohardgaming.com",
+  "www.gohardgaming.com",
+  "ironphoenix.store",
+  "www.ironphoenix.store",
+  "shadowseekers-forge.creator-spring.com",
+  "www.shadowseekers-forge.creator-spring.com",
   "ironphoenixghg.store",
   "pixelchicbotreasures.etsy.com",
   "ironphoenixghg.etsy.com",
@@ -318,19 +324,17 @@ export function buildThemeFixes(input: {
 
   if (includesLcp && input.scan.lcpCandidate) {
     const candidate = input.scan.lcpCandidate;
-    if (!isBlogRelatedAssetKey(candidate.assetKey)) {
-      const originalAsset = input.assets[candidate.assetKey] || "";
-      const updatedAsset = rewriteLcpAsset(originalAsset, candidate);
-      if (updatedAsset && updatedAsset !== originalAsset) {
-        rewrittenFiles[candidate.assetKey] = updatedAsset;
-      }
+    const originalAsset = input.assets[candidate.assetKey] || "";
+    const updatedAsset = rewriteLcpAsset(originalAsset, candidate);
+    if (updatedAsset && updatedAsset !== originalAsset) {
+      rewrittenFiles[candidate.assetKey] = updatedAsset;
+    }
 
-      const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
-      if (themeBase) {
-        const updatedTheme = ensureImagePreload(themeBase, candidate);
-        if (updatedTheme !== themeBase) {
-          rewrittenFiles["layout/theme.liquid"] = updatedTheme;
-        }
+    const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
+    if (themeBase) {
+      const updatedTheme = ensureImagePreload(themeBase, candidate);
+      if (updatedTheme !== themeBase) {
+        rewrittenFiles["layout/theme.liquid"] = updatedTheme;
       }
     }
   }
@@ -343,7 +347,6 @@ export function buildThemeFixes(input: {
     }, {});
 
     for (const [assetKey, links] of Object.entries(linksByAsset)) {
-      if (isBlogRelatedAssetKey(assetKey)) continue;
       const base = rewrittenFiles[assetKey] ?? input.assets[assetKey];
       if (!base) continue;
       const updated = rewriteExternalDomains(base, links);
@@ -358,8 +361,7 @@ export function buildThemeFixes(input: {
       input.scan.sections.filter(
         (key) =>
           key.startsWith("sections/") &&
-          key !== input.scan.lcpCandidate?.assetKey &&
-          !isBlogRelatedAssetKey(key),
+          key !== input.scan.lcpCandidate?.assetKey,
       ),
     );
     for (const key of lazyTargets) {
@@ -715,10 +717,6 @@ function rewriteExternalDomains(content: string, links: ThemeLeak[]): string {
   }
 
   return updated;
-}
-
-function isBlogRelatedAssetKey(assetKey: string): boolean {
-  return /(^|\/)(blog|article|featured-blog|main-blog|main-article)/i.test(assetKey);
 }
 
 function toRelativeStoreUrl(url: string): string {

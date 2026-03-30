@@ -211,17 +211,6 @@ export default function Templanator() {
   );
   const brokenPolicyLinks = scanResult?.policyLinks.filter((link) => link.status !== "ok") ?? [];
   const brokenLinkCount = (scanResult?.crossStoreLinks.length ?? 0) + brokenPolicyLinks.length;
-  const deferredBlogFiles = scanResult
-    ? Array.from(
-        new Set(
-          [
-            ...(scanResult.sections || []).filter(isBlogRelatedAssetKey),
-            ...(scanResult.lcpCandidate && isBlogRelatedAssetKey(scanResult.lcpCandidate.assetKey) ? [scanResult.lcpCandidate.assetKey] : []),
-            ...scanResult.crossStoreLinks.filter((link) => isBlogRelatedAssetKey(link.assetKey)).map((link) => link.assetKey),
-          ],
-        ),
-      )
-    : [];
   const previewTitle = previewTrack === "lcp"
     ? "LCP Preview"
     : previewTrack === "domains"
@@ -700,18 +689,14 @@ export default function Templanator() {
                 <Button
                   className="w-full"
                   variant="outline"
-                  disabled={Boolean(generatingTrack) || Boolean(scanResult.lcpCandidate && isBlogRelatedAssetKey(scanResult.lcpCandidate.assetKey))}
+                  disabled={Boolean(generatingTrack)}
                   onClick={() => handleGeneratePreview("lcp")}
                 >
                   {generatingTrack === "lcp"
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Building LCP-only preview...</>
                     : <><Eye className="h-4 w-4 mr-2" /> Preview LCP Fix Only</>}
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  {scanResult.lcpCandidate && isBlogRelatedAssetKey(scanResult.lcpCandidate.assetKey)
-                    ? "The current LCP candidate lives in a blog-related theme section, so this pass is deferred until after subdomain and blog organization are established."
-                    : "This pass only touches the detected LCP asset and any missing preload tag."}
-                </p>
+                <p className="text-xs text-muted-foreground">This pass only touches the detected LCP asset and any missing preload tag.</p>
               </div>
             </ArchitectPanel>
 
@@ -789,32 +774,6 @@ export default function Templanator() {
                       : <><Eye className="h-4 w-4 mr-2" /> Preview Broken Link Fixes</>}
                   </Button>
                   <p className="text-xs text-muted-foreground">This pass rewrites wrong-store URLs to relative theme paths. Missing policy pages still need Shopify Admin if the policy does not exist yet.</p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {deferredBlogFiles.length > 0 ? (
-            <Card className="bg-card/50 border-border/30">
-              <CardContent className="p-6 space-y-3">
-                <div className="flex items-center gap-3">
-                  <Workflow className="h-5 w-5 text-primary" />
-                  <div>
-                    <h3 className="font-semibold">Deferred Blog Layout Files</h3>
-                    <p className="text-xs text-muted-foreground">Blog-related theme files are intentionally excluded from the automated repair passes until after subdomain separation.</p>
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground space-y-2">
-                  <p>Shopify blog posts are content records, not theme files, so these edits would not delete posts.</p>
-                  <p>The risk is changing blog presentation too early, before you decide how blogs should be split across sections or subdomains.</p>
-                </div>
-                <div className="space-y-2">
-                  {deferredBlogFiles.map((fileKey) => (
-                    <div key={fileKey} className="rounded-md bg-muted/20 p-2 text-sm">
-                      <p className="font-medium">{fileKey}</p>
-                      <p className="text-xs text-muted-foreground">Deferred until after Step 4 establishes domain and blog structure.</p>
-                    </div>
-                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -1032,19 +991,6 @@ export default function Templanator() {
 
               <div className="text-xs text-muted-foreground">
                 Palette controls are managed in the theme editor and not set in this step.
-              </div>
-
-              {deferredBlogFiles.length > 0 ? (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
-                  <p className="font-medium">Blog organization comes after this step.</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Once the base domain and pillar routing are set, the deferred blog-related theme files can be reviewed against the new section and subdomain plan.
-                  </p>
-                </div>
-              ) : null}
-
-              <div className="text-xs text-muted-foreground">
-                Automated blog-layout rewrites are intentionally held back here to avoid premature blog restructuring.
               </div>
             </CardContent>
           </Card>
@@ -1425,10 +1371,6 @@ function summarizePreviewChanges(input: {
 
 function addsPattern(original: string, rewritten: string, pattern: RegExp): boolean {
   return !pattern.test(original) && pattern.test(rewritten);
-}
-
-function isBlogRelatedAssetKey(assetKey: string): boolean {
-  return /(^|\/)(blog|article|featured-blog|main-blog|main-article)/i.test(assetKey);
 }
 
 function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null): string {
