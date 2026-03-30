@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CopyButton, copyAllFields } from "@/components/CopyButton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { storeDomainFacts } from "@/config/appIdentity";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -129,11 +130,22 @@ interface PushResult {
 
 type FixTrack = "lcp" | "domains" | "remaining";
 type RecordType = "CNAME" | "A";
+type PillarLaunchMode = "decide" | "launch" | "keep-main" | "hold";
+
+interface PlannerCategory {
+  id: string;
+  title: string;
+  handle: string;
+  productsCount: number;
+  source: "manual" | "detected";
+}
 
 interface SubdomainPlanItem {
   title: string;
   handle: string;
   productsCount: number;
+  launchMode: PillarLaunchMode;
+  suggestedLabel: string;
   subdomainLabel: string;
   hostname: string;
   routePath: string;
@@ -190,9 +202,13 @@ export default function Templanator() {
   const [supportLocation, setSupportLocation] = useState("");
   const [supportNumber, setSupportNumber] = useState("");
   const [baseDomain, setBaseDomain] = useState("");
+  const [baseDomainConfirmed, setBaseDomainConfirmed] = useState(false);
   const [cloudflareTargetHost, setCloudflareTargetHost] = useState("");
+  const [cloudflareTargetConfirmed, setCloudflareTargetConfirmed] = useState(false);
   const [cloudflareRecordType, setCloudflareRecordType] = useState<RecordType>("CNAME");
   const [cloudflareProxyEnabled, setCloudflareProxyEnabled] = useState(true);
+  const [plannerCategories, setPlannerCategories] = useState<PlannerCategory[]>([]);
+  const [manualCategoryDraft, setManualCategoryDraft] = useState("");
   const [pillarSubdomainOverrides, setPillarSubdomainOverrides] = useState<Record<string, string>>({});
   const [pillarRouteOverrides, setPillarRouteOverrides] = useState<Record<string, string>>({});
   const [subdomainNotes, setSubdomainNotes] = useState("");
@@ -279,13 +295,19 @@ export default function Templanator() {
     ],
     [visiblePalettes, customPalette],
   );
-  const normalizedBaseDomain = useMemo(() => normalizeDomainInput(baseDomain), [baseDomain]);
-  const normalizedTargetHost = useMemo(() => normalizeDomainInput(cloudflareTargetHost), [cloudflareTargetHost]);
+  const normalizedBaseDomain = useMemo(
+    () => (baseDomainConfirmed ? normalizeDomainInput(baseDomain) : ""),
+    [baseDomain, baseDomainConfirmed],
+  );
+  const normalizedTargetHost = useMemo(
+    () => (cloudflareTargetConfirmed ? normalizeDomainInput(cloudflareTargetHost) : ""),
+    [cloudflareTargetHost, cloudflareTargetConfirmed],
+  );
   const subdomainPlan = useMemo<SubdomainPlanItem[]>(
     () =>
-      (scanResult?.collectionPillars ?? []).map((pillar) => {
+      plannerCategories.map((pillar) => {
         const subdomainLabel = sanitizeSubdomainLabel(
-          pillarSubdomainOverrides[pillar.handle] || pillar.handle || pillar.title,
+          pillarSubdomainOverrides[pillar.handle] || "",
         );
         const routePath = normalizeRouteInput(
           pillarRouteOverrides[pillar.handle],
@@ -296,8 +318,10 @@ export default function Templanator() {
           title: pillar.title,
           handle: pillar.handle,
           productsCount: pillar.productsCount,
+          launchMode: "launch",
+          suggestedLabel: sanitizeSubdomainLabel(pillar.handle || pillar.title),
           subdomainLabel,
-          hostname: normalizedBaseDomain ? `${subdomainLabel}.${normalizedBaseDomain}` : "",
+          hostname: normalizedBaseDomain && subdomainLabel ? `${subdomainLabel}.${normalizedBaseDomain}` : "",
           routePath,
           recordType: cloudflareRecordType,
           target: normalizedTargetHost,
@@ -305,7 +329,7 @@ export default function Templanator() {
         };
       }),
     [
-      scanResult,
+      plannerCategories,
       pillarSubdomainOverrides,
       pillarRouteOverrides,
       normalizedBaseDomain,
@@ -353,6 +377,10 @@ export default function Templanator() {
       cloudflareRoutingBrief,
       subdomainNotes,
     ],
+  );
+  const knownStoreDomains = useMemo(
+    () => storeDomainFacts.map((fact) => fact.host).filter(Boolean),
+    [],
   );
 
   const resolvePaletteColors = (value: string) => {
@@ -414,6 +442,8 @@ export default function Templanator() {
       setPreviewTrack(null);
       setFileApprovals([]);
       setScanResult(result);
+      setPlannerCategories([]);
+      setManualCategoryDraft("");
 
       const detected = result.detectedBusinessInfo || {};
       setLegalEntityName((prev) => prev || detected.legalEntityName || "");
@@ -578,6 +608,51 @@ export default function Templanator() {
 
   const toggleFileApproval = (index: number) => {
     setFileApprovals((prev) => prev.map((file, i) => (i === index ? { ...file, approved: !file.approved } : file)));
+  };
+
+  const addPlannerCategory = (category: PlannerCategory) => {
+    setPlannerCategories((prev) => {
+      if (prev.some((entry) => entry.handle === category.handle || entry.title.toLowerCase() === category.title.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, category];
+    });
+  };
+
+  const addDetectedPlannerCategory = (title: string, handle: string, productsCount: number) => {
+    addPlannerCategory({
+      id: `detected:${handle}`,
+      title,
+      handle,
+      productsCount,
+      source: "detected",
+    });
+  };
+
+  const addManualPlannerCategories = () => {
+    const entries = manualCategoryDraft
+      .split(/\r?\n|,/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (entries.length === 0) return;
+
+    entries.forEach((title) => {
+      const handle = sanitizeSubdomainLabel(title);
+      addPlannerCategory({
+        id: `manual:${handle}`,
+        title,
+        handle,
+        productsCount: 0,
+        source: "manual",
+      });
+    });
+
+    setManualCategoryDraft("");
+  };
+
+  const removePlannerCategory = (handle: string) => {
+    setPlannerCategories((prev) => prev.filter((entry) => entry.handle !== handle));
   };
 
   const toggleFileExpanded = (index: number) => {
@@ -1084,6 +1159,12 @@ export default function Templanator() {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
+                {knownStoreDomains.length > 0
+                  ? `Store-domain source of truth: ${knownStoreDomains.join(", ")}`
+                  : "No store_domain facts are configured yet in app identity, so Step 4 will only use domains you explicitly confirm here."}
+              </div>
+
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-xs font-medium">Base Domain for Subdomains</label>
@@ -1091,20 +1172,88 @@ export default function Templanator() {
                     placeholder="e.g. ourphoenixrise.com"
                     className="bg-background/50"
                     value={baseDomain}
-                    onChange={(e) => setBaseDomain(e.target.value)}
+                    onChange={(e) => {
+                      setBaseDomain(e.target.value);
+                      setBaseDomainConfirmed(false);
+                    }}
                   />
-                  <p className="text-xs text-muted-foreground">Templanator uses this root to build every planned Cloudflare hostname.</p>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setBaseDomainConfirmed(Boolean(normalizeDomainInput(baseDomain)))}>
+                      Confirm Base Domain
+                    </Button>
+                    <Badge variant={baseDomainConfirmed ? "secondary" : "outline"}>
+                      {baseDomainConfirmed ? "verified" : "needs confirmation"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Templanator will not use this base domain until you confirm it is correct.</p>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-medium">Cloudflare Target Host</label>
                   <Input
-                    placeholder="e.g. 715b22-4.myshopify.com"
+                    placeholder="e.g. storefront-origin.example.com"
                     className="bg-background/50"
                     value={cloudflareTargetHost}
-                    onChange={(e) => setCloudflareTargetHost(e.target.value)}
+                    onChange={(e) => {
+                      setCloudflareTargetHost(e.target.value);
+                      setCloudflareTargetConfirmed(false);
+                    }}
                   />
-                  <p className="text-xs text-muted-foreground">The DNS destination each subdomain record should point to.</p>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setCloudflareTargetConfirmed(Boolean(normalizeDomainInput(cloudflareTargetHost)))}>
+                      Confirm Target Host
+                    </Button>
+                    <Badge variant={cloudflareTargetConfirmed ? "secondary" : "outline"}>
+                      {cloudflareTargetConfirmed ? "verified" : "needs confirmation"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Templanator will not use this DNS target until you confirm it is correct.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Tell Me The Categories To Plan</p>
+                    <p className="text-xs text-muted-foreground">One per line. Nothing gets added unless you type it or click a detected suggestion.</p>
+                  </div>
+                  <Textarea
+                    className="min-h-[120px] bg-background/50"
+                    placeholder={"Sports & Outdoors\nHealth & Wellness\nChildren"}
+                    value={manualCategoryDraft}
+                    onChange={(e) => setManualCategoryDraft(e.target.value)}
+                  />
+                  <Button variant="outline" onClick={addManualPlannerCategories}>
+                    Add Categories To Plan
+                  </Button>
+                </div>
+
+                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Detected Suggestions</p>
+                    <p className="text-xs text-muted-foreground">Use these only if they match what you actually want.</p>
+                  </div>
+                  <div className="space-y-2">
+                    {(scanResult.collectionPillars ?? []).length > 0 ? (
+                      scanResult.collectionPillars.map((pillar) => (
+                        <div key={pillar.handle} className="flex items-center justify-between gap-3 rounded-xl border border-border/30 bg-background/40 p-3">
+                          <div>
+                            <p className="text-sm font-medium">{pillar.title}</p>
+                            <p className="text-xs text-muted-foreground">{pillar.productsCount} products</p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addDetectedPlannerCategory(pillar.title, pillar.handle, pillar.productsCount)}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No detected category suggestions came back from the scan.</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1176,8 +1325,8 @@ export default function Templanator() {
               {subdomainPlan.length > 0 ? (
                 <div className="space-y-3">
                   <div>
-                    <p className="text-sm font-semibold">Detected Pillar Opportunities</p>
-                    <p className="text-xs text-muted-foreground">Edit the hostname label and storefront route for each pillar.</p>
+                    <p className="text-sm font-semibold">Planned Categories</p>
+                    <p className="text-xs text-muted-foreground">These are the only categories currently in the Cloudflare plan.</p>
                   </div>
 
                   {subdomainPlan.map((pillar) => (
@@ -1189,8 +1338,12 @@ export default function Templanator() {
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">{pillar.productsCount} products</Badge>
+                          <Badge variant="outline">{plannerCategories.find((entry) => entry.handle === pillar.handle)?.source || "manual"}</Badge>
                           <Badge variant="outline">{pillar.recordType}</Badge>
                           <Badge variant="outline">{pillar.proxied ? "Proxied" : "DNS only"}</Badge>
+                          <Button variant="ghost" size="sm" onClick={() => removePlannerCategory(pillar.handle)}>
+                            Remove
+                          </Button>
                         </div>
                       </div>
 
@@ -1199,6 +1352,7 @@ export default function Templanator() {
                           <label className="text-xs font-medium">Subdomain Label</label>
                           <Input
                             className="bg-background/50"
+                            placeholder={pillar.suggestedLabel || "set-subdomain"}
                             value={pillarSubdomainOverrides[pillar.handle] ?? pillar.subdomainLabel}
                             onChange={(e) =>
                               setPillarSubdomainOverrides((prev) => ({
@@ -1207,6 +1361,20 @@ export default function Templanator() {
                               }))
                             }
                           />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setPillarSubdomainOverrides((prev) => ({
+                                  ...prev,
+                                  [pillar.handle]: pillar.suggestedLabel,
+                                }))
+                              }
+                            >
+                              Use Suggested Label
+                            </Button>
+                          </div>
                           <p className="text-xs text-muted-foreground">Full host: {pillar.hostname || "Set the base domain to compute the hostname."}</p>
                         </div>
 
