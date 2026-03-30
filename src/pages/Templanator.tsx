@@ -186,7 +186,7 @@ const STEPS = [
   { num: 1, label: "Theme Handshake", summary: "Import the live Shopify theme into the workflow." },
   { num: 2, label: "Policy Verification", summary: "Confirm policy links before applying any rewrites." },
   { num: 3, label: "Theme Fixes", summary: "Run the LCP pass first, then clean domains and handle the remaining fixes." },
-  { num: 4, label: "Subdomain Separation", summary: "Review domain and pillar routing suggestions." },
+  { num: 4, label: "Subdomain Separation", summary: "Optional: review domain and pillar routing suggestions." },
   { num: 5, label: "Push to Store", summary: "Ship only the approved files back to Shopify." },
 ];
 
@@ -1135,6 +1135,13 @@ export default function Templanator() {
             <Button variant="outline" onClick={() => setStep(2)}>
               Back to Policy Verification
             </Button>
+            <Button
+              variant="outline"
+              disabled={approvedCount === 0}
+              onClick={() => setStep(5)}
+            >
+              Skip Subdomains
+            </Button>
             <Button className="gradient-phoenix text-primary-foreground" onClick={() => setStep(4)}>
               Continue to Subdomain Separation
             </Button>
@@ -1154,10 +1161,10 @@ export default function Templanator() {
                 <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
                   <Workflow className="h-5 w-5 text-primary" />
                 </div>
-                <div>
-                  <h2 className="font-bold text-lg">Step 4: Subdomain & Content Separation</h2>
-                  <p className="text-sm text-muted-foreground">Set domain. Add categories. Copy DNS.</p>
-                </div>
+              <div>
+                <h2 className="font-bold text-lg">Step 4: Subdomain & Content Separation</h2>
+                  <p className="text-sm text-muted-foreground">Optional. Set domain, add categories, copy DNS.</p>
+              </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
