@@ -69,7 +69,7 @@ export interface ThemeAnalysis {
   };
 }
 
-export type ThemeFixMode = "all" | "lcp" | "remaining";
+export type ThemeFixMode = "all" | "lcp" | "domains" | "remaining";
 
 interface ImageCandidate {
   assetKey: string;
@@ -303,6 +303,7 @@ export function buildThemeFixes(input: {
 }): Record<string, string> {
   const mode = input.mode || "all";
   const includesLcp = mode === "all" || mode === "lcp";
+  const includesDomains = mode === "all" || mode === "domains";
   const includesRemaining = mode === "all" || mode === "remaining";
   const rewrittenFiles: Record<string, string> = {};
   const footerOriginal = input.assets["sections/footer.liquid"] || "";
@@ -317,24 +318,49 @@ export function buildThemeFixes(input: {
 
   if (includesLcp && input.scan.lcpCandidate) {
     const candidate = input.scan.lcpCandidate;
-    const originalAsset = input.assets[candidate.assetKey] || "";
-    const updatedAsset = rewriteLcpAsset(originalAsset, candidate);
-    if (updatedAsset && updatedAsset !== originalAsset) {
-      rewrittenFiles[candidate.assetKey] = updatedAsset;
-    }
+    if (!isBlogRelatedAssetKey(candidate.assetKey)) {
+      const originalAsset = input.assets[candidate.assetKey] || "";
+      const updatedAsset = rewriteLcpAsset(originalAsset, candidate);
+      if (updatedAsset && updatedAsset !== originalAsset) {
+        rewrittenFiles[candidate.assetKey] = updatedAsset;
+      }
 
-    const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
-    if (themeBase) {
-      const updatedTheme = ensureImagePreload(themeBase, candidate);
-      if (updatedTheme !== themeBase) {
-        rewrittenFiles["layout/theme.liquid"] = updatedTheme;
+      const themeBase = rewrittenFiles["layout/theme.liquid"] ?? themeOriginal;
+      if (themeBase) {
+        const updatedTheme = ensureImagePreload(themeBase, candidate);
+        if (updatedTheme !== themeBase) {
+          rewrittenFiles["layout/theme.liquid"] = updatedTheme;
+        }
+      }
+    }
+  }
+
+  if (includesDomains && input.scan.crossStoreLinks.length > 0) {
+    const linksByAsset = input.scan.crossStoreLinks.reduce<Record<string, ThemeLeak[]>>((acc, link) => {
+      if (!acc[link.assetKey]) acc[link.assetKey] = [];
+      acc[link.assetKey].push(link);
+      return acc;
+    }, {});
+
+    for (const [assetKey, links] of Object.entries(linksByAsset)) {
+      if (isBlogRelatedAssetKey(assetKey)) continue;
+      const base = rewrittenFiles[assetKey] ?? input.assets[assetKey];
+      if (!base) continue;
+      const updated = rewriteExternalDomains(base, links);
+      if (updated !== base) {
+        rewrittenFiles[assetKey] = updated;
       }
     }
   }
 
   if (includesRemaining) {
     const lazyTargets = new Set(
-      input.scan.sections.filter((key) => key.startsWith("sections/") && key !== input.scan.lcpCandidate?.assetKey),
+      input.scan.sections.filter(
+        (key) =>
+          key.startsWith("sections/") &&
+          key !== input.scan.lcpCandidate?.assetKey &&
+          !isBlogRelatedAssetKey(key),
+      ),
     );
     for (const key of lazyTargets) {
       const base = rewrittenFiles[key] ?? input.assets[key];
@@ -677,6 +703,32 @@ function ensureLazyLoadingForSection(sectionContent: string): string {
   });
 
   return updated;
+}
+
+function rewriteExternalDomains(content: string, links: ThemeLeak[]): string {
+  let updated = content;
+
+  for (const link of links) {
+    const replacement = toRelativeStoreUrl(link.url);
+    if (!replacement || replacement === link.url) continue;
+    updated = updated.split(link.url).join(replacement);
+  }
+
+  return updated;
+}
+
+function isBlogRelatedAssetKey(assetKey: string): boolean {
+  return /(^|\/)(blog|article|featured-blog|main-blog|main-article)/i.test(assetKey);
+}
+
+function toRelativeStoreUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const relative = `${parsed.pathname || "/"}${parsed.search}${parsed.hash}`;
+    return relative || "/";
+  } catch {
+    return url;
+  }
 }
 
 function ensureHtmlImgAttributeSet(tag: string, attribute: string, value: string): string {

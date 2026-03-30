@@ -127,7 +127,7 @@ interface PushResult {
   errors?: string[];
 }
 
-type FixTrack = "lcp" | "remaining";
+type FixTrack = "lcp" | "domains" | "remaining";
 
 const NICHE_PALETTES = [
   { label: "Keep Current", value: "default", desc: "Preserve existing store color scheme", colors: [], tags: ["neutral"] },
@@ -160,7 +160,7 @@ const NICHE_PALETTES = [
 const STEPS = [
   { num: 1, label: "Theme Handshake", summary: "Import the live Shopify theme into the workflow." },
   { num: 2, label: "Policy Verification", summary: "Confirm policy links before applying any rewrites." },
-  { num: 3, label: "Theme Fixes", summary: "Run the LCP pass first, then handle the remaining fixes." },
+  { num: 3, label: "Theme Fixes", summary: "Run the LCP pass first, then clean domains and handle the remaining fixes." },
   { num: 4, label: "Subdomain Separation", summary: "Review domain and pillar routing suggestions." },
   { num: 5, label: "Push to Store", summary: "Ship only the approved files back to Shopify." },
 ];
@@ -209,18 +209,47 @@ export default function Templanator() {
     scanResult?.policyLinks?.length &&
       scanResult.policyLinks.every((link) => link.status === "ok"),
   );
-  const previewTitle = previewTrack === "lcp" ? "LCP Preview" : previewTrack === "remaining" ? "Remaining Fixes Preview" : "Preview Changes";
+  const brokenPolicyLinks = scanResult?.policyLinks.filter((link) => link.status !== "ok") ?? [];
+  const brokenLinkCount = (scanResult?.crossStoreLinks.length ?? 0) + brokenPolicyLinks.length;
+  const deferredBlogFiles = scanResult
+    ? Array.from(
+        new Set(
+          [
+            ...(scanResult.sections || []).filter(isBlogRelatedAssetKey),
+            ...(scanResult.lcpCandidate && isBlogRelatedAssetKey(scanResult.lcpCandidate.assetKey) ? [scanResult.lcpCandidate.assetKey] : []),
+            ...scanResult.crossStoreLinks.filter((link) => isBlogRelatedAssetKey(link.assetKey)).map((link) => link.assetKey),
+          ],
+        ),
+      )
+    : [];
+  const previewTitle = previewTrack === "lcp"
+    ? "LCP Preview"
+    : previewTrack === "domains"
+      ? "Broken Link Preview"
+      : previewTrack === "remaining"
+        ? "Remaining Fixes Preview"
+        : "Preview Changes";
   const previewDescription = previewTrack === "lcp"
     ? "Review the LCP-only rewrite before moving to the broader cleanup pass."
-    : previewTrack === "remaining"
-      ? "Review the non-LCP rewrites before proceeding."
-      : "Review the generated rewrites before proceeding.";
+    : previewTrack === "domains"
+      ? "Review the broken-link rewrites before applying them."
+      : previewTrack === "remaining"
+        ? "Review the non-LCP rewrites before proceeding."
+        : "Review the generated rewrites before proceeding.";
   const previewEmptyState = previewTrack === "lcp"
-    ? "No LCP rewrite was needed. The detected LCP path is already clean."
-    : previewTrack === "remaining"
-      ? "No remaining non-LCP rewrites were generated for this pass."
-      : "No rewrites generated yet. Run a preview pass to inspect changes.";
-  const pushTrackLabel = previewTrack === "lcp" ? "LCP pass" : previewTrack === "remaining" ? "remaining fixes pass" : "approved changes";
+      ? "No LCP rewrite was needed. The detected LCP path is already clean."
+    : previewTrack === "domains"
+      ? "No broken-link rewrites were generated for this pass."
+      : previewTrack === "remaining"
+        ? "No remaining non-LCP rewrites were generated for this pass."
+        : "No rewrites generated yet. Run a preview pass to inspect changes.";
+  const pushTrackLabel = previewTrack === "lcp"
+    ? "LCP pass"
+    : previewTrack === "domains"
+      ? "broken link pass"
+      : previewTrack === "remaining"
+        ? "remaining fixes pass"
+        : "approved changes";
   const visiblePalettes = useMemo(
     () =>
       NICHE_PALETTES.filter((palette) => {
@@ -386,7 +415,9 @@ export default function Templanator() {
         description: approvals.length > 0
           ? `${approvals.length} files staged for review.`
           : track === "lcp"
-            ? "No LCP rewrite was needed."
+              ? "No LCP rewrite was needed."
+            : track === "domains"
+              ? "No broken-link rewrite was needed."
             : "No remaining non-LCP rewrites were needed.",
       });
     } catch (err: unknown) {
@@ -641,7 +672,7 @@ export default function Templanator() {
                 <StatBox label="Hard Colors" value={scanResult.stats.hardcodedColors} />
                 <StatBox label="Inline Styles" value={scanResult.stats.inlineStyles} />
                 <StatBox label="Untracked Forms" value={scanResult.stats.formsWithoutTracking} />
-                <StatBox label="External Domains" value={scanResult.stats.crossStoreLinkCount} />
+                <StatBox label="Broken Links" value={brokenLinkCount} sub={`${scanResult.stats.crossStoreLinkCount} wrong-store URLs`} />
               </div>
             </CardContent>
           </Card>
@@ -662,14 +693,18 @@ export default function Templanator() {
                 <Button
                   className="w-full"
                   variant="outline"
-                  disabled={Boolean(generatingTrack)}
+                  disabled={Boolean(generatingTrack) || Boolean(scanResult.lcpCandidate && isBlogRelatedAssetKey(scanResult.lcpCandidate.assetKey))}
                   onClick={() => handleGeneratePreview("lcp")}
                 >
                   {generatingTrack === "lcp"
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Building LCP-only preview...</>
                     : <><Eye className="h-4 w-4 mr-2" /> Preview LCP Fix Only</>}
                 </Button>
-                <p className="text-xs text-muted-foreground">This pass only touches the detected LCP asset and any missing preload tag.</p>
+                <p className="text-xs text-muted-foreground">
+                  {scanResult.lcpCandidate && isBlogRelatedAssetKey(scanResult.lcpCandidate.assetKey)
+                    ? "The current LCP candidate lives in a blog-related theme section, so this pass is deferred until after subdomain and blog organization are established."
+                    : "This pass only touches the detected LCP asset and any missing preload tag."}
+                </p>
               </div>
             </ArchitectPanel>
 
@@ -682,27 +717,95 @@ export default function Templanator() {
             </ArchitectPanel>
           </div>
 
-          {scanResult.crossStoreLinks.length > 0 ? (
+          {brokenLinkCount > 0 ? (
             <Card className="bg-card/50 border-border/30">
               <CardContent className="p-6 space-y-3">
                 <div className="flex items-center gap-3">
                   <Globe className="h-5 w-5 text-primary" />
                   <div>
-                    <h3 className="font-semibold">External Domain References</h3>
-                    <p className="text-xs text-muted-foreground">Informational only. Review for intentional routing, analytics, and brand separation.</p>
+                    <h3 className="font-semibold">Broken Links</h3>
+                    <p className="text-xs text-muted-foreground">Wrong-store URLs can be rewritten. Missing or off-target policy links are listed separately below.</p>
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground space-y-2">
-                  <p>These are hard-coded external domains found in theme assets.</p>
-                  <p>Analytics, tag managers, schema references, and approved brand-network links can be legitimate.</p>
-                  <p>Only treat a reference as a problem if it sends customers to the wrong storefront, brand surface, or support path.</p>
+                  <p>Wrong-store links are hard-coded URLs in the theme that send customers to the wrong storefront, brand surface, or support path.</p>
+                  <p>Policy link risks are footer links that are missing or pointing at the wrong policy route.</p>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Wrong-Store URLs</p>
+                    {scanResult.crossStoreLinks.length > 0 ? (
+                      scanResult.crossStoreLinks.slice(0, 5).map((link) => (
+                        <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
+                          <p className="font-medium">{link.domain}</p>
+                          <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
+                          <p className="text-xs text-muted-foreground truncate">{link.url}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
+                        No wrong-store URLs were detected in the loaded theme assets.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Policy Link Risks</p>
+                    {brokenPolicyLinks.length > 0 ? (
+                      brokenPolicyLinks.map((link) => (
+                        <div key={`${link.label}-${link.targetPath}`} className="rounded-md bg-muted/20 p-2 text-sm">
+                          <p className="font-medium">{link.label}</p>
+                          <p className="text-xs text-muted-foreground">Target: {link.targetPath}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {link.status === "missing"
+                              ? "Missing from footer. Create or attach this policy in Shopify Admin."
+                              : `Currently points to ${link.href || "an unknown URL"}.`}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
+                        No policy link risks were detected.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    disabled={Boolean(generatingTrack)}
+                    onClick={() => handleGeneratePreview("domains")}
+                  >
+                    {generatingTrack === "domains"
+                      ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Building broken-link preview...</>
+                      : <><Eye className="h-4 w-4 mr-2" /> Preview Broken Link Fixes</>}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">This pass rewrites wrong-store URLs to relative theme paths. Missing policy pages still need Shopify Admin if the policy does not exist yet.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {deferredBlogFiles.length > 0 ? (
+            <Card className="bg-card/50 border-border/30">
+              <CardContent className="p-6 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Workflow className="h-5 w-5 text-primary" />
+                  <div>
+                    <h3 className="font-semibold">Deferred Blog Layout Files</h3>
+                    <p className="text-xs text-muted-foreground">Blog-related theme files are intentionally excluded from the automated repair passes until after subdomain separation.</p>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground space-y-2">
+                  <p>Shopify blog posts are content records, not theme files, so these edits would not delete posts.</p>
+                  <p>The risk is changing blog presentation too early, before you decide how blogs should be split across sections or subdomains.</p>
                 </div>
                 <div className="space-y-2">
-                  {scanResult.crossStoreLinks.slice(0, 5).map((link) => (
-                    <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
-                      <p className="font-medium">{link.domain}</p>
-                      <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
-                      <p className="text-xs text-muted-foreground truncate">{link.url}</p>
+                  {deferredBlogFiles.map((fileKey) => (
+                    <div key={fileKey} className="rounded-md bg-muted/20 p-2 text-sm">
+                      <p className="font-medium">{fileKey}</p>
+                      <p className="text-xs text-muted-foreground">Deferred until after Step 4 establishes domain and blog structure.</p>
                     </div>
                   ))}
                 </div>
@@ -813,7 +916,16 @@ export default function Templanator() {
                   <div key={file.key} className={`rounded-lg border transition-all ${file.approved ? "border-green-500/30 bg-green-500/5" : "border-border/20 bg-muted/10 opacity-60"}`}>
                     <div className="flex items-center gap-3 p-4">
                       <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
-                      <code className="text-sm font-mono flex-1">{file.key}</code>
+                      <div className="flex-1">
+                        <code className="text-sm font-mono">{file.key}</code>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {summarizePreviewChanges({
+                            file,
+                            previewTrack,
+                            lcpAssetKey: scanResult?.lcpCandidate?.assetKey || null,
+                          })}
+                        </p>
+                      </div>
                       <Button variant="ghost" size="sm" onClick={() => toggleFileExpanded(index)}>
                         {file.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         <span className="ml-1 text-xs">{file.expanded ? "Hide" : "Diff"}</span>
@@ -914,6 +1026,19 @@ export default function Templanator() {
               <div className="text-xs text-muted-foreground">
                 Palette controls are managed in the theme editor and not set in this step.
               </div>
+
+              {deferredBlogFiles.length > 0 ? (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+                  <p className="font-medium">Blog organization comes after this step.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Once the base domain and pillar routing are set, the deferred blog-related theme files can be reviewed against the new section and subdomain plan.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="text-xs text-muted-foreground">
+                Automated blog-layout rewrites are intentionally held back here to avoid premature blog restructuring.
+              </div>
             </CardContent>
           </Card>
 
@@ -977,10 +1102,14 @@ export default function Templanator() {
                 <CheckCircle2 className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="font-bold text-xl">{previewTrack === "lcp" ? "LCP Pass Updated" : "Theme Updated"}</h2>
+                <h2 className="font-bold text-xl">
+                  {previewTrack === "lcp" ? "LCP Pass Updated" : previewTrack === "domains" ? "Broken Link Pass Updated" : "Theme Updated"}
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   {previewTrack === "lcp"
                     ? "The LCP-only pass has been pushed. You can return to Theme Fixes for the remaining cleanup pass."
+                    : previewTrack === "domains"
+                      ? "The broken-link pass has been pushed. Return to Theme Fixes if you want to continue with the remaining rewrites."
                     : "Approved Automated Architect changes have been pushed to Shopify."}
                 </p>
               </div>
@@ -1024,7 +1153,7 @@ export default function Templanator() {
 
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep(3)}>
-                {previewTrack === "lcp" ? "Continue to Remaining Fixes" : "Back to Theme Fixes"}
+                {previewTrack === "lcp" ? "Continue to Remaining Fixes" : previewTrack === "domains" ? "Back to Theme Fixes" : "Back to Theme Fixes"}
               </Button>
               <Button variant="outline" className="flex-1" onClick={resetSession}>
                 <Flame className="h-4 w-4 mr-2" /> Start New Session
@@ -1046,7 +1175,15 @@ export default function Templanator() {
 
   const sessionLabel = selectedStore?.shop_name || selectedStore?.shop_domain || "New session";
   const completedSteps = STEPS.filter((item) => step > item.num).length;
-  const sessionStatus = pushResult ? "Updated" : previewTrack === "lcp" ? "LCP pass complete" : scanResult ? "In progress" : "Pending";
+  const sessionStatus = pushResult
+    ? "Updated"
+    : previewTrack === "lcp"
+      ? "LCP pass complete"
+      : previewTrack === "domains"
+        ? "Broken link pass ready"
+        : scanResult
+          ? "In progress"
+          : "Pending";
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -1216,6 +1353,71 @@ function truncateCode(code: string, maxLen: number): string {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function summarizePreviewChanges(input: {
+  file: FileApproval;
+  previewTrack: FixTrack | null;
+  lcpAssetKey: string | null;
+}): string {
+  const original = input.file.original || "";
+  const rewritten = input.file.rewritten;
+  const notes: string[] = [];
+
+  if (input.previewTrack === "lcp") {
+    if (input.file.key === input.lcpAssetKey) {
+      notes.push("Reason: this file contains the current Largest Contentful Paint candidate.");
+      if (addsPattern(original, rewritten, /\bloading\s*=\s*["']eager["']|loading\s*:\s*['"]eager['"]/i)) {
+        notes.push("Promotes the detected LCP image to eager loading.");
+      }
+      if (addsPattern(original, rewritten, /\bfetchpriority\s*=\s*["']high["']|fetchpriority\s*:\s*['"]high['"]/i)) {
+        notes.push("Adds high fetch priority to the detected LCP image.");
+      }
+    }
+
+    if (input.file.key === "layout/theme.liquid" && addsPattern(original, rewritten, /rel=["']preload["'][^>]*as=["']image["']/i)) {
+      notes.push("Reason: the layout controls the document head.");
+      notes.push("Adds an image preload tag in the document head for the detected LCP asset.");
+    }
+  }
+
+  if (input.previewTrack === "domains") {
+    notes.push("Reason: this file contains hard-coded storefront URLs that should not point off-site.");
+    notes.push("Rewrites hard-coded wrong-store URLs in this file to relative theme paths.");
+  }
+
+  if (input.previewTrack === "remaining") {
+    if (input.file.key === "sections/footer.liquid") {
+      notes.push("Reason: the footer owns support identity and policy navigation.");
+      notes.push("Normalizes footer policy links and updates the compliance block.");
+    }
+    if (addsPattern(original, rewritten, /\bloading\s*=\s*["']lazy["']|loading\s*:\s*['"]lazy['"]/i)) {
+      notes.push("Reason: below-the-fold imagery in this file should not compete with primary content.");
+      notes.push("Adds lazy-loading to below-the-fold images in this file.");
+    }
+    if (input.file.key === "assets/phoenix-palettes.css") {
+      notes.push("Reason: the selected palette needs a generated stylesheet.");
+      notes.push("Generates the Phoenix palette stylesheet for the selected theme colors.");
+    }
+    if (input.file.key === "layout/theme.liquid" && addsPattern(original, rewritten, /phoenix-palettes\.css/i)) {
+      notes.push("Reason: the layout must load the generated palette stylesheet.");
+      notes.push("Injects the generated palette stylesheet into the theme layout.");
+    }
+  }
+
+  if (notes.length === 0) {
+    if (input.file.key === "sections/footer.liquid" && rewritten.includes("phoenix-flow-identity-block")) {
+      notes.push("Updates the footer support and policy markup.");
+    } else {
+      notes.push("Review the diff for the exact markup changes in this file.");
+    }
+  }
+
+  return notes.join(" ");
+}
+
+function addsPattern(original: string, rewritten: string, pattern: RegExp): boolean {
+  return !pattern.test(original) && pattern.test(rewritten);
 }
 
 function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null): string {
