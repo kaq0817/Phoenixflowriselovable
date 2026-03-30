@@ -34,8 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { appIdentityConfig } from "@/config/appIdentity";
-import { appSupportConfig } from "@/config/appSupport";
 
 interface StoreConnection {
   id: string;
@@ -423,17 +421,7 @@ export default function Templanator() {
     setAssistantAnswer("");
 
     try {
-      const question = buildFindingsQuestion(scanResult, selectedStore);
-      const { data, error } = await supabase.functions.invoke("answer-app-question", {
-        body: {
-          question,
-          identity: appIdentityConfig,
-          support: appSupportConfig,
-        },
-      });
-      if (error) throw error;
-      if (!data?.answer) throw new Error("Assistant did not return an answer");
-      setAssistantAnswer(data.answer as string);
+      setAssistantAnswer(buildLocalFindingsExplanation(scanResult, selectedStore));
     } catch (err: unknown) {
       toast({ title: "Assistant failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -1410,34 +1398,50 @@ function formatDiffSnippet(line: string): string {
   return `\`${shortened}\``;
 }
 
-function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null): string {
+function buildLocalFindingsExplanation(scan: ScanResult, store: StoreConnection | null): string {
   const storeLabel = store?.shop_name || store?.shop_domain || "Shopify store";
-  const issueLines = scan.scanIssues.length > 0
-    ? scan.scanIssues.map((issue, index) => `${index + 1}. ${issue}`).join("\n")
-    : "No issues were reported.";
-  const lcp = scan.lcpCandidate
-    ? `LCP candidate asset: ${scan.lcpCandidate.assetKey}; loading=${scan.lcpCandidate.loadingMode}; fetchpriority_high=${scan.lcpCandidate.hasFetchPriorityHigh}; preload=${scan.lcpCandidate.preloadDetected}.`
-    : "No LCP candidate detected.";
-  const crossStore = scan.crossStoreLinks.length > 0
-    ? scan.crossStoreLinks.slice(0, 5).map((link) => `${link.domain} (${link.assetKey})`).join("; ")
-    : "No external domain references detected.";
-  const policy = scan.policyLinks.length > 0
-    ? scan.policyLinks.map((link) => `${link.label}: ${link.status}`).join("; ")
-    : "No policy link data.";
+  const lines: string[] = [`Findings for ${storeLabel}:`];
 
-  return [
-    `Explain the Templanator Architect Findings for ${storeLabel}.`,
-    "Use plain English and short bullets.",
-    "List each finding with what it means and the first fix to apply.",
-    "Do not invent data or routes.",
-    "",
-    "Findings:",
-    issueLines,
-    "",
-    `Details: ${lcp}`,
-    `Policy links: ${policy}`,
-    `External domain references: ${crossStore}`,
-  ].join("\n");
+  if (scan.lcpCandidate) {
+    const lcpFixes: string[] = [];
+    if (!scan.lcpCandidate.hasFetchPriorityHigh) lcpFixes.push("add fetchpriority=high");
+    if (scan.lcpCandidate.loadingMode !== "eager") lcpFixes.push("set loading=eager");
+    if (!scan.lcpCandidate.preloadDetected) lcpFixes.push("add a preload tag in layout/theme.liquid");
+    lines.push(`- LCP: ${scan.lcpCandidate.assetKey} is the current candidate. First fix: ${lcpFixes.length > 0 ? lcpFixes.join(", ") : "no change needed"}.`);
+  } else {
+    lines.push("- LCP: no clear candidate detected in the loaded theme assets.");
+  }
+
+  if (scan.stats.belowFoldImagesMissingLazy > 0) {
+    lines.push(`- Lazy loading: ${scan.stats.belowFoldImagesMissingLazy} below-the-fold images still need loading=\"lazy\".`);
+  }
+
+  const fixablePolicies = scan.policyLinks.filter((link) => link.status === "dead-link-risk");
+  const missingPolicies = scan.policyLinks.filter((link) => link.status === "missing");
+  if (fixablePolicies.length > 0) {
+    lines.push(`- Policy URLs: ${fixablePolicies.map((link) => `${link.label} -> ${link.targetPath}`).join("; ")}. First fix: rewrite the existing footer links to those Shopify policy routes.`);
+  }
+  if (missingPolicies.length > 0) {
+    lines.push(`- Missing policies: ${missingPolicies.map((link) => link.label).join(", ")}. First fix: generate or attach them in Shopify Admin.`);
+  }
+
+  if (scan.crossStoreLinks.length > 0) {
+    lines.push(`- Storefront links: ${scan.crossStoreLinks.length} hard-coded URLs still point off-store. First fix: rewrite them to the correct local storefront paths.`);
+  }
+
+  if (scan.stats.hardcodedColors > 10) {
+    lines.push(`- Theme styling: ${scan.stats.hardcodedColors} hard-coded colors detected. First fix: move repeated colors into the generated palette stylesheet.`);
+  }
+
+  if (scan.stats.formsWithoutTracking > 0) {
+    lines.push(`- Forms: ${scan.stats.formsWithoutTracking} forms are missing source tracking fields.`);
+  }
+
+  if (lines.length === 1) {
+    lines.push("- No critical findings were reported.");
+  }
+
+  return lines.join("\n");
 }
 
 function StatBox({ label, value, sub }: { label: string; value: number; sub?: string }) {
