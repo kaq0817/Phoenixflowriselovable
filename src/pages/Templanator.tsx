@@ -595,7 +595,7 @@ export default function Templanator() {
                 <StatBox label="Hard Colors" value={scanResult.stats.hardcodedColors} />
                 <StatBox label="Inline Styles" value={scanResult.stats.inlineStyles} />
                 <StatBox label="Untracked Forms" value={scanResult.stats.formsWithoutTracking} />
-                <StatBox label="Backlinks" value={scanResult.stats.crossStoreLinkCount} />
+                <StatBox label="External Domains" value={scanResult.stats.crossStoreLinkCount} />
               </div>
             </CardContent>
           </Card>
@@ -629,20 +629,21 @@ export default function Templanator() {
                 <div className="flex items-center gap-3">
                   <Globe className="h-5 w-5 text-primary" />
                   <div>
-                    <h3 className="font-semibold">Backlinks</h3>
-                    <p className="text-xs text-muted-foreground">Not errors. Review for routing consistency and brand separation.</p>
+                    <h3 className="font-semibold">External Domain References</h3>
+                    <p className="text-xs text-muted-foreground">Informational only. Review for intentional routing, analytics, and brand separation.</p>
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground space-y-2">
-                  <p>Backlinks are votes of confidence from other sites.</p>
-                  <p>High-quality links lift SEO and send qualified referral traffic for Phoenix Flow.</p>
-                  <p>Quality beats quantity. One strong ecommerce link outperforms dozens of weak directories.</p>
+                  <p>These are hard-coded external domains found in theme assets.</p>
+                  <p>Analytics, tag managers, schema references, and approved brand-network links can be legitimate.</p>
+                  <p>Only treat a reference as a problem if it sends customers to the wrong storefront, brand surface, or support path.</p>
                 </div>
                 <div className="space-y-2">
                   {scanResult.crossStoreLinks.slice(0, 5).map((link) => (
                     <div key={`${link.assetKey}-${link.url}`} className="rounded-md bg-muted/20 p-2 text-sm">
                       <p className="font-medium">{link.domain}</p>
                       <p className="text-xs text-muted-foreground truncate">{link.assetKey}</p>
+                      <p className="text-xs text-muted-foreground truncate">{link.url}</p>
                     </div>
                   ))}
                 </div>
@@ -1052,7 +1053,7 @@ function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null):
     : "No LCP candidate detected.";
   const crossStore = scan.crossStoreLinks.length > 0
     ? scan.crossStoreLinks.slice(0, 5).map((link) => `${link.domain} (${link.assetKey})`).join("; ")
-    : "No cross-store links detected.";
+    : "No external domain references detected.";
   const policy = scan.policyLinks.length > 0
     ? scan.policyLinks.map((link) => `${link.label}: ${link.status}`).join("; ")
     : "No policy link data.";
@@ -1068,7 +1069,7 @@ function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null):
     "",
     `Details: ${lcp}`,
     `Policy links: ${policy}`,
-    `Cross-store links: ${crossStore}`,
+    `External domain references: ${crossStore}`,
   ].join("\n");
 }
 

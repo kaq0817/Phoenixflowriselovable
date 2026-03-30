@@ -260,7 +260,7 @@ export function analyzeThemeAssets(input: {
     scanIssues.push(`Support location does not match the active ${supportSiloStatus.expectedStoreMarker} store`);
   }
   if (crossStoreLinks.length > 0) {
-    scanIssues.push(`${crossStoreLinks.length} cross-store hard-coded links detected in theme assets`);
+    scanIssues.push(`${crossStoreLinks.length} hard-coded external domain references detected in theme assets`);
   }
   if ((input.collectionPillars || []).length === 0) {
     scanIssues.push("No weighted collections found for pillar and subdomain suggestions");
