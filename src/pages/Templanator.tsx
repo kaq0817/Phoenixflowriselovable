@@ -206,7 +206,7 @@ export default function Templanator() {
   const [cloudflareTargetHost, setCloudflareTargetHost] = useState("");
   const [cloudflareTargetConfirmed, setCloudflareTargetConfirmed] = useState(false);
   const [cloudflareRecordType, setCloudflareRecordType] = useState<RecordType>("CNAME");
-  const [cloudflareProxyEnabled, setCloudflareProxyEnabled] = useState(true);
+  const [cloudflareProxyEnabled, setCloudflareProxyEnabled] = useState(false);
   const [plannerCategories, setPlannerCategories] = useState<PlannerCategory[]>([]);
   const [manualCategoryDraft, setManualCategoryDraft] = useState("");
   const [pillarSubdomainOverrides, setPillarSubdomainOverrides] = useState<Record<string, string>>({});
@@ -1350,12 +1350,22 @@ export default function Templanator() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium">Proxy Through Cloudflare</p>
-                          <p className="text-xs text-muted-foreground">Orange cloud on or DNS-only for all planned records.</p>
+                          <p className="text-xs text-muted-foreground">Default is DNS only. Only enable proxy if you intentionally run a compatible Shopify + Cloudflare setup.</p>
                         </div>
                         <Switch checked={cloudflareProxyEnabled} onCheckedChange={setCloudflareProxyEnabled} />
                       </div>
                     </div>
                   </div>
+
+                  {cloudflareProxyEnabled ? (
+                    <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-500">
+                      Proxy is enabled. For a normal Shopify storefront, keep Cloudflare on DNS only unless you explicitly know you need proxy mode.
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-500">
+                      DNS only is active. This is the safe default for standard Shopify domain routing.
+                    </div>
+                  )}
 
                   <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Execution Sequence</p>
