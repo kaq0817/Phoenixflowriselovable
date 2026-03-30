@@ -483,6 +483,10 @@ export default function Templanator() {
     setFileApprovals((prev) => prev.map((file, i) => (i === index ? { ...file, expanded: !file.expanded } : file)));
   };
 
+  const setAllFileApprovals = (approved: boolean) => {
+    setFileApprovals((prev) => prev.map((file) => ({ ...file, approved })));
+  };
+
   const resetSession = () => {
     setStep(1);
     setScanResult(null);
@@ -865,11 +869,33 @@ export default function Templanator() {
                 <Badge className="ml-auto" variant="secondary">{approvedCount}/{fileApprovals.length} approved</Badge>
               </div>
 
+              {fileApprovals.length > 0 ? (
+                <div className="flex flex-wrap gap-3">
+                  <Button variant="outline" size="sm" onClick={() => setAllFileApprovals(true)}>
+                    Approve All
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setAllFileApprovals(false)}>
+                    Clear Approvals
+                  </Button>
+                  <Button
+                    className="gradient-phoenix text-primary-foreground"
+                    size="sm"
+                    disabled={approvedCount === 0}
+                    onClick={() => setStep(5)}
+                  >
+                    Continue to Push This Pass
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="space-y-3">
                 {fileApprovals.map((file, index) => (
                   <div key={file.key} className={`rounded-lg border transition-all ${file.approved ? "border-green-500/30 bg-green-500/5" : "border-border/20 bg-muted/10 opacity-60"}`}>
                     <div className="flex items-center gap-3 p-4">
-                      <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
+                      <div className="flex min-w-[80px] items-center gap-2">
+                        <Switch checked={file.approved} onCheckedChange={() => toggleFileApproval(index)} />
+                        <span className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Approve</span>
+                      </div>
                       <div className="flex-1">
                         <code className="text-sm font-mono">{file.key}</code>
                         <p className="mt-1 text-xs text-muted-foreground">
