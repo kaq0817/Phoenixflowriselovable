@@ -1420,6 +1420,10 @@ function addsPattern(original: string, rewritten: string, pattern: RegExp): bool
   return !pattern.test(original) && pattern.test(rewritten);
 }
 
+function isBlogRelatedAssetKey(assetKey: string): boolean {
+  return /(^|\/)(blog|article|featured-blog|main-blog|main-article)/i.test(assetKey);
+}
+
 function buildFindingsQuestion(scan: ScanResult, store: StoreConnection | null): string {
   const storeLabel = store?.shop_name || store?.shop_domain || "Shopify store";
   const issueLines = scan.scanIssues.length > 0
