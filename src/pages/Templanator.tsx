@@ -203,8 +203,12 @@ export default function Templanator() {
   const [supportNumber, setSupportNumber] = useState("");
   const [baseDomain, setBaseDomain] = useState("");
   const [baseDomainConfirmed, setBaseDomainConfirmed] = useState(false);
+  const [baseDomainChecking, setBaseDomainChecking] = useState(false);
+  const [baseDomainStatus, setBaseDomainStatus] = useState("");
   const [cloudflareTargetHost, setCloudflareTargetHost] = useState("");
   const [cloudflareTargetConfirmed, setCloudflareTargetConfirmed] = useState(false);
+  const [cloudflareTargetChecking, setCloudflareTargetChecking] = useState(false);
+  const [cloudflareTargetStatus, setCloudflareTargetStatus] = useState("");
   const [cloudflareRecordType, setCloudflareRecordType] = useState<RecordType>("CNAME");
   const [cloudflareProxyEnabled, setCloudflareProxyEnabled] = useState(false);
   const [plannerCategories, setPlannerCategories] = useState<PlannerCategory[]>([]);
@@ -655,6 +659,55 @@ export default function Templanator() {
 
   const removePlannerCategory = (handle: string) => {
     setPlannerCategories((prev) => prev.filter((entry) => entry.handle !== handle));
+  };
+
+  const verifyHostname = async (hostname: string) => {
+    const normalized = normalizeDomainInput(hostname);
+    if (!normalized) {
+      throw new Error("Enter a hostname first.");
+    }
+
+    const { data, error } = await supabase.functions.invoke("verify-domain-target", {
+      body: { hostname: normalized },
+    });
+    if (error) throw error;
+    return data as { hostname: string; exists: boolean; aRecords: string[]; cnameRecords: string[] };
+  };
+
+  const handleVerifyBaseDomain = async () => {
+    if (baseDomainChecking) return;
+    setBaseDomainChecking(true);
+    setBaseDomainConfirmed(false);
+    setBaseDomainStatus("");
+    try {
+      const result = await verifyHostname(baseDomain);
+      if (!result.exists) throw new Error(`Zone not found: ${result.hostname}`);
+      setBaseDomainConfirmed(true);
+      setBaseDomainStatus(`Found ${result.hostname}`);
+    } catch (err: unknown) {
+      setBaseDomainStatus(getErrorMessage(err));
+      toast({ title: "Zone check failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setBaseDomainChecking(false);
+    }
+  };
+
+  const handleVerifyTargetHost = async () => {
+    if (cloudflareTargetChecking) return;
+    setCloudflareTargetChecking(true);
+    setCloudflareTargetConfirmed(false);
+    setCloudflareTargetStatus("");
+    try {
+      const result = await verifyHostname(cloudflareTargetHost);
+      if (!result.exists) throw new Error(`Target not found: ${result.hostname}`);
+      setCloudflareTargetConfirmed(true);
+      setCloudflareTargetStatus(`Found ${result.hostname}`);
+    } catch (err: unknown) {
+      setCloudflareTargetStatus(getErrorMessage(err));
+      toast({ title: "Target check failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setCloudflareTargetChecking(false);
+    }
   };
 
   const toggleFileExpanded = (index: number) => {
@@ -1207,9 +1260,9 @@ export default function Templanator() {
                         size="sm"
                         className="gradient-phoenix text-primary-foreground"
                         disabled={!normalizeDomainInput(baseDomain)}
-                        onClick={() => setBaseDomainConfirmed(true)}
+                        onClick={handleVerifyBaseDomain}
                       >
-                        Use This Zone
+                        {baseDomainChecking ? "Checking..." : "Check Zone"}
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setBaseDomainConfirmed(false)}>
                         Clear
@@ -1219,6 +1272,7 @@ export default function Templanator() {
                   <Badge variant={baseDomainConfirmed ? "secondary" : "outline"}>
                     {baseDomainConfirmed ? "zone verified" : "zone not verified"}
                   </Badge>
+                  {baseDomainStatus ? <p className="text-xs text-muted-foreground">{baseDomainStatus}</p> : null}
                 </div>
 
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
@@ -1247,9 +1301,9 @@ export default function Templanator() {
                         size="sm"
                         className="gradient-phoenix text-primary-foreground"
                         disabled={!normalizeDomainInput(cloudflareTargetHost)}
-                        onClick={() => setCloudflareTargetConfirmed(true)}
+                        onClick={handleVerifyTargetHost}
                       >
-                        Use This Target
+                        {cloudflareTargetChecking ? "Checking..." : "Check Target"}
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setCloudflareTargetConfirmed(false)}>
                         Clear
@@ -1259,6 +1313,7 @@ export default function Templanator() {
                   <Badge variant={cloudflareTargetConfirmed ? "secondary" : "outline"}>
                     {cloudflareTargetConfirmed ? "target verified" : "target not verified"}
                   </Badge>
+                  {cloudflareTargetStatus ? <p className="text-xs text-muted-foreground">{cloudflareTargetStatus}</p> : null}
                 </div>
               </div>
 
