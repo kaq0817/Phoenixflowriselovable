@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Shield, AlertTriangle, CheckCircle, XCircle, Globe, Loader2,
   ExternalLink, ChevronDown, ChevronUp, Clock, FileSearch, BarChart3,
-  Download,
+  Download, CreditCard,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
