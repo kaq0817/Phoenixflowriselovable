@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -25,6 +25,7 @@ export default function DashboardLayout() {
   const [hasShopify, setHasShopify] = useState(false);
   const [hasEtsy, setHasEtsy] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -87,7 +88,7 @@ export default function DashboardLayout() {
   ];
 
   const complianceItems: NavItem[] = [
-    { title: "Compliance Audit", url: "/pricing", icon: Shield },
+    { title: "Compliance Audit", url: "/audit", icon: Shield },
   ];
 
   const generalItems: NavItem[] = [
@@ -129,10 +130,18 @@ export default function DashboardLayout() {
     const Icon = item.icon;
 
     return (
-      <button
+      <SheetClose asChild key={item.title}>
+        <button
         key={item.title}
         type="button"
-        onClick={() => (enabled ? navigate(item.url) : navigate("/settings"))}
+        onClick={() => {
+          if (enabled) {
+            navigate(item.url);
+          } else {
+            navigate("/settings");
+          }
+          setMenuOpen(false);
+        }}
         className={cn(
           "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
           active ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted/20",
@@ -142,7 +151,8 @@ export default function DashboardLayout() {
         <Icon className="h-4 w-4" />
         <span className="flex-1 text-left">{item.title}</span>
         {lockedLabel ? <span className="text-[10px] text-muted-foreground">{lockedLabel}</span> : null}
-      </button>
+        </button>
+      </SheetClose>
     );
   };
 
@@ -150,7 +160,7 @@ export default function DashboardLayout() {
     <div className="min-h-screen flex w-full">
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-12 flex items-center border-b border-border/30 px-4 glass-panel sticky top-0 z-20">
-          <Sheet>
+          <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
               <Button size="sm" variant="outline" className="mr-3">Menu</Button>
             </SheetTrigger>

@@ -50,7 +50,7 @@ const etsyItems: SidebarItem[] = [
 ];
 
 const complianceItems: SidebarItem[] = [
-  { title: "Compliance Audit", url: "/pricing", icon: Shield },
+  { title: "Compliance Audit", url: "/audit", icon: Shield },
 ];
 
 const generalItems: SidebarItem[] = [
