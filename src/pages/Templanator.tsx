@@ -67,6 +67,22 @@ interface CollectionPillar {
   suggestedSubdomain: string;
 }
 
+interface ComplianceFinding {
+  category: string;
+  severity: "critical" | "warning" | "info" | "pass";
+  title: string;
+  description: string;
+  recommendation: string;
+  reference?: string;
+}
+
+interface ComplianceReport {
+  score: number;
+  summary: string;
+  findings: ComplianceFinding[];
+  pages_analyzed: number;
+}
+
 interface CrossStoreLink {
   assetKey: string;
   domain: string;
@@ -195,7 +211,7 @@ const NICHE_PALETTES = [
 
 const STEPS = [
   { num: 1, label: "Theme Handshake", summary: "Import the live Shopify theme into the workflow." },
-  { num: 2, label: "Policy Verification", summary: "Confirm policy links before applying any rewrites." },
+  { num: 2, label: "Policy & Compliance", summary: "Check policy links and run the live compliance audit before rewrites." },
   { num: 3, label: "Theme Fixes", summary: "Run the LCP pass first, then clean domains and handle the remaining fixes." },
   { num: 4, label: "Subdomain Separation", summary: "Review domain and pillar routing suggestions." },
   { num: 5, label: "Push to Store", summary: "Ship only the approved files back to Shopify." },
@@ -242,6 +258,8 @@ export default function Templanator() {
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantAnswer, setAssistantAnswer] = useState("");
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null);
   const identityReady = Boolean(
     legalEntityName.trim() &&
       stateOfIncorporation.trim() &&
@@ -264,6 +282,15 @@ export default function Templanator() {
   const brokenPolicyLinks = scanResult?.policyLinks.filter((link) => link.status !== "ok") ?? [];
   const brokenLinkCount = (scanResult?.crossStoreLinks.length ?? 0) + brokenPolicyLinks.length;
   const detectedShopifyDomains = scanResult?.shopifyDomains ?? [];
+  const complianceCounts = useMemo(() => {
+    const findings = complianceReport?.findings ?? [];
+    return {
+      critical: findings.filter((finding) => finding.severity === "critical").length,
+      warning: findings.filter((finding) => finding.severity === "warning").length,
+      info: findings.filter((finding) => finding.severity === "info").length,
+      pass: findings.filter((finding) => finding.severity === "pass").length,
+    };
+  }, [complianceReport]);
   const previewTitle = previewTrack === "lcp"
     ? "LCP Preview"
     : previewTrack === "domains"
@@ -741,6 +768,31 @@ export default function Templanator() {
     }
   };
 
+  const handleRunComplianceScan = async () => {
+    if (!selectedStore?.shop_domain || complianceLoading) return;
+
+    setComplianceLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compliance-scan", {
+        body: { url: selectedStore.shop_domain },
+      });
+      if (error) throw error;
+      setComplianceReport((data as { report?: ComplianceReport }).report ?? null);
+      toast({
+        title: "Compliance scan complete",
+        description: `Live storefront audit finished for ${selectedStore.shop_domain}.`,
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "Compliance scan failed",
+        description: getErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setComplianceLoading(false);
+    }
+  };
+
   const verifyStorefrontRoute = async (item: SubdomainPlanItem) => {
     if (!item.hostname) {
       throw new Error("Set the hostname first.");
@@ -985,12 +1037,12 @@ export default function Templanator() {
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center gap-3">
                 <Shield className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold">Policy Verification</h3>
+                <h3 className="font-semibold">Policy & Compliance</h3>
                 <Badge variant="secondary" className="ml-auto">{scanResult.themeName}</Badge>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Verify that the required Shopify policy pages are present. Existing footer links with the wrong target can be auto-fixed. Only truly missing policies need Shopify Admin.
+                Verify the required Shopify policy pages and run the live compliance audit against the storefront domain.
               </p>
 
               {allPoliciesReady ? (
@@ -1023,17 +1075,71 @@ export default function Templanator() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   {allPoliciesReady
-                    ? "Policies verified. Continue to Theme Fixes."
+                    ? "Policies verified. Run the live compliance scan before moving on."
                     : "Fixable policy URLs can be rewritten automatically. Missing policies still need Shopify Admin."}
                 </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => policyGeneratorUrl && window.open(policyGeneratorUrl, "_blank", "noopener")}
-                >
-                  Open Shopify Policy Generator
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => policyGeneratorUrl && window.open(policyGeneratorUrl, "_blank", "noopener")}
+                  >
+                    Open Shopify Policy Generator
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gradient-phoenix text-primary-foreground"
+                    disabled={!selectedStore?.shop_domain || complianceLoading}
+                    onClick={handleRunComplianceScan}
+                  >
+                    {complianceLoading ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Running Compliance Scan</>
+                    ) : (
+                      <><Shield className="h-4 w-4 mr-2" /> Run Live Compliance Scan</>
+                    )}
+                  </Button>
+                </div>
               </div>
+
+              {complianceReport ? (
+                <div className="space-y-4 rounded-xl border border-border/30 bg-muted/10 p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Badge variant="secondary">Score {complianceReport.score}</Badge>
+                    <Badge variant={complianceCounts.critical > 0 ? "destructive" : "outline"}>
+                      {complianceCounts.critical} critical
+                    </Badge>
+                    <Badge variant={complianceCounts.warning > 0 ? "destructive" : "outline"}>
+                      {complianceCounts.warning} warnings
+                    </Badge>
+                    <Badge variant="outline">{complianceCounts.info} info</Badge>
+                    <Badge variant="outline">{complianceReport.pages_analyzed} pages</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{complianceReport.summary}</p>
+
+                  <div className="space-y-3">
+                    {complianceReport.findings.slice(0, 8).map((finding, index) => (
+                      <div key={`${finding.title}-${index}`} className="rounded-lg border border-border/30 bg-background/40 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-medium">{finding.title}</p>
+                          <Badge
+                            variant={
+                              finding.severity === "critical" || finding.severity === "warning"
+                                ? "destructive"
+                                : finding.severity === "pass"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {finding.severity}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">{finding.description}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">Fix: {finding.recommendation}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
