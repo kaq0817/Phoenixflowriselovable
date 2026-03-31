@@ -1134,6 +1134,31 @@ export default function Templanator() {
                   </div>
                   <p className="text-sm text-muted-foreground">{complianceReport.summary}</p>
 
+                  {(complianceReport.findings.filter((finding) => finding.severity === "critical" || finding.severity === "warning").length > 0) ? (
+                    <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-primary" />
+                        <p className="text-sm font-semibold text-foreground">Fix These First</p>
+                      </div>
+                      <div className="space-y-2">
+                        {complianceReport.findings
+                          .filter((finding) => finding.severity === "critical" || finding.severity === "warning")
+                          .slice(0, 5)
+                          .map((finding, index) => (
+                            <div key={`priority-${finding.title}-${index}`} className="rounded-lg border border-border/30 bg-background/70 p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-medium text-foreground">{finding.title}</p>
+                                <Badge variant={finding.severity === "critical" ? "destructive" : "outline"}>
+                                  {finding.severity}
+                                </Badge>
+                              </div>
+                              <p className="mt-2 text-sm text-foreground">{finding.recommendation}</p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="space-y-3">
                     {complianceReport.findings.slice(0, 8).map((finding, index) => (
                       <div key={`${finding.title}-${index}`} className="rounded-lg border border-border/30 bg-background/40 p-3">
@@ -1151,8 +1176,11 @@ export default function Templanator() {
                             {finding.severity}
                           </Badge>
                         </div>
-                        <p className="mt-2 text-sm text-muted-foreground">{finding.description}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">Fix: {finding.recommendation}</p>
+                        <div className="mt-3 rounded-lg border border-primary/20 bg-background/80 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">What To Change</p>
+                          <p className="mt-1 text-sm text-foreground">{finding.recommendation}</p>
+                        </div>
+                        <p className="mt-3 text-sm text-muted-foreground">{finding.description}</p>
                       </div>
                     ))}
                   </div>

@@ -33,10 +33,10 @@ const tierIcons: Record<string, React.ElementType> = {
   "Phoenix Transcend - Agency Elite (Annual)": Building2,
 };
 
-type Tab = "subscriptions" | "compliance" | "bundles";
+type Tab = "plans" | "compliance" | "bundles";
 
 export default function PricingPage() {
-  const [tab, setTab] = useState<Tab>("subscriptions");
+  const [tab, setTab] = useState<Tab>("plans");
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -98,8 +98,8 @@ export default function PricingPage() {
       </motion.div>
 
       <div className="flex gap-2 flex-wrap">
-        <Button variant={tab === "subscriptions" ? "default" : "secondary"} onClick={() => setTab("subscriptions")}>
-          Subscriptions ({SUBSCRIPTION_TIERS.length})
+        <Button variant={tab === "plans" ? "default" : "secondary"} onClick={() => setTab("plans")}>
+          Access Plans ({SUBSCRIPTION_TIERS.length})
         </Button>
         <Button variant={tab === "compliance" ? "default" : "secondary"} onClick={() => setTab("compliance")}>
           <Shield className="h-4 w-4 mr-1" /> Compliance ({COMPLIANCE_PRODUCTS.length})
@@ -109,7 +109,7 @@ export default function PricingPage() {
         </Button>
       </div>
 
-      {tab === "subscriptions" && (
+      {tab === "plans" && (
         <>
           <div className="flex items-center gap-2">
             <Button size="sm" variant={billing === "monthly" ? "default" : "outline"} onClick={() => setBilling("monthly")}>
@@ -183,7 +183,13 @@ export default function PricingPage() {
                       >
                         {isLoading ? (
                           <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
-                        ) : tier.price === 0 ? "Get Started" : tier.checkoutMode === "payment" ? "Buy" : "Subscribe"}
+                        ) : tier.price === 0
+                          ? "Get Started"
+                          : tier.checkoutMode === "payment"
+                            ? "Buy One-Time"
+                            : tier.billing === "yearly"
+                              ? "Start Annual Access"
+                              : "Start Monthly Access"}
                       </Button>
                     </CardContent>
                   </Card>
