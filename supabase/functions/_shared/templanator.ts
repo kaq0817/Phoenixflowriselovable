@@ -165,6 +165,15 @@ export function extractTemplateSectionKeys(indexJson: string | null | undefined)
 
 export function buildCollectionPillars(collections: CollectionInput[], baseDomain?: string): CollectionPillar[] {
   const normalizedBase = (baseDomain || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const genericPatterns = [
+    /\ball products?\b/i,
+    /\bfeatured\b/i,
+    /\bfrontpage\b/i,
+    /\bhome\b/i,
+    /\bbest sellers?\b/i,
+    /\bnew arrivals?\b/i,
+    /\bfabulous finds\b/i,
+  ];
 
   const candidates = collections
     .map((collection) => {
@@ -179,11 +188,19 @@ export function buildCollectionPillars(collections: CollectionInput[], baseDomai
       };
     })
     .filter((collection) => collection.title);
+  const deduped = Array.from(new Map(candidates.map((collection) => [collection.handle, collection])).values());
+  const weighted = deduped.filter((collection) => collection.productsCount > 0);
+  const source = weighted.length > 0 ? weighted : deduped;
 
-  const weighted = candidates.filter((collection) => collection.productsCount > 0);
-  const source = weighted.length > 0 ? weighted : candidates;
-
-  return source.sort((a, b) => b.productsCount - a.productsCount).slice(0, 5);
+  return source
+    .sort((a, b) => {
+      const aGeneric = genericPatterns.some((pattern) => pattern.test(`${a.title} ${a.handle}`));
+      const bGeneric = genericPatterns.some((pattern) => pattern.test(`${b.title} ${b.handle}`));
+      if (aGeneric !== bGeneric) return aGeneric ? 1 : -1;
+      if (a.productsCount !== b.productsCount) return b.productsCount - a.productsCount;
+      return a.title.localeCompare(b.title);
+    })
+    .slice(0, 16);
 }
 
 export function analyzeThemeAssets(input: {
