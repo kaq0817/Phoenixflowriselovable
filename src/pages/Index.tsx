@@ -35,6 +35,23 @@ const generalToolsItems = [
   { title: "Settings", description: "Connect stores and manage account setup.", url: "/settings", icon: Settings, platform: "general" as const },
 ];
 
+const featuredItems = [
+  {
+    title: "Compliance Audit",
+    description: "Primary product. Google misrepresentation review, fix reasons, and paid-scan path for non-admin users.",
+    url: "/audit",
+    icon: Shield,
+    cta: "Open Compliance Audit",
+  },
+  {
+    title: "Templanator",
+    description: "Private Shopify fixer for theme, links, route checks, and store repair workflow.",
+    url: "/templanator",
+    icon: Cpu,
+    cta: "Open Templanator",
+  },
+];
+
 const Index = () => {
   const [toolsFilter, setToolsFilter] = useState<"all" | "shopify" | "etsy" | "general">("shopify");
   const filteredCommandCenter = useMemo(() => {
@@ -64,6 +81,9 @@ const Index = () => {
             Real launchpad only. Open the actual admin tools from here without fake stats or placeholder activity.
           </p>
           <div className="flex flex-wrap gap-3 mt-4">
+            <Button asChild variant="secondary" className="bg-primary-foreground text-foreground hover:bg-primary-foreground/90 border-0">
+              <Link to="/audit"><Shield className="mr-2 h-4 w-4" /> Compliance Audit</Link>
+            </Button>
             <Button asChild variant="secondary" className="bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
               <Link to="/phoenix"><Zap className="mr-2 h-4 w-4" /> SEO Scanner</Link>
             </Button>
@@ -75,6 +95,32 @@ const Index = () => {
         <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-accent/20 blur-3xl" />
         <div className="absolute -left-10 -bottom-10 w-32 h-32 rounded-full bg-primary/20 blur-3xl" />
       </motion.div>
+
+      <Card className="bg-card/50 border-primary/20">
+        <CardHeader>
+          <CardTitle className="text-lg">Primary Products</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {featuredItems.map((item, i) => (
+              <motion.div key={item.title} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                <Card className="h-full bg-background/40 border-primary/30 hover:border-primary/60 transition-colors">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <item.icon className="h-5 w-5 text-primary" />
+                      <h2 className="font-semibold text-lg">{item.title}</h2>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{item.description}</p>
+                    <Button asChild className="w-full gradient-phoenix text-primary-foreground">
+                      <Link to={item.url}>{item.cta}</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="bg-card/50 border-border/30">
         <CardHeader>

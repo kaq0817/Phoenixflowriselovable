@@ -186,6 +186,9 @@ export default function AuditPage() {
 
       const res = await supabase.functions.invoke("compliance-scan", {
         body: { url: storeUrl },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
       if (res.error) throw new Error(res.error.message);
