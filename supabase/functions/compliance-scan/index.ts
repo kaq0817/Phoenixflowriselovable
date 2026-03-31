@@ -40,6 +40,11 @@ type FirecrawlScrapeResponse = {
   links?: string[];
 };
 
+type BasicPageResponse = {
+  markdown: string;
+  links: string[];
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -117,9 +122,6 @@ serve(async (req) => {
 
     // Step 1: Scrape the website with Firecrawl
     const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
-    if (!FIRECRAWL_API_KEY) {
-      throw new Error("Firecrawl is not configured");
-    }
 
     let formattedUrl = storeUrl.trim();
     if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
@@ -130,70 +132,48 @@ serve(async (req) => {
     const originHost = new URL(formattedUrl).hostname.toLowerCase();
 
     // Scrape main page
-    const scrapeRes = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: formattedUrl,
-        formats: ["markdown", "links"],
-        onlyMainContent: false,
-        waitFor: 1500,
-      }),
-    }, 20000);
+    const homepage = FIRECRAWL_API_KEY
+      ? await scrapeFirecrawlHome({
+          apiKey: FIRECRAWL_API_KEY,
+          url: formattedUrl,
+        })
+      : await scrapeBasicPage(formattedUrl);
 
-    if (!scrapeRes.ok) {
-      const errData = await scrapeRes.text();
-      console.error("Firecrawl scrape failed:", errData);
-      // Update scan as failed
-      const serviceSupabase = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-      await serviceSupabase.from("compliance_scans").update({
-        status: "failed",
-        results: { error: "Failed to scrape website. Please check the URL and try again." },
-        completed_at: new Date().toISOString(),
-      }).eq("id", scan.id);
-
-      return new Response(JSON.stringify({ error: "Failed to scrape website", scanId: scan.id }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const scrapeData = await scrapeRes.json();
-    const pageContent = scrapeData.data?.markdown || scrapeData.markdown || "";
-    const pageLinks = scrapeData.data?.links || scrapeData.links || [];
+    const pageContent = homepage.markdown || "";
+    const pageLinks = homepage.links || [];
 
     console.log("Scraped content length:", pageContent.length, "Links found:", pageLinks.length);
 
     // Step 2: Map the site to find policy pages, blogs, product pages, and collections
-    let mapRes: Response | null = null;
-    try {
-      mapRes = await fetchWithTimeout("https://api.firecrawl.dev/v1/map", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: formattedUrl,
-          search: "privacy policy refund return shipping terms contact about faq blog article product collection",
-          limit: 80,
-          includeSubdomains: false,
-        }),
-      }, 12000);
-    } catch (error) {
-      console.error("Firecrawl map failed:", error);
-    }
-
     let sitePages: string[] = [];
-    if (mapRes?.ok) {
-      const mapData = await mapRes.json();
-      sitePages = mapData.links || [];
-      console.log("Mapped pages:", sitePages.length);
+    if (FIRECRAWL_API_KEY) {
+      let mapRes: Response | null = null;
+      try {
+        mapRes = await fetchWithTimeout("https://api.firecrawl.dev/v1/map", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: formattedUrl,
+            search: "privacy policy refund return shipping terms contact about faq blog article product collection",
+            limit: 80,
+            includeSubdomains: false,
+          }),
+        }, 12000);
+      } catch (error) {
+        console.error("Firecrawl map failed:", error);
+      }
+
+      if (mapRes?.ok) {
+        const mapData = await mapRes.json();
+        sitePages = mapData.links || [];
+        console.log("Mapped pages:", sitePages.length);
+      }
+    }
+    if (sitePages.length === 0) {
+      sitePages = pageLinks;
     }
 
     // Step 3: Scrape key pages across the storefront, not just policies
@@ -213,10 +193,12 @@ serve(async (req) => {
 
     const pageSamples = await Promise.allSettled(
       priorityPages.map(async (pageUrl) => {
-        const md = await scrapeFirecrawlPage({
-          apiKey: FIRECRAWL_API_KEY,
-          url: pageUrl,
-        });
+        const md = FIRECRAWL_API_KEY
+          ? await scrapeFirecrawlPage({
+              apiKey: FIRECRAWL_API_KEY,
+              url: pageUrl,
+            })
+          : (await scrapeBasicPage(pageUrl)).markdown;
         return md ? `\n\n--- PAGE: ${pageUrl} ---\n${md.slice(0, 2200)}` : "";
       }),
     );
@@ -505,6 +487,53 @@ async function scrapeFirecrawlPage(input: { apiKey: string; url: string }): Prom
   return data.data?.markdown || data.markdown || "";
 }
 
+async function scrapeFirecrawlHome(input: { apiKey: string; url: string }): Promise<BasicPageResponse> {
+  const response = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url: input.url,
+      formats: ["markdown", "links"],
+      onlyMainContent: false,
+      waitFor: 1500,
+    }),
+  }, 20000);
+
+  if (!response.ok) {
+    const errData = await response.text();
+    console.error("Firecrawl scrape failed:", errData);
+    return await scrapeBasicPage(input.url);
+  }
+
+  const scrapeData = await response.json() as FirecrawlScrapeResponse;
+  return {
+    markdown: scrapeData.data?.markdown || scrapeData.markdown || "",
+    links: scrapeData.data?.links || scrapeData.links || [],
+  };
+}
+
+async function scrapeBasicPage(url: string): Promise<BasicPageResponse> {
+  const response = await fetchWithTimeout(url, {
+    method: "GET",
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; PhoenixFlowCompliance/1.0; +https://www.ironphoenixflow.com)",
+      "Accept": "text/html,application/xhtml+xml",
+    },
+  }, 12000);
+
+  if (!response.ok) {
+    throw new Error(`Storefront fetch failed with status ${response.status}`);
+  }
+
+  const html = await response.text();
+  const markdown = stripHtmlForAudit(html);
+  const links = extractLinksFromHtml(html, url);
+  return { markdown, links };
+}
+
 function extractOffDomainLinks(input: {
   mainPageLinks: string[];
   sitePages: string[];
@@ -521,6 +550,35 @@ function extractOffDomainLinks(input: {
   });
 
   return Array.from(new Set(offDomain)).slice(0, 100);
+}
+
+function stripHtmlForAudit(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 20000);
+}
+
+function extractLinksFromHtml(html: string, baseUrl: string): string[] {
+  const matches = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi));
+  const links = matches
+    .map((match) => match[1])
+    .map((href) => {
+      try {
+        return new URL(href, baseUrl).toString();
+      } catch {
+        return null;
+      }
+    })
+    .filter((href): href is string => !!href);
+
+  return Array.from(new Set(links)).slice(0, 100);
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
