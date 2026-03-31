@@ -1,0 +1,14 @@
+name: Keep Supabase Warm
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping app keepalive route
+        run: |
+          curl --fail --silent --show-error https://www.ironphoenixflow.com/api/keepalive
