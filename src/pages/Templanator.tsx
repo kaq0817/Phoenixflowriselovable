@@ -154,6 +154,16 @@ interface SubdomainPlanItem {
   proxied: boolean;
 }
 
+interface RouteVerificationState {
+  hostname: string;
+  routePath: string;
+  verified: boolean;
+  checking: boolean;
+  httpStatus?: number;
+  finalUrl?: string;
+  message: string;
+}
+
 const NICHE_PALETTES = [
   { label: "Keep Current", value: "default", desc: "Preserve existing store color scheme", colors: [], tags: ["neutral"] },
   { label: "Minimal / Clean", value: "minimal", desc: "White, light gray, subtle blue accents", colors: [], tags: ["neutral"] },
@@ -222,6 +232,7 @@ export default function Templanator() {
   const [customPalette, setCustomPalette] = useState(["#0B1D3A", "#7CFF00", "#00E5FF", "#F8FAFC"]);
   const [paletteColorOverrides, setPaletteColorOverrides] = useState<Record<string, string[]>>({});
   const [pillarPaletteOverrides, setPillarPaletteOverrides] = useState<Record<string, string>>({});
+  const [routeVerification, setRouteVerification] = useState<Record<string, RouteVerificationState>>({});
   const [departmentMappings, setDepartmentMappings] = useState<DepartmentMapping[]>([]);
   const [generatingTrack, setGeneratingTrack] = useState<FixTrack | null>(null);
   const [previewTrack, setPreviewTrack] = useState<FixTrack | null>(null);
@@ -387,7 +398,25 @@ export default function Templanator() {
     () => storeDomainFacts.map((fact) => fact.host).filter(Boolean),
     [],
   );
-  const subdomainPlanReady = baseDomainConfirmed && cloudflareTargetConfirmed && plannerCategories.length > 0;
+  const verifiedRouteCount = useMemo(
+    () =>
+      subdomainPlan.filter((item) => {
+        const verification = routeVerification[item.handle];
+        return Boolean(
+          verification &&
+            verification.verified &&
+            verification.hostname === item.hostname &&
+            verification.routePath === item.routePath,
+        );
+      }).length,
+    [subdomainPlan, routeVerification],
+  );
+  const allPlannedRoutesVerified = subdomainPlan.length > 0 && verifiedRouteCount === subdomainPlan.length;
+  const subdomainPlanReady =
+    baseDomainConfirmed &&
+    cloudflareTargetConfirmed &&
+    plannerCategories.length > 0 &&
+    allPlannedRoutesVerified;
 
   const resolvePaletteColors = (value: string) => {
     if (value === "custom") return customPalette;
@@ -707,6 +736,83 @@ export default function Templanator() {
       toast({ title: "Target check failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
       setCloudflareTargetChecking(false);
+    }
+  };
+
+  const verifyStorefrontRoute = async (item: SubdomainPlanItem) => {
+    if (!item.hostname) {
+      throw new Error("Set the hostname first.");
+    }
+
+    const { data, error } = await supabase.functions.invoke("verify-storefront-route", {
+      body: { hostname: item.hostname, routePath: item.routePath },
+    });
+    if (error) throw error;
+    return data as {
+      hostname: string;
+      routePath: string;
+      ok: boolean;
+      status: number;
+      finalUrl: string;
+      matchedHost: boolean;
+      matchedRoute: boolean;
+      message: string;
+    };
+  };
+
+  const handleVerifyStorefrontRoute = async (item: SubdomainPlanItem) => {
+    setRouteVerification((prev) => ({
+      ...prev,
+      [item.handle]: {
+        hostname: item.hostname,
+        routePath: item.routePath,
+        verified: false,
+        checking: true,
+        message: "Checking live storefront route...",
+      },
+    }));
+
+    try {
+      const result = await verifyStorefrontRoute(item);
+      setRouteVerification((prev) => ({
+        ...prev,
+        [item.handle]: {
+          hostname: item.hostname,
+          routePath: item.routePath,
+          verified: result.ok,
+          checking: false,
+          httpStatus: result.status,
+          finalUrl: result.finalUrl,
+          message: result.message,
+        },
+      }));
+
+      if (!result.ok) {
+        toast({
+          title: "Route check failed",
+          description: `${item.hostname}${item.routePath} did not resolve to the intended collection route.`,
+          variant: "destructive",
+        });
+      }
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      setRouteVerification((prev) => ({
+        ...prev,
+        [item.handle]: {
+          hostname: item.hostname,
+          routePath: item.routePath,
+          verified: false,
+          checking: false,
+          message,
+        },
+      }));
+      toast({ title: "Route check failed", description: message, variant: "destructive" });
+    }
+  };
+
+  const handleVerifyAllStorefrontRoutes = async () => {
+    for (const item of subdomainPlan) {
+      await handleVerifyStorefrontRoute(item);
     }
   };
 
@@ -1448,7 +1554,7 @@ export default function Templanator() {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Execution Sequence</p>
                     <p className="text-sm">1. Create records for <span className="font-medium">{normalizedBaseDomain || "[set base domain]"}</span>.</p>
                     <p className="text-sm">2. Point them to <span className="font-medium">{normalizedTargetHost || "[set target host]"}</span>.</p>
-                    <p className="text-sm">3. Review routes below.</p>
+                    <p className="text-sm">3. Verify each subdomain resolves on the intended collection route.</p>
                   </div>
                 </div>
 
@@ -1468,6 +1574,20 @@ export default function Templanator() {
                   <div>
                     <p className="text-sm font-semibold">Planned Categories</p>
                     <p className="text-xs text-muted-foreground">Only these are in plan.</p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={allPlannedRoutesVerified ? "secondary" : "outline"}>
+                      {verifiedRouteCount}/{subdomainPlan.length} routes verified
+                    </Badge>
+                    <Button
+                      size="sm"
+                      className="gradient-phoenix text-primary-foreground"
+                      disabled={subdomainPlan.length === 0 || subdomainPlan.some((item) => routeVerification[item.handle]?.checking)}
+                      onClick={handleVerifyAllStorefrontRoutes}
+                    >
+                      Check All Routes
+                    </Button>
                   </div>
 
                   {subdomainPlan.map((pillar) => (
@@ -1541,6 +1661,51 @@ export default function Templanator() {
                           {formatCloudflareRecord(pillar) || "Set zone, name, and target to generate the DNS record."}
                         </p>
                       </div>
+
+                      <div className="rounded-xl border border-border/30 bg-background/40 p-3 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Live Route Check</p>
+                            <p className="mt-1 text-sm">
+                              {pillar.hostname || "[set hostname]"}
+                              <span className="text-muted-foreground">{pillar.routePath}</span>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={routeVerification[pillar.handle]?.verified ? "secondary" : "outline"}>
+                              {routeVerification[pillar.handle]?.checking
+                                ? "checking"
+                                : routeVerification[pillar.handle]?.verified
+                                  ? "route verified"
+                                  : "not verified"}
+                            </Badge>
+                            <Button
+                              size="sm"
+                              className="gradient-phoenix text-primary-foreground"
+                              disabled={!pillar.hostname || !pillar.routePath || routeVerification[pillar.handle]?.checking}
+                              onClick={() => handleVerifyStorefrontRoute(pillar)}
+                            >
+                              {routeVerification[pillar.handle]?.checking ? "Checking..." : "Check Route"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {routeVerification[pillar.handle] ? (
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <p>{routeVerification[pillar.handle].message}</p>
+                            {routeVerification[pillar.handle].httpStatus ? (
+                              <p>HTTP status: {routeVerification[pillar.handle].httpStatus}</p>
+                            ) : null}
+                            {routeVerification[pillar.handle].finalUrl ? (
+                              <p className="break-all">Final URL: {routeVerification[pillar.handle].finalUrl}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            This subdomain must resolve on the intended collection route before Step 4 is complete.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1561,11 +1726,11 @@ export default function Templanator() {
 
               {!subdomainPlanReady ? (
                 <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-500">
-                  Finish Step 4 by verifying the base domain, verifying the target host, and adding at least one category.
+                  Finish Step 4 by verifying the zone, verifying the target host, adding your categories, and checking that each live subdomain reaches its intended collection route.
                 </div>
               ) : (
                 <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-500">
-                  Step 4 complete. Domain and category plan are ready for push.
+                  Step 4 complete. Every planned subdomain route resolved live.
                 </div>
               )}
             </CardContent>
