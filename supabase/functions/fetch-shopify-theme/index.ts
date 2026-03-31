@@ -95,6 +95,7 @@ serve(async (req) => {
     const collectionPillars = buildCollectionPillars(
       await fetchCollections({ shopDomain, accessToken }),
     );
+    const shopifyDomains = await fetchShopifyDomains({ shopDomain, accessToken });
 
     const analysis = analyzeThemeAssets({
       assets,
@@ -117,6 +118,7 @@ serve(async (req) => {
         policyLinks: analysis.policyLinks,
         collectionPillars: analysis.collectionPillars,
         crossStoreLinks: analysis.crossStoreLinks,
+        shopifyDomains,
         supportSiloStatus: analysis.supportSiloStatus,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -175,4 +177,25 @@ async function fetchCollections(input: {
   }
 
   return collections;
+}
+
+async function fetchShopifyDomains(input: {
+  shopDomain: string;
+  accessToken: string;
+}): Promise<string[]> {
+  try {
+    const response = await fetch(
+      `https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/domains.json`,
+      { headers: { "X-Shopify-Access-Token": input.accessToken } },
+    );
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const domains = Array.isArray(data.domains) ? data.domains : [];
+    return domains
+      .map((domain: { host?: string }) => String(domain.host || "").trim().toLowerCase())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }

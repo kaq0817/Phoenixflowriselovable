@@ -102,6 +102,7 @@ interface ScanResult {
   policyLinks: ThemePolicyLink[];
   collectionPillars: CollectionPillar[];
   crossStoreLinks: CrossStoreLink[];
+  shopifyDomains?: string[];
   supportSiloStatus?: {
     expectedStoreMarker: string | null;
     matchesLocation: boolean;
@@ -262,6 +263,7 @@ export default function Templanator() {
   );
   const brokenPolicyLinks = scanResult?.policyLinks.filter((link) => link.status !== "ok") ?? [];
   const brokenLinkCount = (scanResult?.crossStoreLinks.length ?? 0) + brokenPolicyLinks.length;
+  const detectedShopifyDomains = scanResult?.shopifyDomains ?? [];
   const previewTitle = previewTrack === "lcp"
     ? "LCP Preview"
     : previewTrack === "domains"
@@ -1339,6 +1341,12 @@ export default function Templanator() {
                   : "No store-domain facts configured."}
               </div>
 
+              {detectedShopifyDomains.length > 0 ? (
+                <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
+                  Shopify-linked domains: {detectedShopifyDomains.join(", ")}
+                </div>
+              ) : null}
+
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
                   <div>
@@ -1710,7 +1718,9 @@ export default function Templanator() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No collection weights were returned from Shopify, so pillar suggestions are not ready yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  No categories are in the planner yet. Add them manually or open Scan Suggestions.
+                </p>
               )}
 
               <div className="space-y-2">
