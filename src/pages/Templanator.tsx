@@ -89,6 +89,15 @@ interface CrossStoreLink {
   url: string;
 }
 
+interface ContentRisk {
+  title: string;
+  handle: string;
+  blogTitle: string;
+  severity: "critical" | "warning";
+  reason: string;
+  recommendation: string;
+}
+
 interface ScanResult {
   themeId: number;
   themeName: string;
@@ -118,6 +127,7 @@ interface ScanResult {
   policyLinks: ThemePolicyLink[];
   collectionPillars: CollectionPillar[];
   crossStoreLinks: CrossStoreLink[];
+  contentRisks?: ContentRisk[];
   shopifyDomains?: string[];
   supportSiloStatus?: {
     expectedStoreMarker: string | null;
@@ -282,6 +292,7 @@ export default function Templanator() {
   const brokenPolicyLinks = scanResult?.policyLinks.filter((link) => link.status !== "ok") ?? [];
   const brokenLinkCount = (scanResult?.crossStoreLinks.length ?? 0) + brokenPolicyLinks.length;
   const detectedShopifyDomains = scanResult?.shopifyDomains ?? [];
+  const contentRiskCount = scanResult?.contentRisks?.length ?? 0;
   const complianceCounts = useMemo(() => {
     const findings = complianceReport?.findings ?? [];
     return {
@@ -291,6 +302,13 @@ export default function Templanator() {
       pass: findings.filter((finding) => finding.severity === "pass").length,
     };
   }, [complianceReport]);
+  const actionableComplianceFindings = useMemo(
+    () =>
+      (complianceReport?.findings ?? []).filter(
+        (finding) => finding.severity === "critical" || finding.severity === "warning",
+      ),
+    [complianceReport],
+  );
   const previewTitle = previewTrack === "lcp"
     ? "LCP Preview"
     : previewTrack === "domains"
@@ -616,7 +634,7 @@ export default function Templanator() {
     setAssistantAnswer("");
 
     try {
-      setAssistantAnswer(buildLocalFindingsExplanation(scanResult, selectedStore));
+      setAssistantAnswer(buildLocalFindingsExplanation(scanResult, selectedStore, actionableComplianceFindings));
     } catch (err: unknown) {
       toast({ title: "Assistant failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {
@@ -1180,6 +1198,28 @@ export default function Templanator() {
                 ) : null}
               </div>
 
+              {actionableComplianceFindings.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-red-400" />
+                    <p className="text-sm font-medium">Compliance Risks Affecting Content And Blogs</p>
+                  </div>
+                  {actionableComplianceFindings.slice(0, 6).map((finding, index) => (
+                    <div key={`${finding.title}-${index}`} className="flex items-start gap-2 text-sm">
+                      <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="text-foreground">{finding.title}</p>
+                        <p className="text-xs text-muted-foreground">{finding.description}</p>
+                        <p className="text-xs text-muted-foreground">Fix: {finding.recommendation}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    These are live storefront/content issues from the compliance audit. Templanator can surface them here, but blog/content rewrites are still a manual cleanup path.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">Need a plain-English breakdown of what to fix first?</p>
                 <Button size="sm" variant="outline" onClick={handleExplainFindings}>
@@ -1193,12 +1233,13 @@ export default function Templanator() {
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 pt-2">
                 <StatBox label="Images" value={scanResult.stats.totalImages} sub={`${scanResult.stats.belowFoldImagesMissingLazy} below-fold missing lazy`} />
                 <StatBox label="Hard Colors" value={scanResult.stats.hardcodedColors} />
                 <StatBox label="Inline Styles" value={scanResult.stats.inlineStyles} />
                 <StatBox label="Untracked Forms" value={scanResult.stats.formsWithoutTracking} />
                 <StatBox label="Broken Links" value={brokenLinkCount} sub={`${scanResult.stats.crossStoreLinkCount} wrong-store URLs`} />
+                <StatBox label="Content Risks" value={contentRiskCount} sub="blog/article issues" />
               </div>
             </CardContent>
           </Card>
@@ -1240,6 +1281,38 @@ export default function Templanator() {
           </div>
 
           {renderPreviewCard("lcp")}
+
+          {contentRiskCount > 0 ? (
+            <Card className="bg-card/50 border-border/30">
+              <CardContent className="p-6 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Shield className="h-5 w-5 text-red-400" />
+                  <div>
+                    <h3 className="font-semibold">Content Compliance Issues</h3>
+                    <p className="text-xs text-muted-foreground">Detected directly from Shopify blog/article content during the Templanator scan.</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {(scanResult.contentRisks ?? []).slice(0, 8).map((risk) => (
+                    <div key={`${risk.handle}-${risk.reason}`} className="rounded-md bg-muted/20 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium">{risk.title}</p>
+                        <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
+                          {risk.severity}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">Blog: {risk.blogTitle || "Unmapped blog"}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{risk.reason}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">Fix: {risk.recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
+                  These are content-level compliance risks. Templanator is now finding them in the main scan, but blog/article rewriting is still a separate editing pass.
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {brokenLinkCount > 0 ? (
             <Card className="bg-card/50 border-border/30">
@@ -2310,7 +2383,11 @@ function formatDiffSnippet(line: string): string {
   return `\`${shortened}\``;
 }
 
-function buildLocalFindingsExplanation(scan: ScanResult, store: StoreConnection | null): string {
+function buildLocalFindingsExplanation(
+  scan: ScanResult,
+  store: StoreConnection | null,
+  complianceFindings: ComplianceFinding[] = [],
+): string {
   const storeLabel = store?.shop_name || store?.shop_domain || "Shopify store";
   const lines: string[] = [`Findings for ${storeLabel}:`];
 
@@ -2341,12 +2418,20 @@ function buildLocalFindingsExplanation(scan: ScanResult, store: StoreConnection 
     lines.push(`- Storefront links: ${scan.crossStoreLinks.length} hard-coded URLs still point off-store. First fix: rewrite them to the correct local storefront paths.`);
   }
 
+  if ((scan.contentRisks?.length ?? 0) > 0) {
+    lines.push(`- Content compliance: ${scan.contentRisks?.length} blog/article issues were found in Shopify content. First fix: remove wrong-store links, brand mismatch, and treatment-style claims from those posts.`);
+  }
+
   if (scan.stats.hardcodedColors > 10) {
     lines.push(`- Theme styling: ${scan.stats.hardcodedColors} hard-coded colors detected. First fix: move repeated colors into the generated palette stylesheet.`);
   }
 
   if (scan.stats.formsWithoutTracking > 0) {
     lines.push(`- Forms: ${scan.stats.formsWithoutTracking} forms are missing source tracking fields.`);
+  }
+
+  if (complianceFindings.length > 0) {
+    lines.push(`- Live compliance audit: ${complianceFindings.length} warning/critical findings were returned. These are diagnosis items for review, not all of them are theme-file rewrites.`);
   }
 
   if (lines.length === 1) {

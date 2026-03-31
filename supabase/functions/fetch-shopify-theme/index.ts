@@ -96,10 +96,12 @@ serve(async (req) => {
       await fetchCollections({ shopDomain, accessToken }),
     );
     const shopifyDomains = await fetchShopifyDomains({ shopDomain, accessToken });
+    const articles = await fetchArticles({ shopDomain, accessToken });
 
     const analysis = analyzeThemeAssets({
       assets,
       collectionPillars,
+      articles,
       shopDomain,
       shopName: conn.shop_name,
     });
@@ -118,6 +120,7 @@ serve(async (req) => {
         policyLinks: analysis.policyLinks,
         collectionPillars: analysis.collectionPillars,
         crossStoreLinks: analysis.crossStoreLinks,
+        contentRisks: analysis.contentRisks,
         shopifyDomains,
         supportSiloStatus: analysis.supportSiloStatus,
       }),
@@ -195,6 +198,56 @@ async function fetchShopifyDomains(input: {
     return domains
       .map((domain: { host?: string }) => String(domain.host || "").trim().toLowerCase())
       .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchArticles(input: {
+  shopDomain: string;
+  accessToken: string;
+}): Promise<Array<{
+  title?: string;
+  handle?: string;
+  blog_title?: string;
+  tags?: string;
+  body_html?: string;
+  summary_html?: string;
+}>> {
+  try {
+    const [blogsRes, articlesRes] = await Promise.all([
+      fetch(
+        `https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/blogs.json?limit=250&fields=id,title,handle`,
+        { headers: { "X-Shopify-Access-Token": input.accessToken } },
+      ),
+      fetch(
+        `https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/articles.json?limit=250&fields=title,handle,blog_id,tags,body_html,summary_html`,
+        { headers: { "X-Shopify-Access-Token": input.accessToken } },
+      ),
+    ]);
+    if (!blogsRes.ok || !articlesRes.ok) return [];
+
+    const blogsData = await blogsRes.json();
+    const articlesData = await articlesRes.json();
+    const blogMap = new Map<number, string>(
+      (Array.isArray(blogsData.blogs) ? blogsData.blogs : []).map((blog: { id: number; title?: string }) => [blog.id, String(blog.title || "").trim()]),
+    );
+
+    return (Array.isArray(articlesData.articles) ? articlesData.articles : []).map((article: {
+      title?: string;
+      handle?: string;
+      blog_id?: number;
+      tags?: string;
+      body_html?: string;
+      summary_html?: string;
+    }) => ({
+      title: article.title,
+      handle: article.handle,
+      blog_title: blogMap.get(Number(article.blog_id || 0)) || "",
+      tags: article.tags,
+      body_html: article.body_html,
+      summary_html: article.summary_html,
+    }));
   } catch {
     return [];
   }

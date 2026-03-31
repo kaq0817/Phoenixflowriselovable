@@ -31,6 +31,15 @@ type GeminiResponse = {
   }>;
 };
 
+type FirecrawlScrapeResponse = {
+  data?: {
+    markdown?: string;
+    links?: string[];
+  };
+  markdown?: string;
+  links?: string[];
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -99,6 +108,7 @@ serve(async (req) => {
     }
 
     console.log("Scraping store:", formattedUrl);
+    const originHost = new URL(formattedUrl).hostname.toLowerCase();
 
     // Scrape main page
     const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
@@ -139,7 +149,7 @@ serve(async (req) => {
 
     console.log("Scraped content length:", pageContent.length, "Links found:", pageLinks.length);
 
-    // Step 2: Map the site to find policy pages
+    // Step 2: Map the site to find policy pages, blogs, product pages, and collections
     const mapRes = await fetch("https://api.firecrawl.dev/v1/map", {
       method: "POST",
       headers: {
@@ -148,8 +158,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: formattedUrl,
-        search: "privacy policy refund return shipping terms contact about",
-        limit: 50,
+        search: "privacy policy refund return shipping terms contact about faq blog article product collection",
+        limit: 200,
         includeSubdomains: false,
       }),
     });
@@ -161,36 +171,44 @@ serve(async (req) => {
       console.log("Mapped pages:", sitePages.length);
     }
 
-    // Step 3: Scrape key policy pages
+    // Step 3: Scrape key pages across the storefront, not just policies
     const policyKeywords = ["privacy", "refund", "return", "shipping", "terms", "contact", "about", "faq"];
     const policyPages = sitePages.filter((link: string) =>
       policyKeywords.some(kw => link.toLowerCase().includes(kw))
-    ).slice(0, 6); // max 6 policy pages
+    ).slice(0, 6);
+    const blogPages = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link)).slice(0, 8);
+    const productPages = sitePages.filter((link: string) => /\/products\//i.test(link)).slice(0, 6);
+    const collectionPages = sitePages.filter((link: string) => /\/collections\//i.test(link)).slice(0, 4);
+    const priorityPages = Array.from(new Set([
+      ...policyPages,
+      ...blogPages,
+      ...productPages,
+      ...collectionPages,
+    ])).slice(0, 16);
 
-    let policyContent = "";
-    for (const policyUrl of policyPages) {
+    let sampledPageContent = "";
+    for (const pageUrl of priorityPages) {
       try {
-        const pRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: policyUrl,
-            formats: ["markdown"],
-            onlyMainContent: true,
-          }),
+        const md = await scrapeFirecrawlPage({
+          apiKey: FIRECRAWL_API_KEY,
+          url: pageUrl,
         });
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          const md = pData.data?.markdown || pData.markdown || "";
-          policyContent += `\n\n--- PAGE: ${policyUrl} ---\n${md.slice(0, 3000)}`;
+        if (md) {
+          sampledPageContent += `\n\n--- PAGE: ${pageUrl} ---\n${md.slice(0, 3500)}`;
         }
       } catch (e) {
-        console.error("Failed to scrape policy page:", policyUrl, e);
+        console.error("Failed to scrape page:", pageUrl, e);
       }
     }
+
+    const offDomainLinks = extractOffDomainLinks({
+      mainPageLinks: pageLinks,
+      sitePages,
+      allowedHost: originHost,
+    });
+    const oldBrandSignals = offDomainLinks.filter((link) =>
+      /(ironphoenix\.store|gohardgaming\.store|gohardgaming\.com|etsy\.com)/i.test(link),
+    );
 
     // Step 4: AI Analysis
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
@@ -218,6 +236,7 @@ Focus on these areas only:
 2. PRODUCT CLAIM RISK
 - Product claims appear exaggerated, absolute, or unsupported
 - Health, performance, safety, or outcome claims lack visible substantiation
+- Lifestyle, wellness, children, safety, or recovery wording crosses into implied treatment, certification, or regulated-claim territory
 - Product condition, availability, pricing, or key attributes appear misleading
 - Reviews, badges, or trust signals appear misleading or mismatched
 
@@ -235,6 +254,8 @@ Focus on these areas only:
 5. SITE TRUST RISK
 - Trust badges, guarantees, scarcity claims, or social proof appear misleading
 - Important shopper-facing information is obscured, contradictory, or framed deceptively
+- Blog posts, article pages, and old landing pages that link to another store, old brand, or off-domain checkout path are meaningful trust risks
+- Blog/article content that uses an outdated brand identity or wrong domain is a misrepresentation signal, not just a content-quality issue
 
 Do NOT treat these alone as critical failures unless there is clear deceptive context:
 - no phone number
@@ -258,6 +279,12 @@ Return findings using these severities:
 - pass: clearly acceptable / no meaningful risk found
 
 Keep findings high-signal. Do not pad the report with generic best practices.
+Prioritize these Google Merchant Center risks when present:
+- false or unclear business identity
+- wrong-brand or old-domain links
+- misleading product/health/performance claims
+- missing or contradictory shipping / return / refund disclosures
+- offers or CTAs that do not match the actual landing-page product or route
 Calculate an overall score based on misrepresentation risk only.
 Use the report_compliance tool to return your analysis.`;
 
@@ -269,13 +296,24 @@ URL: ${formattedUrl}
 ${pageContent.slice(0, 8000)}
 
 === SITE MAP (discovered pages) ===
-${sitePages.slice(0, 30).join("\n")}
+${sitePages.slice(0, 80).join("\n")}
 
-=== POLICY PAGES CONTENT ===
-${policyContent.slice(0, 12000)}
+=== PRIORITY PAGES CONTENT (policies, blogs, products, collections) ===
+${sampledPageContent.slice(0, 24000)}
 
 === LINKS FOUND ON MAIN PAGE ===
-${pageLinks.slice(0, 50).join("\n")}`;
+${pageLinks.slice(0, 50).join("\n")}
+
+=== DIRECT RISK SIGNALS ===
+Origin host: ${originHost}
+Policy pages sampled: ${policyPages.length}
+Blog/article pages sampled: ${blogPages.length}
+Product pages sampled: ${productPages.length}
+Collection pages sampled: ${collectionPages.length}
+Off-domain links found: ${offDomainLinks.length}
+Known old-brand/off-domain links found: ${oldBrandSignals.length}
+Off-domain examples:
+${offDomainLinks.slice(0, 25).join("\n")}`;
 
     const aiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`,
@@ -407,3 +445,41 @@ ${pageLinks.slice(0, 50).join("\n")}`;
     });
   }
 });
+
+async function scrapeFirecrawlPage(input: { apiKey: string; url: string }): Promise<string> {
+  const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url: input.url,
+      formats: ["markdown"],
+      onlyMainContent: true,
+      waitFor: 2000,
+    }),
+  });
+
+  if (!response.ok) return "";
+  const data = await response.json() as FirecrawlScrapeResponse;
+  return data.data?.markdown || data.markdown || "";
+}
+
+function extractOffDomainLinks(input: {
+  mainPageLinks: string[];
+  sitePages: string[];
+  allowedHost: string;
+}): string[] {
+  const urls = [...(input.mainPageLinks || []), ...(input.sitePages || [])];
+  const offDomain = urls.filter((candidate) => {
+    try {
+      const parsed = new URL(candidate);
+      return parsed.hostname.toLowerCase() !== input.allowedHost;
+    } catch {
+      return false;
+    }
+  });
+
+  return Array.from(new Set(offDomain)).slice(0, 100);
+}

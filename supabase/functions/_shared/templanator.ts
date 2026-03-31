@@ -34,6 +34,15 @@ export interface ThemeLeak {
   url: string;
 }
 
+export interface ContentRisk {
+  title: string;
+  handle: string;
+  blogTitle: string;
+  severity: "critical" | "warning";
+  reason: string;
+  recommendation: string;
+}
+
 export interface CollectionPillar {
   title: string;
   handle: string;
@@ -62,6 +71,7 @@ export interface ThemeAnalysis {
   policyLinks: ThemePolicyLink[];
   collectionPillars: CollectionPillar[];
   crossStoreLinks: ThemeLeak[];
+  contentRisks: ContentRisk[];
   supportSiloStatus: {
     expectedStoreMarker: string | null;
     matchesLocation: boolean;
@@ -87,6 +97,15 @@ interface CollectionInput {
   title?: string;
   handle?: string;
   products_count?: number;
+}
+
+interface ArticleInput {
+  title?: string;
+  handle?: string;
+  blog_title?: string;
+  tags?: string;
+  body_html?: string;
+  summary_html?: string;
 }
 
 const POLICY_TARGETS = [
@@ -206,6 +225,7 @@ export function buildCollectionPillars(collections: CollectionInput[], baseDomai
 export function analyzeThemeAssets(input: {
   assets: Record<string, string | null>;
   collectionPillars?: CollectionPillar[];
+  articles?: ArticleInput[];
   shopDomain?: string | null;
   shopName?: string | null;
 }): ThemeAnalysis {
@@ -243,6 +263,7 @@ export function analyzeThemeAssets(input: {
   const hasTermsLink = policyLinks.find((link) => link.label === "Terms of Service")?.status === "ok";
   const hasRefundLink = policyLinks.find((link) => link.label === "Refund Policy")?.status === "ok";
   const crossStoreLinks = detectCrossStoreLinks(assets, input.shopDomain || null);
+  const contentRisks = detectContentRisks(input.articles || [], input.shopDomain || null, input.shopName || "");
   const detectedBusinessInfo = detectBusinessInfo(footerLiquid, input.shopName || "");
   const supportSiloStatus = evaluateSupportSilo({
     storeLabel: `${input.shopName || ""} ${input.shopDomain || ""}`.trim(),
@@ -287,6 +308,9 @@ export function analyzeThemeAssets(input: {
   if (crossStoreLinks.length > 0) {
     scanIssues.push(`${crossStoreLinks.length} hard-coded external domain references detected in theme assets`);
   }
+  if (contentRisks.length > 0) {
+    scanIssues.push(`${contentRisks.length} blog/content trust or misrepresentation risks detected`);
+  }
   if ((input.collectionPillars || []).length === 0) {
     scanIssues.push("No weighted collections found for pillar and subdomain suggestions");
   }
@@ -314,6 +338,7 @@ export function analyzeThemeAssets(input: {
     policyLinks,
     collectionPillars: input.collectionPillars || [],
     crossStoreLinks,
+    contentRisks,
     supportSiloStatus,
   };
 }
@@ -565,6 +590,75 @@ function detectCrossStoreLinks(assets: Record<string, string | null>, shopDomain
   }
 
   return dedupeLeaks(leaks);
+}
+
+function detectContentRisks(
+  articles: ArticleInput[],
+  shopDomain: string | null,
+  shopName: string,
+): ContentRisk[] {
+  const risks: ContentRisk[] = [];
+  const currentDomain = normalizeDomain(shopDomain || "");
+  const currentShopLabel = (shopName || "").toLowerCase();
+
+  for (const article of articles) {
+    const title = (article.title || "").trim();
+    const handle = (article.handle || "").trim();
+    const blogTitle = (article.blog_title || "").trim();
+    const content = `${title} ${article.tags || ""} ${article.summary_html || ""} ${article.body_html || ""}`;
+    const lowered = content.toLowerCase();
+    const urls = content.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+
+    const wrongDomainLinks = urls.filter((url) => {
+      try {
+        const domain = normalizeDomain(new URL(url).hostname);
+        if (!domain) return false;
+        if (currentDomain && domain === currentDomain) return false;
+        if (SAFE_EXTERNAL_DOMAINS.has(domain)) return false;
+        if (domain.endsWith(".myshopify.com")) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    if (wrongDomainLinks.length > 0) {
+      risks.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        severity: "critical",
+        reason: `This article sends users off-domain or to the wrong storefront: ${wrongDomainLinks.slice(0, 3).join(", ")}`,
+        recommendation: "Replace those URLs with links to the active store or remove the off-domain CTA.",
+      });
+      continue;
+    }
+
+    if (/(treats?|cures?|therapy|depression relief|anxiety relief|ptsd|adhd|medical-grade|clinically proven)/i.test(lowered)) {
+      risks.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        severity: "warning",
+        reason: "This article uses treatment or medical-style claims that increase misrepresentation risk.",
+        recommendation: "Rewrite the copy into lifestyle-support language and remove diagnosis or treatment claims.",
+      });
+      continue;
+    }
+
+    if (/(iron phoenix|go hard gaming|ghg|etsy)/i.test(lowered) && currentShopLabel && !lowered.includes(currentShopLabel)) {
+      risks.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        severity: "warning",
+        reason: "This article appears to use older or mismatched store identity language.",
+        recommendation: "Normalize brand naming, domain references, and calls to action to the active store identity.",
+      });
+    }
+  }
+
+  return risks.slice(0, 50);
 }
 
 function detectBusinessInfo(footerLiquid: string, fallbackName: string): ThemeBusinessInfo {
