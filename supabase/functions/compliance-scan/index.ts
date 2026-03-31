@@ -180,16 +180,16 @@ serve(async (req) => {
     const policyKeywords = ["privacy", "refund", "return", "shipping", "terms", "contact", "about", "faq"];
     const policyPages = sitePages.filter((link: string) =>
       policyKeywords.some(kw => link.toLowerCase().includes(kw))
-    ).slice(0, 6);
-    const blogPages = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link)).slice(0, 8);
-    const productPages = sitePages.filter((link: string) => /\/products\//i.test(link)).slice(0, 6);
-    const collectionPages = sitePages.filter((link: string) => /\/collections\//i.test(link)).slice(0, 4);
+    ).slice(0, 2);
+    const blogPages = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link)).slice(0, 1);
+    const productPages = sitePages.filter((link: string) => /\/products\//i.test(link)).slice(0, 1);
+    const collectionPages = sitePages.filter((link: string) => /\/collections\//i.test(link)).slice(0, 1);
     const priorityPages = Array.from(new Set([
       ...policyPages,
       ...blogPages,
       ...productPages,
       ...collectionPages,
-    ])).slice(0, 6);
+    ])).slice(0, 4);
 
     const pageSamples = await Promise.allSettled(
       priorityPages.map(async (pageUrl) => {
@@ -199,7 +199,7 @@ serve(async (req) => {
               url: pageUrl,
             })
           : (await scrapeBasicPage(pageUrl)).markdown;
-        return md ? `\n\n--- PAGE: ${pageUrl} ---\n${md.slice(0, 2200)}` : "";
+        return md ? `\n\n--- PAGE: ${pageUrl} ---\n${md.slice(0, 1200)}` : "";
       }),
     );
     const sampledPageContent = pageSamples
@@ -218,7 +218,6 @@ serve(async (req) => {
 
     // Step 4: AI Analysis
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
 
     const systemPrompt = `You are a misrepresentation-risk auditor for e-commerce stores.
 
@@ -299,13 +298,13 @@ Use the report_compliance tool to return your analysis.`;
 URL: ${formattedUrl}
 
 === MAIN PAGE CONTENT ===
-${pageContent.slice(0, 8000)}
+${pageContent.slice(0, 4500)}
 
 === SITE MAP (discovered pages) ===
 ${sitePages.slice(0, 80).join("\n")}
 
 === PRIORITY PAGES CONTENT (policies, blogs, products, collections) ===
-${sampledPageContent.slice(0, 24000)}
+${sampledPageContent.slice(0, 6000)}
 
 === LINKS FOUND ON MAIN PAGE ===
 ${pageLinks.slice(0, 50).join("\n")}
@@ -321,78 +320,99 @@ Known old-brand/off-domain links found: ${oldBrandSignals.length}
 Off-domain examples:
 ${offDomainLinks.slice(0, 25).join("\n")}`;
 
-    const aiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": GEMINI_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] },
-          ],
-          tools: [
-            {
-              functionDeclarations: [
+    let report: ComplianceReport;
+    if (!GEMINI_API_KEY) {
+      report = buildFallbackComplianceReport({
+        storeUrl: formattedUrl,
+        pageContent,
+        sampledPageContent,
+        offDomainLinks,
+        oldBrandSignals,
+        pagesAnalyzed: 1 + priorityPages.length,
+        policyPages,
+      });
+    } else {
+      try {
+        const aiResponse = await fetchWithTimeout(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": GEMINI_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [
+                { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] },
+              ],
+              tools: [
                 {
-                  name: "report_compliance",
-                  description: "Return the compliance audit report",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      score: { type: "integer", description: "Overall compliance score 0-100" },
-                      summary: { type: "string", description: "2-3 sentence executive summary" },
-                      findings: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            category: {
-                              type: "string",
-                              enum: ["gmc_misrepresentation", "etsy_compliance", "general_ecommerce"],
+                  functionDeclarations: [
+                    {
+                      name: "report_compliance",
+                      description: "Return the compliance audit report",
+                      parameters: {
+                        type: "object",
+                        properties: {
+                          score: { type: "integer", description: "Overall compliance score 0-100" },
+                          summary: { type: "string", description: "2-3 sentence executive summary" },
+                          findings: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: {
+                                category: {
+                                  type: "string",
+                                  enum: ["gmc_misrepresentation", "etsy_compliance", "general_ecommerce"],
+                                },
+                                severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
+                                title: { type: "string", description: "Short finding title" },
+                                description: { type: "string", description: "Detailed explanation" },
+                                recommendation: { type: "string", description: "How to fix this issue" },
+                                reference: { type: "string", description: "Policy reference" },
+                              },
+                              required: ["category", "severity", "title", "description", "recommendation"],
                             },
-                            severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
-                            title: { type: "string", description: "Short finding title" },
-                            description: { type: "string", description: "Detailed explanation" },
-                            recommendation: { type: "string", description: "How to fix this issue" },
-                            reference: { type: "string", description: "Policy reference" },
                           },
-                          required: ["category", "severity", "title", "description", "recommendation"],
+                          pages_analyzed: { type: "integer", description: "Number of pages analyzed" },
                         },
+                        required: ["score", "summary", "findings", "pages_analyzed"],
                       },
-      pages_analyzed: { type: "integer", description: "Number of pages analyzed" },
                     },
-                    required: ["score", "summary", "findings", "pages_analyzed"],
-                  },
+                  ],
                 },
               ],
-            },
-          ],
-          toolConfig: {
-            functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["report_compliance"] },
+              toolConfig: {
+                functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["report_compliance"] },
+              },
+            }),
           },
-        }),
-      }
-    );
+          25000
+        );
 
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment.", scanId: scan.id }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        if (!aiResponse.ok) {
+          const errText = await aiResponse.text();
+          console.error("Gemini error:", aiResponse.status, errText);
+          throw new Error(`AI analysis failed with status ${aiResponse.status}`);
+        }
+
+        const aiData = await aiResponse.json() as GeminiResponse;
+        const functionCall = aiData.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)?.functionCall;
+        if (!functionCall) throw new Error("No analysis result returned");
+        report = functionCall.args;
+      } catch (error) {
+        console.error("Gemini compliance fallback:", error);
+        report = buildFallbackComplianceReport({
+          storeUrl: formattedUrl,
+          pageContent,
+          sampledPageContent,
+          offDomainLinks,
+          oldBrandSignals,
+          pagesAnalyzed: 1 + priorityPages.length,
+          policyPages,
         });
       }
-      const errText = await aiResponse.text();
-      console.error("Gemini error:", aiResponse.status, errText);
-      throw new Error("AI analysis failed");
     }
-
-    const aiData = await aiResponse.json() as GeminiResponse;
-    const functionCall = aiData.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)?.functionCall;
-    if (!functionCall) throw new Error("No analysis result returned");
-
-    const report = functionCall.args;
 
     // Calculate counts
     const criticalCount = report.findings.filter((finding) => finding.severity === "critical").length;
@@ -579,6 +599,108 @@ function extractLinksFromHtml(html: string, baseUrl: string): string[] {
     .filter((href): href is string => !!href);
 
   return Array.from(new Set(links)).slice(0, 100);
+}
+
+function buildFallbackComplianceReport(input: {
+  storeUrl: string;
+  pageContent: string;
+  sampledPageContent: string;
+  offDomainLinks: string[];
+  oldBrandSignals: string[];
+  pagesAnalyzed: number;
+  policyPages: string[];
+}): ComplianceReport {
+  const findings: ComplianceFinding[] = [];
+  const combined = `${input.pageContent}\n${input.sampledPageContent}`.toLowerCase();
+
+  if (input.oldBrandSignals.length > 0) {
+    findings.push({
+      category: "gmc_misrepresentation",
+      severity: "critical",
+      title: "Old-brand or off-domain links found",
+      description: `The scanner found links pointing to other storefronts or old brand domains: ${input.oldBrandSignals.slice(0, 5).join(", ")}.`,
+      recommendation: "Remove or replace wrong-domain links in blog posts, navigation, banners, and CTAs so the store does not route shoppers to another brand.",
+    });
+  }
+
+  if (input.offDomainLinks.length > input.oldBrandSignals.length) {
+    findings.push({
+      category: "general_ecommerce",
+      severity: "warning",
+      title: "External links need manual trust review",
+      description: `The storefront includes ${input.offDomainLinks.length} off-domain links. Some may be valid, but they should be reviewed for trust and routing accuracy.`,
+      recommendation: "Review all non-store links and keep only legitimate analytics, policy, or approved external destinations.",
+    });
+  }
+
+  const missingPolicies = [
+    { key: "privacy", label: "Privacy policy" },
+    { key: "refund", label: "Refund or return policy" },
+    { key: "shipping", label: "Shipping policy" },
+    { key: "terms", label: "Terms of service" },
+  ].filter((item) => !input.policyPages.some((url) => url.toLowerCase().includes(item.key)));
+
+  if (missingPolicies.length > 0) {
+    findings.push({
+      category: "gmc_misrepresentation",
+      severity: "warning",
+      title: "Policy coverage is incomplete",
+      description: `The scan could not confirm these policy routes: ${missingPolicies.map((item) => item.label).join(", ")}.`,
+      recommendation: "Make sure privacy, refund/return, shipping, and terms pages are publicly linked and consistent with checkout messaging.",
+    });
+  }
+
+  if (/(treats?|cures?|therapy|depression|anxiety relief|ptsd|adhd|clinically proven|medical-grade)/i.test(combined)) {
+    findings.push({
+      category: "gmc_misrepresentation",
+      severity: "warning",
+      title: "Potential medical or treatment-style wording detected",
+      description: "The scanner found language that may read like treatment, diagnosis, or clinical outcome claims.",
+      recommendation: "Rewrite claims toward lifestyle support language and remove any wording that suggests treatment, diagnosis, or guaranteed health outcomes.",
+    });
+  }
+
+  if (!/(contact|support|email|phone)/i.test(combined)) {
+    findings.push({
+      category: "general_ecommerce",
+      severity: "info",
+      title: "Contact signals were not obvious in sampled pages",
+      description: "The fallback scan did not clearly detect support or contact information in the sampled storefront pages.",
+      recommendation: "Make contact details easy to find in the header, footer, and policy pages.",
+    });
+  }
+
+  if (findings.length === 0) {
+    findings.push({
+      category: "general_ecommerce",
+      severity: "pass",
+      title: "No major misrepresentation signals found in fallback scan",
+      description: "The fallback scan did not detect major wrong-domain, policy, or treatment-claim issues in the sampled pages.",
+      recommendation: "Review the exported report and run a deeper scan again after major content changes.",
+    });
+  }
+
+  const score = Math.max(
+    15,
+    92
+      - findings.filter((finding) => finding.severity === "critical").length * 35
+      - findings.filter((finding) => finding.severity === "warning").length * 15
+      - findings.filter((finding) => finding.severity === "info").length * 5,
+  );
+
+  const summary =
+    findings.some((finding) => finding.severity === "critical")
+      ? "Fallback scan found material trust or brand-routing risks that should be fixed before using this storefront for paid traffic."
+      : findings.some((finding) => finding.severity === "warning")
+        ? "Fallback scan completed with actionable warnings. The storefront is readable, but trust, policy, or wording issues still need cleanup."
+        : "Fallback scan completed without major misrepresentation signals in the sampled pages.";
+
+  return {
+    score,
+    summary,
+    findings,
+    pages_analyzed: input.pagesAnalyzed,
+  };
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
