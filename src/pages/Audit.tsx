@@ -13,8 +13,10 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { toast } from "sonner";
 import { exportCompliancePdf, exportComplianceCsv } from "@/lib/reportExports";
+import { useNavigate } from "react-router-dom";
 
 interface Finding {
   category: "gmc_misrepresentation" | "etsy_compliance" | "general_ecommerce";
@@ -129,6 +131,8 @@ function FindingCard({ finding }: { finding: Finding }) {
 
 export default function AuditPage() {
   const { user } = useAuth();
+  const isAdmin = useIsAdmin(user?.id);
+  const navigate = useNavigate();
   const [storeUrl, setStoreUrl] = useState("");
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -150,6 +154,12 @@ export default function AuditPage() {
   };
 
   const handleScan = async () => {
+    if (!isAdmin) {
+      toast.error("Compliance scans are free for admin only. Purchase a scan package to run this tool.");
+      navigate("/pricing");
+      return;
+    }
+
     if (!storeUrl.trim()) {
       toast.error("Please enter a store URL");
       return;
@@ -217,6 +227,14 @@ export default function AuditPage() {
         <p className="text-muted-foreground mt-1">
           AI-powered misrepresentation risk audit for admin review
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge variant={isAdmin ? "secondary" : "outline"}>
+            {isAdmin ? "Admin free access" : "Paid scan required"}
+          </Badge>
+          {!isAdmin ? (
+            <Badge variant="outline">Non-admin users must purchase compliance scans</Badge>
+          ) : null}
+        </div>
       </motion.div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -253,11 +271,18 @@ export default function AuditPage() {
                 >
                   {scanning ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
+                  ) : !isAdmin ? (
+                    <><CreditCard className="h-4 w-4" /> Buy Compliance Scan</>
                   ) : (
                     <><Shield className="h-4 w-4" /> Run Risk Audit</>
                   )}
                 </Button>
               </div>
+              {!isAdmin ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Admin accounts can run this scanner free. Other users should purchase a compliance package in Pricing.
+                </p>
+              ) : null}
 
               {scanning && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 space-y-2">
@@ -450,4 +475,3 @@ export default function AuditPage() {
     </div>
   );
 }
-

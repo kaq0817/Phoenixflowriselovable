@@ -74,6 +74,22 @@ serve(async (req) => {
     const userId = userData.user.id;
     const userEmail = userData.user.email;
 
+    const { data: isAdmin, error: roleError } = await supabase.rpc("has_role", {
+      _user_id: userId,
+      _role: "admin",
+    });
+    if (roleError) {
+      console.error("Failed to check admin role:", roleError);
+      return new Response(JSON.stringify({ error: "Could not verify account access" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: "Compliance scans are free for admin only. Purchase a scan package to continue." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { url: storeUrl } = await req.json();
     if (!storeUrl) {
       return new Response(JSON.stringify({ error: "Store URL is required" }), {
