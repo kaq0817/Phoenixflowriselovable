@@ -37,7 +37,7 @@ serve(async (req) => {
       });
     }
 
-    const { productId, optimizedData, connectionId } = await req.json();
+    const { productId, optimizedData, connectionId, imageAltEdits } = await req.json();
     if (!productId || !optimizedData) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -74,6 +74,7 @@ serve(async (req) => {
     if (optimizedData.body_html) updateBody.body_html = optimizedData.body_html;
     if (optimizedData.product_type) updateBody.product_type = optimizedData.product_type;
     if (optimizedData.tags) updateBody.tags = optimizedData.tags;
+    if (optimizedData.url_handle) updateBody.handle = optimizedData.url_handle;
 
     // Update product via Shopify API
     const updateRes = await fetch(
@@ -96,36 +97,65 @@ serve(async (req) => {
       });
     }
 
-    // Update SEO metafields if provided
-    if (optimizedData.seo_title || optimizedData.seo_description) {
-      const metafieldsToSet = [];
-      if (optimizedData.seo_title) {
-        metafieldsToSet.push({
-          namespace: "global",
-          key: "title_tag",
-          value: optimizedData.seo_title,
-          type: "single_line_text_field",
-        });
-      }
-      if (optimizedData.seo_description) {
-        metafieldsToSet.push({
-          namespace: "global",
-          key: "description_tag",
-          value: optimizedData.seo_description,
-          type: "single_line_text_field",
-        });
-      }
+    // Fetch existing metafields once, then upsert each one
+    const existingMfRes = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/metafields.json`,
+      { headers: { "X-Shopify-Access-Token": accessToken } }
+    );
+    const existingMfData = existingMfRes.ok ? await existingMfRes.json() : { metafields: [] };
+    const existingMetafields: { id: number; namespace: string; key: string }[] = existingMfData.metafields || [];
 
-      for (const mf of metafieldsToSet) {
+    const findMetafield = (namespace: string, key: string) =>
+      existingMetafields.find((m) => m.namespace === namespace && m.key === key);
+
+    const upsertMetafield = async (namespace: string, key: string, value: string, type: string) => {
+      const existing = findMetafield(namespace, key);
+      const url = existing
+        ? `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/metafields/${existing.id}.json`
+        : `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/metafields.json`;
+      const method = existing ? "PUT" : "POST";
+      const payload = {
+        metafield: {
+          ...(existing ? { id: existing.id } : { namespace, key, type }),
+          value,
+        },
+      };
+      const res = await fetch(url, {
+        method,
+        headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorBody = await res.text();
+        console.error(`Failed to ${method} metafield ${namespace}.${key}:`, errorBody);
+      }
+    };
+
+    if (optimizedData.seo_title) {
+      await upsertMetafield("global", "title_tag", optimizedData.seo_title, "single_line_text_field");
+    }
+    if (optimizedData.seo_description) {
+      await upsertMetafield("global", "description_tag", optimizedData.seo_description, "single_line_text_field");
+    }
+    if (optimizedData.faq_json) {
+      const faqValue = typeof optimizedData.faq_json === "string"
+        ? optimizedData.faq_json
+        : JSON.stringify(optimizedData.faq_json);
+      await upsertMetafield("custom", "faq", faqValue, "json");
+    }
+
+    // Update image alt text if provided
+    if (imageAltEdits && typeof imageAltEdits === "object") {
+      for (const [imageId, altText] of Object.entries(imageAltEdits)) {
         await fetch(
-          `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/metafields.json`,
+          `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/images/${imageId}.json`,
           {
-            method: "POST",
+            method: "PUT",
             headers: {
               "X-Shopify-Access-Token": accessToken,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ metafield: mf }),
+            body: JSON.stringify({ image: { id: Number(imageId), alt: altText } }),
           }
         );
       }

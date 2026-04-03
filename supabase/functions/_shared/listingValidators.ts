@@ -80,6 +80,9 @@ export interface ShopifySuggestionShape {
   product_type?: string;
   tags?: string;
   variant_suggestions?: string;
+  url_handle?: string;
+  faq_json?: string;
+  collections_suggestion?: string;
   reasoning?: string;
 }
 
@@ -201,6 +204,14 @@ function dedupeBySignature(values: string[], maxLength: number): string[] {
     output.push(normalized);
   }
   return output;
+}
+
+function sanitizeHandle(value: string): string {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
 }
 
 function isBannedTag(value: string, vendor?: string): boolean {
@@ -391,8 +402,12 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const body_html = sanitizeHtml(
     raw.body_html || product.body_html || `<p>${sanitizePlainText(product.title || "")} is written to stay clear, factual, and easy to scan on Shopify.</p>`,
   );
-  const seo_title = sanitizePlainText(raw.seo_title || title || product.metafields_global_title_tag || product.title || "", 70);
-  const seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 320);
+  const seo_title = sanitizePlainText(raw.seo_title || title || product.metafields_global_title_tag || product.title || "", 60);
+  // Target 120-155 chars for meta description (conversion-focused)
+  let seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 155);
+  if (seo_description.length < 60 && title) {
+    seo_description = sanitizePlainText(`${title}. ${seo_description}`, 155);
+  }
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
   let tags = dedupeBySignature(String(raw.tags || product.tags || "").split(","), 255)
@@ -414,14 +429,31 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     notes.push("tags padded from product title, type, and variants");
   }
 
+  // Enforce total combined tags string ≤250 chars (Shopify SEO best practice)
+  let tagsString = tags.join(", ");
+  if (tagsString.length > 250) {
+    while (tagsString.length > 250 && tags.length > 1) {
+      tags = tags.slice(0, -1);
+      tagsString = tags.join(", ");
+    }
+    notes.push("tags trimmed to keep total combined string within 250 characters");
+  }
+
+  // URL handle
+  const rawHandle = raw.url_handle || sanitizePlainText(raw.title || product.title || "", 100);
+  const url_handle = sanitizeHandle(rawHandle);
+
   return {
     title,
     body_html,
     seo_title,
     seo_description,
     product_type,
-    tags: tags.join(", "),
+    tags: tagsString,
     variant_suggestions: sanitizePlainText(raw.variant_suggestions || "", 240),
+    url_handle,
+    faq_json: raw.faq_json || "",
+    collections_suggestion: sanitizePlainText(raw.collections_suggestion || "", 300),
     reasoning: appendValidationNotes(raw.reasoning, notes),
   };
 }

@@ -96,8 +96,64 @@ serve(async (req) => {
       `${variant.title || "Default"} - $${variant.price || "0.00"} (${variant.inventory_quantity || 0} in stock)`,
     ).join("\n");
 
-    const systemPrompt = `You are an expert Shopify SEO optimizer specializing in product listings.
+    const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
+SHOPIFY SEO RULES:
+
+TITLE
+- Concise, scannable product name. Use natural language, not keyword stuffing.
+- Keep under 70 characters. Front-load the product name.
+- For apparel: must include real color and size range (e.g. "Iron Phoenix Teal Gaming Hoodie Black XS-4XL").
+- No ALL CAPS (except acronyms like USB, LED, GHG). No special characters, curly quotes, em dashes, symbols, or promotional words (FREE SHIPPING, SALE, BEST SELLER).
+
+META TITLE (seo_title)
+- Max 60 characters. Front-load the primary keyword.
+- Different from product title - more keyword-focused.
+
+META DESCRIPTION (seo_description)
+- Target 120-155 characters EXACTLY. Benefit-focused, conversion-oriented.
+- Must mention 1-2 primary keywords naturally.
+- No promotional fluff. End with a soft call-to-action if space allows.
+
+DESCRIPTION (body_html)
+- Use H3 headings for sections: Features, Benefits, Size & Specs (apparel), Details.
+- Include exactly one short bullet list (3-5 items) for key specs or highlights.
+- Short sentences. Factual, no exaggerated claims. No hype words.
+- End with a brief trust signal (e.g. single line mentioning returns or shipping).
+- Format as clean HTML using only <h3>, <p>, <ul>, <li>, <strong>.
+
+TAGS (Shopify-specific - NOT Etsy)
+- Shopify tags are for collection filtering and search — NOT keyword stuffing.
+- Include: intent-based phrases ("gift for gamers"), niche descriptors ("teal streetwear hoodie"), category terms, material, style.
+- Use LONG-TAIL keyword phrases — multi-word phrases search better in Google Shopping.
+- CRITICAL: Total combined tags string (all tags joined) must be 250 characters or fewer.
+- There is NO 13-tag limit here — this is Shopify, not Etsy. Use as many tags as fit within 250 characters total.
+- Do NOT duplicate concepts. Do NOT include vendor name, dropshipping terms, or generic one-word filler.
+
+URL HANDLE (url_handle)
+- Short, hyphenated, keyword-based. Example: "teal-gaming-hoodie-iron-phoenix-black-xs-4xl"
+- Lowercase letters, numbers, and hyphens only. No brand name unless also a keyword.
+- Max 60 characters.
+
+FAQ (faq_json)
+- Return a JSON array string of 3-4 question/answer pairs shoppers commonly ask.
+- Format: [{"question": "...", "answer": "..."}, ...]
+- Real questions about sizing, shipping, materials, or use case. Plain language answers.
+
+COLLECTIONS SUGGESTION (collections_suggestion)
+- Suggest 2-3 Shopify collection names this product should be assigned to.
+- Use the existing product type, tags, and title as context.
+- Example: "Gaming Mugs, Gifts for Gamers, Travel Drinkware"
+
+GOOGLE MERCHANT CENTER COMPLIANCE (violations cause suspension)
+- Apparel titles MUST include color and size range exactly as variants show.
+- NEVER use special characters/symbols/Unicode decorative characters.
+- No misleading claims. Descriptions must match what the product actually is.
+- No price, shipping, or promotional text in title/meta fields.
+
+Return all optimizations using the suggest_shopify_optimizations function.`;
+
+    const userPrompt = `Optimize this Shopify product:
 SHOPIFY-SPECIFIC RULES:
 - Titles: Clear product name + brand. Do NOT use long-tail keyword stuffing. Keep under 70 characters.
 - Variant options should use standard Shopify conventions: Color, Size, Gender, Material, Style
@@ -164,15 +220,18 @@ Current SEO Description: ${product.metafields_global_description_tag || ""}`;
                         type: "object",
                         properties: {
                           title: { type: "string", description: "Optimized product title (max 70 chars, no keyword stuffing)" },
-                          body_html: { type: "string", description: "Optimized HTML body description with bullet points and benefits" },
-                          seo_title: { type: "string", description: "SEO meta title (max 70 chars)" },
-                          seo_description: { type: "string", description: "SEO meta description (max 320 chars)" },
+                          body_html: { type: "string", description: "Optimized HTML body using H3 sections, bullet list, trust signal. Only <h3><p><ul><li><strong> tags." },
+                          seo_title: { type: "string", description: "SEO meta title (max 60 chars, keyword-first)" },
+                          seo_description: { type: "string", description: "SEO meta description (120-155 chars, benefit-focused, conversion-oriented)" },
                           product_type: { type: "string", description: "Optimized product type/category" },
-                          tags: { type: "string", description: "Comma-separated optimized tags with clear, non-duplicated phrasing" },
+                          tags: { type: "string", description: "Comma-separated long-tail keyword phrase tags. Total string MUST be 250 characters or fewer. Shopify-specific — NOT limited to 13 tags." },
                           variant_suggestions: { type: "string", description: "Suggestions for variant naming (Color/Size/Gender conventions)" },
+                          url_handle: { type: "string", description: "Hyphenated URL handle, keyword-based, max 60 chars, lowercase only (e.g. teal-gaming-hoodie-iron-phoenix-black-xs-4xl)" },
+                          faq_json: { type: "string", description: "JSON array string of 3-4 FAQ objects: [{\"question\":\"...\",\"answer\":\"...\"}]. Real shopper questions about sizing, shipping, materials, use case." },
+                          collections_suggestion: { type: "string", description: "Comma-separated list of 2-3 Shopify collection names this product fits (e.g. Gaming Mugs, Gifts for Gamers, Travel Drinkware)" },
                           reasoning: { type: "string", description: "Brief explanation of changes made" },
                         },
-                        required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "reasoning"],
+                        required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "url_handle", "faq_json", "reasoning"],
                       },
                     },
                   ],

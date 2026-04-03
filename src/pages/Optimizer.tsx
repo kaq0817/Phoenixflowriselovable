@@ -8,8 +8,9 @@ import { Progress } from "@/components/ui/progress";
 import {
   BarChart3, Sparkles, ShoppingBag, Store, Loader2, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Tag, FileText, Palette,
-  ArrowRight, Copy, AlertTriangle
+  ArrowRight, Copy, AlertTriangle, Link, HelpCircle, LayoutGrid, Radio
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { CopyButton, copyAllFields } from "@/components/CopyButton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,7 +24,7 @@ interface ShopifyProduct {
   vendor: string;
   tags: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; option3?: string }[];
-  images: { src: string }[];
+  images: { id: number; src: string; alt: string | null; position: number }[];
   handle: string;
 // Copyright (c) 2026 [Your Name or Company]
 // All rights reserved.
@@ -39,6 +40,9 @@ interface ShopifySuggestions {
   product_type: string;
   tags: string;
   variant_suggestions?: string;
+  url_handle?: string;
+  faq_json?: string;
+  collections_suggestion?: string;
   reasoning: string;
 }
 
@@ -109,6 +113,13 @@ export default function OptimizerPage() {
   const [etsyApplying, setEtsyApplying] = useState(false);
 
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [imageAltEdits, setImageAltEdits] = useState<Record<number, string>>({});
+
+  // Sales channels
+  const [salesChannels, setSalesChannels] = useState<{ id: number; name: string }[]>([]);
+  const [publishedChannelIds, setPublishedChannelIds] = useState<number[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [channelTogglingId, setChannelTogglingId] = useState<number | null>(null);
 
   // On mount, only load store connections, do NOT auto-fetch products or listings
   useEffect(() => {
@@ -216,11 +227,57 @@ export default function OptimizerPage() {
     }
   };
 
+  const fetchSalesChannels = async (productId: number, connectionId: string) => {
+    if (!connectionId) return;
+    setChannelsLoading(true);
+    setSalesChannels([]);
+    setPublishedChannelIds([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-channels", {
+        body: { connectionId, productId },
+      });
+      if (error) throw error;
+      setSalesChannels(data.publications || []);
+      setPublishedChannelIds(data.publishedPublicationIds || []);
+    } catch {
+      // Non-critical — channels panel stays empty
+    } finally {
+      setChannelsLoading(false);
+    }
+  };
+
+  const toggleSalesChannel = async (publicationId: number, currentlyPublished: boolean) => {
+    if (!selectedProduct || !selectedShopifyConnectionId || channelTogglingId !== null) return;
+    setChannelTogglingId(publicationId);
+    const action = currentlyPublished ? "unpublish" : "publish";
+    try {
+      const { error } = await supabase.functions.invoke("apply-shopify-channels", {
+        body: { connectionId: selectedShopifyConnectionId, productId: selectedProduct.id, publicationId, action },
+      });
+      if (error) throw error;
+      setPublishedChannelIds((prev) =>
+        action === "publish" ? [...prev, publicationId] : prev.filter((id) => id !== publicationId)
+      );
+      toast({ title: action === "publish" ? "Published" : "Unpublished", description: `Product ${action === "publish" ? "added to" : "removed from"} sales channel.` });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update channel";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setChannelTogglingId(null);
+    }
+  };
+
   const optimizeShopify = async (product: ShopifyProduct) => {
     setSelectedProduct(product);
     setShopifySuggestions(null);
     setShopifyOptimizing(true);
     setExpandedSection(null);
+    const initialAlts: Record<number, string> = {};
+    for (const img of product.images || []) {
+      initialAlts[img.id] = img.alt || "";
+    }
+    setImageAltEdits(initialAlts);
+    fetchSalesChannels(product.id, selectedShopifyConnectionId);
     try {
       const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", { body: { product } });
       if (error) throw error;
@@ -244,6 +301,7 @@ export default function OptimizerPage() {
           productId: selectedProduct.id,
           optimizedData: shopifySuggestions,
           connectionId: selectedShopifyConnectionId || undefined,
+          imageAltEdits,
         },
       });
       if (error) throw error;
@@ -457,6 +515,10 @@ export default function OptimizerPage() {
                       <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} sectionKey="type" />
                       <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} sectionKey="tags" />
 
+                      {shopifySuggestions.url_handle && (
+                        <ComparisonRow label="URL Handle" icon={<Link className="h-4 w-4 text-primary" />} original={selectedProduct.handle || ""} optimized={shopifySuggestions.url_handle} sectionKey="url_handle" />
+                      )}
+
                       {shopifySuggestions.body_html && (
                         <Card className="bg-card/50 border-border/30 overflow-hidden">
                           <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("body")}>
@@ -480,6 +542,48 @@ export default function OptimizerPage() {
                         </Card>
                       )}
 
+                      {shopifySuggestions.collections_suggestion && (
+                        <Card className="bg-card/50 border-border/30">
+                          <CardContent className="p-4 flex gap-3 items-start">
+                            <LayoutGrid className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wider text-primary mb-1 font-medium">Suggested Collections</p>
+                              <p className="text-sm text-muted-foreground">{shopifySuggestions.collections_suggestion}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {shopifySuggestions.faq_json && (() => {
+                        try {
+                          const faqs: { question: string; answer: string }[] = JSON.parse(shopifySuggestions.faq_json!);
+                          if (!faqs.length) return null;
+                          return (
+                            <Card className="bg-card/50 border-border/30 overflow-hidden">
+                              <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("faq")}>
+                                <div className="flex items-center gap-2">
+                                  <HelpCircle className="h-4 w-4 text-primary" />
+                                  <span className="text-sm font-medium">FAQ Metafield</span>
+                                  <Badge variant="outline" className="text-[10px] py-0">{faqs.length} questions</Badge>
+                                </div>
+                                {expandedSection === "faq" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                              </button>
+                              {expandedSection === "faq" && (
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
+                                  <p className="text-xs text-muted-foreground">Applied to your product as a <code className="text-primary text-[10px]">custom.faq</code> metafield. Use with a Shopify FAQ section or JSON-LD schema for SEO.</p>
+                                  {faqs.map((faq, i) => (
+                                    <div key={i} className="p-3 rounded-lg bg-muted/30 border border-border/20 space-y-1">
+                                      <p className="text-sm font-medium">{faq.question}</p>
+                                      <p className="text-sm text-muted-foreground">{faq.answer}</p>
+                                    </div>
+                                  ))}
+                                </motion.div>
+                              )}
+                            </Card>
+                          );
+                        } catch { return null; }
+                      })()}
+
                       {shopifySuggestions.variant_suggestions && (
                         <Card className="bg-card/50 border-border/30">
                           <CardContent className="p-4">
@@ -488,6 +592,89 @@ export default function OptimizerPage() {
                           </CardContent>
                         </Card>
                       )}
+
+                      {selectedProduct.images && selectedProduct.images.length > 0 && (
+                        <Card className="bg-card/50 border-border/30 overflow-hidden">
+                          <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("alt_text")}>
+                            <div className="flex items-center gap-2">
+                              <ImageIcon className="h-4 w-4 text-primary" />
+                              <span className="text-sm font-medium">Image Alt Text</span>
+                              <Badge variant="outline" className="text-[10px] py-0">{selectedProduct.images.length} image{selectedProduct.images.length !== 1 ? "s" : ""}</Badge>
+                            </div>
+                            {expandedSection === "alt_text" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                          </button>
+                          {expandedSection === "alt_text" && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
+                              <p className="text-xs text-muted-foreground">Alt text is used by screen readers and appears in Google Image search. Describe what is in the photo — no keyword stuffing.</p>
+                              {selectedProduct.images.map((img, i) => (
+                                <div key={img.id} className="flex gap-3 items-start">
+                                  <img src={img.src} alt={img.alt || ""} className="w-16 h-16 rounded-lg object-cover border border-border/30 shrink-0" />
+                                  <div className="flex-1 space-y-1">
+                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Image {i + 1}</p>
+                                    <input
+                                      type="text"
+                                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                                      placeholder="Describe this image for accessibility and SEO..."
+                                      value={imageAltEdits[img.id] ?? (img.alt || "")}
+                                      onChange={(e) => setImageAltEdits(prev => ({ ...prev, [img.id]: e.target.value }))}
+                                      maxLength={512}
+                                    />
+                                    <p className="text-[10px] text-muted-foreground text-right">{(imageAltEdits[img.id] ?? (img.alt || "")).length}/512</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </motion.div>
+                          )}
+                        </Card>
+                      )}
+
+                      <Card className="bg-card/50 border-border/30 overflow-hidden">
+                        <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("sales_channels")}>
+                          <div className="flex items-center gap-2">
+                            <Radio className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-medium">Sales Channels</span>
+                            {!channelsLoading && salesChannels.length > 0 && (
+                              <Badge variant="outline" className="text-[10px] py-0">{publishedChannelIds.length}/{salesChannels.length} active</Badge>
+                            )}
+                          </div>
+                          {expandedSection === "sales_channels" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                        </button>
+                        {expandedSection === "sales_channels" && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-2">
+                            <p className="text-xs text-muted-foreground mb-3">Toggle to publish or unpublish this product on each sales channel. Changes apply immediately.</p>
+                            {channelsLoading ? (
+                              <div className="flex items-center gap-2 py-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                <span className="text-sm text-muted-foreground">Loading channels...</span>
+                              </div>
+                            ) : salesChannels.length === 0 ? (
+                              <p className="text-sm text-muted-foreground py-2">No sales channels found for this store.</p>
+                            ) : (
+                              salesChannels.map((channel) => {
+                                const isPublished = publishedChannelIds.includes(channel.id);
+                                const isToggling = channelTogglingId === channel.id;
+                                return (
+                                  <div key={channel.id} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0">
+                                    <div className="flex items-center gap-2">
+                                      {isToggling ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                      ) : (
+                                        <div className={`w-2 h-2 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+                                      )}
+                                      <span className="text-sm">{channel.name}</span>
+                                    </div>
+                                    <Switch
+                                      checked={isPublished}
+                                      disabled={isToggling}
+                                      onCheckedChange={() => toggleSalesChannel(channel.id, isPublished)}
+                                    />
+                                  </div>
+                                );
+                              })
+                            )}
+                          </motion.div>
+                        )}
+                      </Card>
 
                       <div className="flex gap-3 pt-2">
                         <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">
