@@ -134,7 +134,7 @@ SHOPIFY SEO RULES:
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff.
 - DESCRIPTION (body_html): H3 headings (Features, Benefits, Specs). Exactly one bullet list (3-5 items). HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
-- TAGS: Long-tail phrases. Combined total string must be 250 chars or fewer. No vendor names.
+- TAGS: Think like a Google Shopping shopper searching for THIS SPECIFIC product. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then use real buyer-intent search queries for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). Generic category tags like "coffee cup", "travel mug", "shirt" alone will land on page 3000 — use THEMED niche terms. PRESERVE the existing specific tags. Upgrade generic ones with the product's actual theme. Single-word niche tags (e.g. "Tumbler", "8-bit", "Zombie", "Gaming") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Combined total string must be 250 chars or fewer.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
 

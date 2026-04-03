@@ -422,9 +422,9 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
-  // Helper: a tag qualifies if it is long-tail, not vendor-named, and not banned
+  // Helper: a tag qualifies if it is not vendor-named and not banned (single-word niche tags are allowed)
   const tagQualifies = (t: string) =>
-    t.split(" ").length >= 2 &&
+    t.trim().length > 0 &&
     (product.vendor ? !normalizeKeywordPhrase(t).includes(normalizeKeywordPhrase(product.vendor)) : true) &&
     !isBannedTag(t, product.vendor);
 
