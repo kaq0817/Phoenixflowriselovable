@@ -879,6 +879,14 @@ function stripHtml(value: string): string {
     .trim();
 }
 
+function finalHardClean(value: string): string {
+  return value
+    .replace(/["""\u201C\u201D'''\u2018\u2019]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\|\s*\|/g, "|")
+    .trim();
+}
+
 function extractAttribute(tag: string, attribute: string): string | null {
   const match = tag.match(new RegExp(`${attribute}\\s*=\\s*["']([^"']+)["']`, "i"));
   return match?.[1] || null;

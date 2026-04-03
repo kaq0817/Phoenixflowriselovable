@@ -118,6 +118,10 @@ function sanitizePlainText(value: string, maxLength?: number): string {
   return (boundary > Math.floor(maxLength * 0.6) ? sliced.slice(0, boundary) : sliced).trim();
 }
 
+function trimBrokenTail(value: string): string {
+  return value.replace(/\b[A-Z][a-z]*\s*$/, "").trim();
+}
+
 function sanitizeHtml(value: string): string {
   return collapseWhitespace(replaceAscii(value || ""));
 }
@@ -430,6 +434,12 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
       .slice(0, 15);
     notes.push("tags padded from product title, type, and variants");
   }
+
+  // Force long-tail tags and strip vendor-name-only tags
+  tags = tags
+    .map((t) => t.trim())
+    .filter((t) => t.split(" ").length >= 2)
+    .filter((t) => !normalizeKeywordPhrase(t).includes(normalizeKeywordPhrase(product.vendor || "")));
 
   // Enforce total combined tags string ≤250 chars (Shopify SEO best practice)
   tags = tags.map((t) => t.replace(/"/g, ""));
