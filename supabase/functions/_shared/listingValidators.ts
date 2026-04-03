@@ -104,6 +104,14 @@ function collapseWhitespace(value: string): string {
   return value.replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
 }
 
+function finalHardClean(value: string): string {
+  return value
+    .replace(/["“”‘’'']/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\|\s*\|/g, "|")
+    .trim();
+}
+
 function sanitizePlainText(value: string, maxLength?: number): string {
   let next = collapseWhitespace(replaceAscii(value || ""));
   for (const pattern of PROMO_PATTERNS) {
@@ -468,15 +476,21 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const rawHandle = raw.url_handle || sanitizePlainText(raw.title || product.title || "", 100);
   const url_handle = sanitizeHandle(rawHandle);
 
+  title = finalHardClean(title);
+  const cleanSeoTitle = finalHardClean(seo_title);
+  const cleanSeoDescription = finalHardClean(seo_description);
+  tagsString = finalHardClean(tagsString);
+  const cleanHandle = finalHardClean(url_handle);
+
   return {
     title,
     body_html,
-    seo_title,
-    seo_description,
+    seo_title: cleanSeoTitle,
+    seo_description: cleanSeoDescription,
     product_type,
     tags: tagsString,
     variant_suggestions: sanitizePlainText(raw.variant_suggestions || "", 240),
-    url_handle,
+    url_handle: cleanHandle,
     faq_json: raw.faq_json || "",
     collections_suggestion: sanitizePlainText(raw.collections_suggestion || "", 300),
     reasoning: appendValidationNotes(raw.reasoning, notes),
