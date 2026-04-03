@@ -273,14 +273,17 @@ Do NOT treat these alone as critical failures unless there is clear deceptive co
 
 Scoring guidance:
 - 90-100: little to no visible misrepresentation risk
-- 70-89: some warnings, but no strong deceptive signals
-- 40-69: meaningful risk signals or multiple contradictions
-- 0-39: clear deceptive, false, or materially misleading claims
+- 75-89: one or two warnings, no deceptive signals, store is fundamentally sound
+- 55-74: multiple warnings or one clear contradiction worth fixing
+- 35-54: meaningful risk signals, contradictions, or one confirmed critical issue
+- 0-34: multiple confirmed critical issues with clear deceptive or materially false claims
+
+IMPORTANT: A store with mostly clean content, one business identity issue, and a few warnings should score in the 60-80 range — NOT below 40. Only score below 40 when there is clear, repeated, material deception across multiple areas.
 
 Return findings using these severities:
 - critical: clear evidence of false, misleading, deceptive, or materially contradictory claims
 - warning: meaningful misrepresentation risk, ambiguity, or inconsistency
-- info: cannot verify or minor issue worth manual review
+- info: pre-risk flag worth reviewing before it becomes a problem — does NOT affect the score
 - pass: clearly acceptable / no meaningful risk found
 
 Keep findings high-signal. Do not pad the report with generic best practices.
@@ -414,6 +417,40 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
       }
     }
 
+    // CRITICAL VALIDATION: Report must be valid before marking completed and sending email
+    // This prevents fraud where user is charged without receiving a real report
+    if (!report || !Array.isArray(report.findings) || report.findings.length === 0) {
+      const serviceSupabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      await serviceSupabase.from("compliance_scans").update({
+        status: "failed",
+        results: { error: "Report generation returned empty findings. This scan has been marked as failed—you have NOT been charged. Please contact support if this persists." },
+        completed_at: new Date().toISOString(),
+      }).eq("id", scan.id);
+      return new Response(JSON.stringify({ error: "Report generation failed (no findings). Scan marked as FAILED—no charge. Contact support." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof report.score !== "number" || !report.summary || typeof report.pages_analyzed !== "number") {
+      const serviceSupabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      await serviceSupabase.from("compliance_scans").update({
+        status: "failed",
+        results: { error: "Report is incomplete (missing score, summary, or pages_analyzed). Scan marked as failed—you have NOT been charged. Contact support." },
+        completed_at: new Date().toISOString(),
+      }).eq("id", scan.id);
+      return new Response(JSON.stringify({ error: "Report validation failed (incomplete). Scan marked as FAILED—no charge. Contact support." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Calculate counts
     const criticalCount = report.findings.filter((finding) => finding.severity === "critical").length;
     const warningCount = report.findings.filter((finding) => finding.severity === "warning").length;
@@ -434,6 +471,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
       completed_at: new Date().toISOString(),
     }).eq("id", scan.id);
 
+    // ONLY send email if report is valid and scan is marked completed
     if (userEmail) {
       try {
         const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_URL")?.match(/https:\/\/(.+)\.supabase/)?.[1];
@@ -453,6 +491,8 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
               criticalCount,
               warningCount,
               pagesAnalyzed: report.pages_analyzed,
+              summary: report.summary,
+              findings: report.findings,
             }),
           });
         }
@@ -481,7 +521,8 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
         console.error("Failed to update compliance scan status:", updateError);
       }
     }
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return new Response(JSON.stringify({ error: `Scan failed: ${errorMessage}. Your account has NOT been charged. Contact support if you need assistance.` }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -681,11 +722,10 @@ function buildFallbackComplianceReport(input: {
   }
 
   const score = Math.max(
-    15,
-    92
-      - findings.filter((finding) => finding.severity === "critical").length * 35
-      - findings.filter((finding) => finding.severity === "warning").length * 15
-      - findings.filter((finding) => finding.severity === "info").length * 5,
+    20,
+    90
+      - findings.filter((finding) => finding.severity === "critical").length * 12
+      - findings.filter((finding) => finding.severity === "warning").length * 8,
   );
 
   const summary =

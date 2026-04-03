@@ -105,6 +105,7 @@ serve(async (req) => {
       shopDomain,
       shopName: conn.shop_name,
     });
+    const riskArticles = buildRiskArticles(articles, analysis.contentRisks);
 
     return new Response(
       JSON.stringify({
@@ -121,6 +122,7 @@ serve(async (req) => {
         collectionPillars: analysis.collectionPillars,
         crossStoreLinks: analysis.crossStoreLinks,
         contentRisks: analysis.contentRisks,
+        riskArticles,
         shopifyDomains,
         supportSiloStatus: analysis.supportSiloStatus,
       }),
@@ -207,6 +209,8 @@ async function fetchArticles(input: {
   shopDomain: string;
   accessToken: string;
 }): Promise<Array<{
+  id?: number;
+  blog_id?: number;
   title?: string;
   handle?: string;
   blog_title?: string;
@@ -221,7 +225,7 @@ async function fetchArticles(input: {
         { headers: { "X-Shopify-Access-Token": input.accessToken } },
       ),
       fetch(
-        `https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/articles.json?limit=250&fields=title,handle,blog_id,tags,body_html,summary_html`,
+        `https://${input.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/articles.json?limit=250&fields=id,title,handle,blog_id,tags,body_html,summary_html`,
         { headers: { "X-Shopify-Access-Token": input.accessToken } },
       ),
     ]);
@@ -234,6 +238,7 @@ async function fetchArticles(input: {
     );
 
     return (Array.isArray(articlesData.articles) ? articlesData.articles : []).map((article: {
+      id?: number;
       title?: string;
       handle?: string;
       blog_id?: number;
@@ -241,6 +246,8 @@ async function fetchArticles(input: {
       body_html?: string;
       summary_html?: string;
     }) => ({
+      id: article.id,
+      blog_id: article.blog_id,
       title: article.title,
       handle: article.handle,
       blog_title: blogMap.get(Number(article.blog_id || 0)) || "",
@@ -251,4 +258,69 @@ async function fetchArticles(input: {
   } catch {
     return [];
   }
+}
+
+function buildRiskArticles(
+  articles: Array<{
+    id?: number;
+    blog_id?: number;
+    title?: string;
+    handle?: string;
+    blog_title?: string;
+    tags?: string;
+    body_html?: string;
+    summary_html?: string;
+  }>,
+  contentRisks: Array<{ handle: string }>,
+): Array<{
+  articleId: number;
+  blogId: number;
+  title: string;
+  handle: string;
+  blogTitle: string;
+  tags: string;
+  summaryHtml: string;
+  bodyHtml: string;
+}> {
+  const flaggedHandles = new Set(
+    contentRisks
+      .map((risk) => String(risk.handle || "").trim())
+      .filter((value) => value.length > 0),
+  );
+
+  if (flaggedHandles.size === 0) return [];
+
+  const seen = new Set<string>();
+  const riskArticles: Array<{
+    articleId: number;
+    blogId: number;
+    title: string;
+    handle: string;
+    blogTitle: string;
+    tags: string;
+    summaryHtml: string;
+    bodyHtml: string;
+  }> = [];
+
+  for (const article of articles) {
+    const handle = String(article.handle || "").trim();
+    const articleId = Number(article.id || 0);
+    const blogId = Number(article.blog_id || 0);
+    if (!handle || !flaggedHandles.has(handle) || articleId <= 0 || blogId <= 0) continue;
+    if (seen.has(handle)) continue;
+    seen.add(handle);
+
+    riskArticles.push({
+      articleId,
+      blogId,
+      title: String(article.title || handle || "Untitled article").trim(),
+      handle,
+      blogTitle: String(article.blog_title || "").trim(),
+      tags: String(article.tags || "").trim(),
+      summaryHtml: String(article.summary_html || ""),
+      bodyHtml: String(article.body_html || ""),
+    });
+  }
+
+  return riskArticles;
 }

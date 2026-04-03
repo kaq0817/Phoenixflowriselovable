@@ -675,9 +675,12 @@ serve(async (req: Request) => {
             },
             body: JSON.stringify({
               to: userEmail,
+              reportType: "listing",
+              storeUrl: conn.shop_domain || "",
               summary,
               listingsWithIssues: allFindings.length,
               totalScanned: listings.length,
+              findings: allFindings.slice(0, 25),
             }),
           });
         }

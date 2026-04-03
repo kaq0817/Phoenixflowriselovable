@@ -389,18 +389,18 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
 
   const body_html = sanitizeHtml(
-    raw.body_html || product.body_html || `<p>${sanitizePlainText(product.title || "This product")} is written to stay clear, factual, and easy to scan on Shopify.</p>`,
+    raw.body_html || product.body_html || `<p>${sanitizePlainText(product.title || "")} is written to stay clear, factual, and easy to scan on Shopify.</p>`,
   );
   const seo_title = sanitizePlainText(raw.seo_title || title || product.metafields_global_title_tag || product.title || "", 70);
   const seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 320);
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
-  let tags = dedupeBySignature(String(raw.tags || product.tags || "").split(","), 40)
+  let tags = dedupeBySignature(String(raw.tags || product.tags || "").split(","), 255)
     .filter((tag) => !isBannedTag(tag, product.vendor));
   if (apparel && requiredSuffix) {
     const color = extractColor(requiredSuffix);
     if (color && !tags.some((tag) => normalizeKeywordPhrase(tag) === normalizeKeywordPhrase(color))) {
-      tags = dedupeBySignature([...tags, color], 40);
+      tags = dedupeBySignature([...tags, color], 255);
       notes.push("color tag restored for apparel");
     }
   }
@@ -408,7 +408,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   if (tags.length < 8) {
     const fallbackTags = buildShopifyFallbackTags(product)
       .filter((tag) => !isBannedTag(tag, product.vendor));
-    tags = dedupeBySignature([...tags, ...fallbackTags], 40)
+    tags = dedupeBySignature([...tags, ...fallbackTags], 255)
       .filter((tag) => !isBannedTag(tag, product.vendor))
       .slice(0, 15);
     notes.push("tags padded from product title, type, and variants");

@@ -98,6 +98,17 @@ interface ContentRisk {
   recommendation: string;
 }
 
+interface ContentRiskArticle {
+  articleId: number;
+  blogId: number;
+  title: string;
+  handle: string;
+  blogTitle: string;
+  tags: string;
+  summaryHtml: string;
+  bodyHtml: string;
+}
+
 interface ScanResult {
   themeId: number;
   themeName: string;
@@ -128,6 +139,7 @@ interface ScanResult {
   collectionPillars: CollectionPillar[];
   crossStoreLinks: CrossStoreLink[];
   contentRisks?: ContentRisk[];
+  riskArticles?: ContentRiskArticle[];
   shopifyDomains?: string[];
   supportSiloStatus?: {
     expectedStoreMarker: string | null;
@@ -270,6 +282,9 @@ export default function Templanator() {
   const [assistantAnswer, setAssistantAnswer] = useState("");
   const [complianceLoading, setComplianceLoading] = useState(false);
   const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null);
+  const [articleEdits, setArticleEdits] = useState<Record<number, ContentRiskArticle>>({});
+  const [expandedArticleId, setExpandedArticleId] = useState<number | null>(null);
+  const [savingArticleId, setSavingArticleId] = useState<number | null>(null);
   const identityReady = Boolean(
     legalEntityName.trim() &&
       stateOfIncorporation.trim() &&
@@ -309,6 +324,21 @@ export default function Templanator() {
       ),
     [complianceReport],
   );
+  const contentRisksByHandle = useMemo(() => {
+    const map = new Map<string, ContentRisk[]>();
+    for (const risk of scanResult?.contentRisks ?? []) {
+      const handle = String(risk.handle || "").trim();
+      if (!handle) continue;
+      const existing = map.get(handle) ?? [];
+      existing.push(risk);
+      map.set(handle, existing);
+    }
+    return map;
+  }, [scanResult]);
+  const editableRiskArticles = useMemo(() => {
+    const baseArticles = scanResult?.riskArticles ?? [];
+    return baseArticles.map((article) => articleEdits[article.articleId] ?? article);
+  }, [scanResult, articleEdits]);
   const previewTitle = previewTrack === "lcp"
     ? "LCP Preview"
     : previewTrack === "domains"
@@ -524,6 +554,12 @@ export default function Templanator() {
       setPreviewTrack(null);
       setFileApprovals([]);
       setScanResult(result);
+      const importedArticles = ((result as ScanResult).riskArticles ?? []).reduce<Record<number, ContentRiskArticle>>((acc, article) => {
+        acc[article.articleId] = article;
+        return acc;
+      }, {});
+      setArticleEdits(importedArticles);
+      setExpandedArticleId(null);
       setPlannerCategories([]);
       setManualCategoryDraft("");
 
@@ -811,6 +847,78 @@ export default function Templanator() {
     }
   };
 
+  const updateArticleEdit = (
+    articleId: number,
+    field: "title" | "tags" | "summaryHtml" | "bodyHtml",
+    value: string,
+  ) => {
+    setArticleEdits((prev) => {
+      const current = prev[articleId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [articleId]: {
+          ...current,
+          [field]: value,
+        },
+      };
+    });
+  };
+
+  const isArticleDirty = (article: ContentRiskArticle): boolean => {
+    const baseline = (scanResult?.riskArticles ?? []).find((item) => item.articleId === article.articleId);
+    if (!baseline) return false;
+    return (
+      baseline.title !== article.title ||
+      baseline.tags !== article.tags ||
+      baseline.summaryHtml !== article.summaryHtml ||
+      baseline.bodyHtml !== article.bodyHtml
+    );
+  };
+
+  const handleSaveArticle = async (article: ContentRiskArticle) => {
+    if (!selectedConn || savingArticleId) return;
+
+    setSavingArticleId(article.articleId);
+    try {
+      const { error } = await supabase.functions.invoke("update-shopify-article", {
+        body: {
+          connectionId: selectedConn,
+          articleId: article.articleId,
+          title: article.title,
+          tags: article.tags,
+          summaryHtml: article.summaryHtml,
+          bodyHtml: article.bodyHtml,
+        },
+      });
+
+      if (error) throw error;
+
+      setScanResult((prev) => {
+        if (!prev?.riskArticles) return prev;
+        return {
+          ...prev,
+          riskArticles: prev.riskArticles.map((item) =>
+            item.articleId === article.articleId ? article : item,
+          ),
+        };
+      });
+
+      toast({
+        title: "Article updated",
+        description: `${article.title || article.handle} was saved to Shopify.`,
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "Article save failed",
+        description: getErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSavingArticleId(null);
+    }
+  };
+
   const verifyStorefrontRoute = async (item: SubdomainPlanItem) => {
     if (!item.hostname) {
       throw new Error("Set the hostname first.");
@@ -904,6 +1012,9 @@ export default function Templanator() {
     setGeneratingTrack(null);
     setPreviewTrack(null);
     setAssistantAnswer("");
+    setArticleEdits({});
+    setExpandedArticleId(null);
+    setSavingArticleId(null);
   };
 
   const renderPreviewCard = (track: FixTrack) => {
@@ -1055,12 +1166,12 @@ export default function Templanator() {
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center gap-3">
                 <Shield className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold">Policy & Compliance</h3>
+                <h3 className="font-semibold">Policy & Compliance Copilot</h3>
                 <Badge variant="secondary" className="ml-auto">{scanResult.themeName}</Badge>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Verify the required Shopify policy pages and run the live compliance audit against the storefront domain.
+                Keep compliance inline while you repair the theme. Run live misrepresentation checks here, then apply fixes without leaving this workflow.
               </p>
 
               {allPoliciesReady ? (
@@ -1100,6 +1211,13 @@ export default function Templanator() {
                   <Button
                     size="sm"
                     variant="outline"
+                    onClick={() => window.open("/audit", "_blank", "noopener")}
+                  >
+                    Open Full Audit View
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => policyGeneratorUrl && window.open(policyGeneratorUrl, "_blank", "noopener")}
                   >
                     Open Shopify Policy Generator
@@ -1133,6 +1251,9 @@ export default function Templanator() {
                     <Badge variant="outline">{complianceReport.pages_analyzed} pages</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{complianceReport.summary}</p>
+                  <p className="text-xs text-muted-foreground">
+                    This is intentionally embedded in Templanator so compliance findings can guide your next fixes in real time.
+                  </p>
 
                   {(complianceReport.findings.filter((finding) => finding.severity === "critical" || finding.severity === "warning").length > 0) ? (
                     <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 space-y-3">
@@ -1316,28 +1437,114 @@ export default function Templanator() {
                 <div className="flex items-center gap-3">
                   <Shield className="h-5 w-5 text-red-400" />
                   <div>
-                    <h3 className="font-semibold">Content Compliance Issues</h3>
-                    <p className="text-xs text-muted-foreground">Detected directly from Shopify blog/article content during the Templanator scan.</p>
+                    <h3 className="font-semibold">Content Compliance Editor</h3>
+                    <p className="text-xs text-muted-foreground">Flagged articles are fully loaded below so you can edit and save directly to Shopify.</p>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  {(scanResult.contentRisks ?? []).slice(0, 8).map((risk) => (
-                    <div key={`${risk.handle}-${risk.reason}`} className="rounded-md bg-muted/20 p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">{risk.title}</p>
-                        <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
-                          {risk.severity}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">Blog: {risk.blogTitle || "Unmapped blog"}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">{risk.reason}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">Fix: {risk.recommendation}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
-                  These are content-level compliance risks. Templanator is now finding them in the main scan, but blog/article rewriting is still a separate editing pass.
-                </div>
+
+                {editableRiskArticles.length > 0 ? (
+                  <div className="space-y-4">
+                    {editableRiskArticles.map((article) => {
+                      const articleRisks = contentRisksByHandle.get(article.handle) ?? [];
+                      const dirty = isArticleDirty(article);
+                      const expanded = expandedArticleId === article.articleId;
+
+                      return (
+                        <div key={article.articleId} className="rounded-lg border border-border/30 bg-muted/10 p-4 space-y-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-sm">{article.title || article.handle}</p>
+                              <p className="text-xs text-muted-foreground">Blog: {article.blogTitle || "Unmapped blog"}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">{articleRisks.length} risks</Badge>
+                              {articleRisks.some((risk) => risk.severity === "critical") ? (
+                                <Badge variant="destructive">critical</Badge>
+                              ) : (
+                                <Badge variant="outline">warning</Badge>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setExpandedArticleId(expanded ? null : article.articleId)}
+                              >
+                                {expanded ? "Collapse" : "Edit Full Post"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            {articleRisks.slice(0, 3).map((risk, index) => (
+                              <div key={`${article.articleId}-${index}`} className="rounded-md bg-background/50 p-2 text-xs">
+                                <p className="font-medium">{risk.reason}</p>
+                                <p className="mt-1 text-muted-foreground">Fix: {risk.recommendation}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {expanded ? (
+                            <div className="space-y-3 border-t border-border/30 pt-3">
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium text-muted-foreground">Article Title</p>
+                                  <Input
+                                    value={article.title}
+                                    onChange={(event) => updateArticleEdit(article.articleId, "title", event.target.value)}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium text-muted-foreground">Tags</p>
+                                  <Input
+                                    value={article.tags}
+                                    onChange={(event) => updateArticleEdit(article.articleId, "tags", event.target.value)}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground">Summary HTML</p>
+                                <Textarea
+                                  className="min-h-[120px]"
+                                  value={article.summaryHtml}
+                                  onChange={(event) => updateArticleEdit(article.articleId, "summaryHtml", event.target.value)}
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground">Full Post HTML</p>
+                                <Textarea
+                                  className="min-h-[280px] font-mono text-xs"
+                                  value={article.bodyHtml}
+                                  onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", event.target.value)}
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs text-muted-foreground">
+                                  {dirty ? "Unsaved edits" : "No unsaved edits"}
+                                </p>
+                                <Button
+                                  size="sm"
+                                  className="gradient-phoenix text-primary-foreground"
+                                  disabled={!dirty || Boolean(savingArticleId)}
+                                  onClick={() => handleSaveArticle(article)}
+                                >
+                                  {savingArticleId === article.articleId
+                                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                                    : "Save Article To Shopify"}
+                                </Button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
+                    Risk signals were found, but full article payloads were not returned. Re-run Theme Handshake to refresh article content for editing.
+                  </div>
+                )}
               </CardContent>
             </Card>
           ) : null}
