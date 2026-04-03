@@ -414,10 +414,17 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
+  // Helper: a tag qualifies if it is long-tail, not vendor-named, and not banned
+  const tagQualifies = (t: string) =>
+    t.split(" ").length >= 2 &&
+    (product.vendor ? !normalizeKeywordPhrase(t).includes(normalizeKeywordPhrase(product.vendor)) : true) &&
+    !isBannedTag(t, product.vendor);
+
   let tags = dedupeBySignature(
-    String(raw.tags || product.tags || "").split(",").map((t) => t.replace(/"/g, "")),
+    String(raw.tags || product.tags || "").split(",").map((t) => t.trim()),
     255
   ).filter((tag) => !isBannedTag(tag, product.vendor));
+
   if (apparel && requiredSuffix) {
     const color = extractColor(requiredSuffix);
     if (color && !tags.some((tag) => normalizeKeywordPhrase(tag) === normalizeKeywordPhrase(color))) {
@@ -426,28 +433,33 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     }
   }
 
-  if (tags.length < 8) {
-    const fallbackTags = buildShopifyFallbackTags(product)
-      .filter((tag) => !isBannedTag(tag, product.vendor));
-    tags = dedupeBySignature([...tags, ...fallbackTags], 255)
-      .filter((tag) => !isBannedTag(tag, product.vendor))
-      .slice(0, 15);
+  // Pad with fallback tags — count only qualifying tags toward threshold so
+  // single-word or vendor-named fallback tags don't inflate the count
+  if (tags.filter(tagQualifies).length < 8) {
+    const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
+    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 15);
     notes.push("tags padded from product title, type, and variants");
   }
 
-  // Force long-tail tags and strip vendor-name-only tags
+  // Final cleanup: trim fragments → strip all quote variants → enforce long-tail + vendor + banned
   tags = tags
-    .map((t) => t.trim())
-    .filter((t) => t.split(" ").length >= 2)
-    .filter((t) => !normalizeKeywordPhrase(t).includes(normalizeKeywordPhrase(product.vendor || "")));
+    .map((t) => trimBrokenTail(t.trim()))
+    .map((t) =>
+      t
+        .replace(/["""\u201C\u201D'''\u2018\u2019]/g, "")
+        .replace(/\s{2,}/g, " ")
+        .replace(/\|\s*\|/g, "|")
+        .trim()
+    )
+    .filter(tagQualifies);
 
-  // Enforce total combined tags string ≤250 chars (Shopify SEO best practice)
-  tags = tags.map((t) => t.replace(/"/g, ""));
+  // Re-dedupe and enforce Shopify ≤250 char total combined string
+  tags = dedupeBySignature(tags, 255);
   let tagsString = tags.join(", ");
   if (tagsString.length > 250) {
     while (tagsString.length > 250 && tags.length > 1) {
       tags = tags.slice(0, -1);
-      tagsString = tags.map((t) => t.replace(/"/g, "")).join(", ");
+      tagsString = tags.join(", ");
     }
     notes.push("tags trimmed to keep total combined string within 250 characters");
   }
