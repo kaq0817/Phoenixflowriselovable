@@ -1,0 +1,2 @@
+# Placeholder env file used during CLI deploy to bypass .env parse errors.
+# Actual secrets are managed in the Supabase dashboard.
