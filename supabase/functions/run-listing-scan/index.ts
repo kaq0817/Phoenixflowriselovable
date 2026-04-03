@@ -480,7 +480,17 @@ serve(async (req: Request) => {
       const description = listing.description || "";
       const tags = listing.tags || [];
 
-      // 1. Spelling check
+      // 1. Quote characters in title — GMC and Shopify flag these
+      if (/[""\u201C\u201D]/.test(title)) {
+        listingFindings.push({
+          type: "quotes_in_title",
+          severity: "critical",
+          field: "title",
+          message: `Title contains quote characters ("..."). Google Merchant Center rejects titles with decorative or straight quotes. Remove them — use a colon or pipe instead.`,
+        });
+      }
+
+      // 2. Spelling check
       const titleSpelling = findSpellingIssues(title);
       const descSpelling = findSpellingIssues(description);
       if (titleSpelling.length > 0) {

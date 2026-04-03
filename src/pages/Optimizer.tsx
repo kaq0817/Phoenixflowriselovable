@@ -113,6 +113,7 @@ export default function OptimizerPage() {
   const [etsyApplying, setEtsyApplying] = useState(false);
 
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [altTextExpanded, setAltTextExpanded] = useState(false);
   const [imageAltEdits, setImageAltEdits] = useState<Record<number, string>>({});
 
   // Sales channels
@@ -120,6 +121,9 @@ export default function OptimizerPage() {
   const [publishedChannelIds, setPublishedChannelIds] = useState<number[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelTogglingId, setChannelTogglingId] = useState<number | null>(null);
+
+  // Optimizer usage
+  const [optimizerUsage, setOptimizerUsage] = useState<{ used: number; limit: number; resetsAt: string | null } | null>(null);
 
   // On mount, only load store connections, do NOT auto-fetch products or listings
   useEffect(() => {
@@ -155,6 +159,7 @@ export default function OptimizerPage() {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 10, connectionId: selectedShopifyConnectionId } });
       if (error) throw error;
       setShopifyProducts(data.products || []);
+      if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to fetch products";
       toast({ title: "Error", description: message, variant: "destructive" });
@@ -277,11 +282,24 @@ export default function OptimizerPage() {
       initialAlts[img.id] = img.alt || "";
     }
     setImageAltEdits(initialAlts);
+    setAltTextExpanded(true);
     fetchSalesChannels(product.id, selectedShopifyConnectionId);
     try {
-      const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", { body: { product } });
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", { body: { product, connectionId: selectedShopifyConnectionId } });
+      if (error) {
+        // Check for monthly limit (429)
+        const detail = (error as { message?: string }).message || "";
+        if (detail.includes("Monthly limit reached") || detail.includes("429")) {
+          toast({ title: "Monthly limit reached", description: "You have used all 50 optimizations for this store this month.", variant: "destructive" });
+          if (optimizerUsage) setOptimizerUsage({ ...optimizerUsage, used: optimizerUsage.limit });
+          setSelectedProduct(null);
+          setShopifyOptimizing(false);
+          return;
+        }
+        throw error;
+      }
       setShopifySuggestions(data.suggestions);
+      if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
       setExpandedSection("title");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Optimization failed";
@@ -420,6 +438,19 @@ export default function OptimizerPage() {
                 <div>
                   <p className="text-sm font-medium">Active Shopify store</p>
                   <p className="text-xs text-muted-foreground">Choose the store this optimizer should read from and write to.</p>
+                  {optimizerUsage && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <div className="h-1.5 w-32 rounded-full bg-muted/50 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${optimizerUsage.used >= optimizerUsage.limit ? "bg-red-500" : optimizerUsage.used >= optimizerUsage.limit * 0.8 ? "bg-amber-400" : "bg-primary"}`}
+                          style={{ width: `${Math.min(100, (optimizerUsage.used / optimizerUsage.limit) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {optimizerUsage.used}/{optimizerUsage.limit} optimizations this month
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <select
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm"
@@ -480,6 +511,91 @@ export default function OptimizerPage() {
                         )}
                       </div>
                     </CardContent>
+                  </Card>
+
+                  {/* Image alt text — always visible once a product is selected */}
+                  {selectedProduct.images && selectedProduct.images.length > 0 && (
+                    <Card className="bg-card/50 border-border/30 overflow-hidden">
+                      <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setAltTextExpanded((v) => !v)}>
+                        <div className="flex items-center gap-2">
+                          <ImageIcon className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">Image Alt Text</span>
+                          <Badge variant="outline" className="text-[10px] py-0">{selectedProduct.images.length} image{selectedProduct.images.length !== 1 ? "s" : ""}</Badge>
+                        </div>
+                        {altTextExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+                      {altTextExpanded && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
+                          <p className="text-xs text-muted-foreground">Alt text is used by screen readers and appears in Google Image search. Describe what is in the photo — no keyword stuffing.</p>
+                          {selectedProduct.images.map((img, i) => (
+                            <div key={img.id} className="flex gap-3 items-start">
+                              <img src={img.src} alt={img.alt || ""} className="w-16 h-16 rounded-lg object-cover border border-border/30 shrink-0" />
+                              <div className="flex-1 space-y-1">
+                                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Image {i + 1}</p>
+                                <input
+                                  type="text"
+                                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                                  placeholder="Describe this image for accessibility and SEO..."
+                                  value={imageAltEdits[img.id] ?? (img.alt || "")}
+                                  onChange={(e) => setImageAltEdits(prev => ({ ...prev, [img.id]: e.target.value }))}
+                                  maxLength={512}
+                                />
+                                <p className="text-[10px] text-muted-foreground text-right">{(imageAltEdits[img.id] ?? (img.alt || "")).length}/512</p>
+                              </div>
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* Sales channels — always visible once a product is selected */}
+                  <Card className="bg-card/50 border-border/30 overflow-hidden">
+                    <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("sales_channels")}>
+                      <div className="flex items-center gap-2">
+                        <Radio className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Sales Channels</span>
+                        {!channelsLoading && salesChannels.length > 0 && (
+                          <Badge variant="outline" className="text-[10px] py-0">{publishedChannelIds.length}/{salesChannels.length} active</Badge>
+                        )}
+                      </div>
+                      {expandedSection === "sales_channels" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    </button>
+                    {expandedSection === "sales_channels" && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-2">
+                        <p className="text-xs text-muted-foreground mb-3">Toggle to publish or unpublish this product on each sales channel. Changes apply immediately.</p>
+                        {channelsLoading ? (
+                          <div className="flex items-center gap-2 py-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">Loading channels...</span>
+                          </div>
+                        ) : salesChannels.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-2">No sales channels found for this store.</p>
+                        ) : (
+                          salesChannels.map((channel) => {
+                            const isPublished = publishedChannelIds.includes(channel.id);
+                            const isToggling = channelTogglingId === channel.id;
+                            return (
+                              <div key={channel.id} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0">
+                                <div className="flex items-center gap-2">
+                                  {isToggling ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                  ) : (
+                                    <div className={`w-2 h-2 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+                                  )}
+                                  <span className="text-sm">{channel.name}</span>
+                                </div>
+                                <Switch
+                                  checked={isPublished}
+                                  disabled={isToggling}
+                                  onCheckedChange={() => toggleSalesChannel(channel.id, isPublished)}
+                                />
+                              </div>
+                            );
+                          })
+                        )}
+                      </motion.div>
+                    )}
                   </Card>
 
                   {shopifyOptimizing ? (
@@ -592,89 +708,6 @@ export default function OptimizerPage() {
                           </CardContent>
                         </Card>
                       )}
-
-                      {selectedProduct.images && selectedProduct.images.length > 0 && (
-                        <Card className="bg-card/50 border-border/30 overflow-hidden">
-                          <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("alt_text")}>
-                            <div className="flex items-center gap-2">
-                              <ImageIcon className="h-4 w-4 text-primary" />
-                              <span className="text-sm font-medium">Image Alt Text</span>
-                              <Badge variant="outline" className="text-[10px] py-0">{selectedProduct.images.length} image{selectedProduct.images.length !== 1 ? "s" : ""}</Badge>
-                            </div>
-                            {expandedSection === "alt_text" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                          </button>
-                          {expandedSection === "alt_text" && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
-                              <p className="text-xs text-muted-foreground">Alt text is used by screen readers and appears in Google Image search. Describe what is in the photo — no keyword stuffing.</p>
-                              {selectedProduct.images.map((img, i) => (
-                                <div key={img.id} className="flex gap-3 items-start">
-                                  <img src={img.src} alt={img.alt || ""} className="w-16 h-16 rounded-lg object-cover border border-border/30 shrink-0" />
-                                  <div className="flex-1 space-y-1">
-                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Image {i + 1}</p>
-                                    <input
-                                      type="text"
-                                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
-                                      placeholder="Describe this image for accessibility and SEO..."
-                                      value={imageAltEdits[img.id] ?? (img.alt || "")}
-                                      onChange={(e) => setImageAltEdits(prev => ({ ...prev, [img.id]: e.target.value }))}
-                                      maxLength={512}
-                                    />
-                                    <p className="text-[10px] text-muted-foreground text-right">{(imageAltEdits[img.id] ?? (img.alt || "")).length}/512</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </motion.div>
-                          )}
-                        </Card>
-                      )}
-
-                      <Card className="bg-card/50 border-border/30 overflow-hidden">
-                        <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("sales_channels")}>
-                          <div className="flex items-center gap-2">
-                            <Radio className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-medium">Sales Channels</span>
-                            {!channelsLoading && salesChannels.length > 0 && (
-                              <Badge variant="outline" className="text-[10px] py-0">{publishedChannelIds.length}/{salesChannels.length} active</Badge>
-                            )}
-                          </div>
-                          {expandedSection === "sales_channels" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                        </button>
-                        {expandedSection === "sales_channels" && (
-                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-2">
-                            <p className="text-xs text-muted-foreground mb-3">Toggle to publish or unpublish this product on each sales channel. Changes apply immediately.</p>
-                            {channelsLoading ? (
-                              <div className="flex items-center gap-2 py-2">
-                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                <span className="text-sm text-muted-foreground">Loading channels...</span>
-                              </div>
-                            ) : salesChannels.length === 0 ? (
-                              <p className="text-sm text-muted-foreground py-2">No sales channels found for this store.</p>
-                            ) : (
-                              salesChannels.map((channel) => {
-                                const isPublished = publishedChannelIds.includes(channel.id);
-                                const isToggling = channelTogglingId === channel.id;
-                                return (
-                                  <div key={channel.id} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0">
-                                    <div className="flex items-center gap-2">
-                                      {isToggling ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                                      ) : (
-                                        <div className={`w-2 h-2 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
-                                      )}
-                                      <span className="text-sm">{channel.name}</span>
-                                    </div>
-                                    <Switch
-                                      checked={isPublished}
-                                      disabled={isToggling}
-                                      onCheckedChange={() => toggleSalesChannel(channel.id, isPublished)}
-                                    />
-                                  </div>
-                                );
-                              })
-                            )}
-                          </motion.div>
-                        )}
-                      </Card>
 
                       <div className="flex gap-3 pt-2">
                         <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">

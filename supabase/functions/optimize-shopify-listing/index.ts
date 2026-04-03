@@ -84,11 +84,54 @@ serve(async (req) => {
       console.warn("Gemini API key not configured. Falling back to baseline optimization.");
     }
 
-    const { product } = await req.json() as { product?: ShopifyProductLike };
+    const { product, connectionId } = await req.json() as { product?: ShopifyProductLike; connectionId?: string };
     if (!product) {
       return new Response(JSON.stringify({ error: "No product provided" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Usage gating — 50 optimizations per store per billing month
+    const MONTHLY_LIMIT = 50;
+    if (connectionId) {
+      const supabaseAdmin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        { auth: { persistSession: false } }
+      );
+
+      const { data: conn, error: connErr } = await supabaseAdmin
+        .from("store_connections")
+        .select("id, optimizer_runs, optimizer_period_start")
+        .eq("id", connectionId)
+        .eq("user_id", userData.user.id)
+        .single();
+
+      if (!connErr && conn) {
+        const periodStart = new Date(conn.optimizer_period_start);
+        const now = new Date();
+        const daysSince = (now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+
+        // Reset counter if 30+ days have passed
+        if (daysSince >= 30) {
+          await supabaseAdmin
+            .from("store_connections")
+            .update({ optimizer_runs: 1, optimizer_period_start: now.toISOString() })
+            .eq("id", connectionId);
+        } else if (conn.optimizer_runs >= MONTHLY_LIMIT) {
+          return new Response(JSON.stringify({
+            error: "Monthly limit reached",
+            limit: MONTHLY_LIMIT,
+            used: conn.optimizer_runs,
+            resetsAt: new Date(periodStart.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } else {
+          await supabaseAdmin
+            .from("store_connections")
+            .update({ optimizer_runs: conn.optimizer_runs + 1 })
+            .eq("id", connectionId);
+        }
+      }
     }
 
     const variants = product.variants || [];

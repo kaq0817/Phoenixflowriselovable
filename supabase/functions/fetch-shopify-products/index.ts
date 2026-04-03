@@ -101,6 +101,13 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       products: data.products || [],
       nextPageInfo,
+      optimizerUsage: {
+        used: connection.optimizer_runs ?? 0,
+        limit: 50,
+        resetsAt: connection.optimizer_period_start
+          ? new Date(new Date(connection.optimizer_period_start).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          : null,
+      },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

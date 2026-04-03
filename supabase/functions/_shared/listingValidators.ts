@@ -387,7 +387,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const apparel = isApparelProduct(product);
   const requiredSuffix = apparel ? buildRequiredApparelSuffix(product) : "";
 
-  let title = sanitizePlainText(raw.title || product.title || "", 70);
+  let title = sanitizePlainText(raw.title || product.title || "", 70).replace(/"/g, "");
   if (apparel && requiredSuffix) {
     const normalizedTitle = normalizeKeywordPhrase(title);
     const normalizedSuffix = normalizeKeywordPhrase(requiredSuffix);
@@ -402,7 +402,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const body_html = sanitizeHtml(
     raw.body_html || product.body_html || `<p>${sanitizePlainText(product.title || "")} is written to stay clear, factual, and easy to scan on Shopify.</p>`,
   );
-  const seo_title = sanitizePlainText(raw.seo_title || title || product.metafields_global_title_tag || product.title || "", 60);
+  const seo_title = sanitizePlainText(raw.seo_title || title || product.metafields_global_title_tag || product.title || "", 60).replace(/"/g, "");
   // Target 120-155 chars for meta description (conversion-focused)
   let seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 155);
   if (seo_description.length < 60 && title) {
@@ -410,8 +410,10 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
-  let tags = dedupeBySignature(String(raw.tags || product.tags || "").split(","), 255)
-    .filter((tag) => !isBannedTag(tag, product.vendor));
+  let tags = dedupeBySignature(
+    String(raw.tags || product.tags || "").split(",").map((t) => t.replace(/"/g, "")),
+    255
+  ).filter((tag) => !isBannedTag(tag, product.vendor));
   if (apparel && requiredSuffix) {
     const color = extractColor(requiredSuffix);
     if (color && !tags.some((tag) => normalizeKeywordPhrase(tag) === normalizeKeywordPhrase(color))) {
@@ -430,11 +432,12 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
 
   // Enforce total combined tags string ≤250 chars (Shopify SEO best practice)
+  tags = tags.map((t) => t.replace(/"/g, ""));
   let tagsString = tags.join(", ");
   if (tagsString.length > 250) {
     while (tagsString.length > 250 && tags.length > 1) {
       tags = tags.slice(0, -1);
-      tagsString = tags.join(", ");
+      tagsString = tags.map((t) => t.replace(/"/g, "")).join(", ");
     }
     notes.push("tags trimmed to keep total combined string within 250 characters");
   }
