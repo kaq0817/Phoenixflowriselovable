@@ -661,7 +661,7 @@ function detectContentRisks(
   return risks.slice(0, 50);
 }
 
-function detectBusinessInfo(footerLiquid: string, fallbackName: string): ThemeBusinessInfo {
+function detectBusinessInfo(footerLiquid: string, _shopName: string) {
   const footerText = stripHtml(footerLiquid);
   const legalEntityMatch =
     footerText.match(/(?:\u00A9|copyright)\s*(?:\d{4}\s*)?(.*?(?:LLC|INC|CORP(?:ORATION)?|LTD|CO\.?))/i) ||
@@ -860,7 +860,7 @@ function ensureLiquidImageTagArgument(tag: string, name: string, value: string):
 
 function normalizePolicyLink(
   footerLiquid: string,
-  label: string,
+  _label: string,
   targetPath: string,
   matchers: readonly RegExp[],
 ): string {
