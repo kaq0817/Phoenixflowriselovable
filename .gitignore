@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 .env.rescue
+.env.deploy-hold
 
 .claude.json
 .phoenix_helper/
