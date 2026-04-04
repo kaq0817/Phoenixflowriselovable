@@ -347,25 +347,12 @@ export default function PhoenixPage() {
     }
   };
 
-  // Publish all scanned products to Facebook channel only
+  // Publish all scanned products to selected channels only
   const handlePublishAll = async () => {
-    if (!selectedShopifyConnectionId || shopifyProducts.length === 0) return;
+    if (!selectedShopifyConnectionId || shopifyProducts.length === 0 || selectedChannelIds.size === 0) return;
     setBulkPublishing(true);
     try {
-      // Fetch all publications for this store
-      const { data: pubData, error: pubErr } = await supabase.functions.invoke("fetch-shopify-channels", {
-        body: { connectionId: selectedShopifyConnectionId },
-      });
-      if (pubErr) throw pubErr;
-      const publications: { id: number; name: string }[] = pubData.publications || [];
-      // Only target Facebook — it has the strictest catalog rules
-      const facebookPubs = publications.filter((p) =>
-        p.name.toLowerCase().includes("facebook") || p.name.toLowerCase().includes("meta")
-      );
-      if (facebookPubs.length === 0) {
-        toast({ title: "Facebook channel not found", description: "No Facebook or Meta sales channel found for this store. Connect it in Shopify → Sales Channels first.", variant: "destructive" });
-        return;
-      }
+      const targetPubs = availableChannels.filter((p) => selectedChannelIds.has(p.id));
       let published = 0;
       let skipped = 0;
       for (const product of shopifyProducts) {
@@ -373,7 +360,7 @@ export default function PhoenixPage() {
           body: { connectionId: selectedShopifyConnectionId, productId: product.id },
         });
         const alreadyIn: number[] = chData?.publishedPublicationIds || [];
-        for (const pub of facebookPubs) {
+        for (const pub of targetPubs) {
           if (alreadyIn.includes(pub.id)) { skipped++; continue; }
           await supabase.functions.invoke("apply-shopify-channels", {
             body: { connectionId: selectedShopifyConnectionId, productId: product.id, publicationId: pub.id, action: "publish" },
@@ -381,7 +368,7 @@ export default function PhoenixPage() {
           published++;
         }
       }
-      toast({ title: "Facebook updated", description: `Published ${published} product${published !== 1 ? "s" : ""} to Facebook${skipped > 0 ? ` (${skipped} already active)` : ""}.` });
+      toast({ title: "Channels updated", description: `Published ${published} product${published !== 1 ? "s" : ""} to ${targetPubs.map(p => p.name).join(", ")}${skipped > 0 ? ` (${skipped} already active)` : ""}.` });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Publish failed";
       toast({ title: "Publish failed", description: message, variant: "destructive" });
@@ -711,11 +698,56 @@ export default function PhoenixPage() {
 
               {/* Publish all products to Facebook channel */}
               {platform === "shopify" && shopifyProducts.length > 0 && (
-                <Button onClick={handlePublishAll} disabled={bulkPublishing} variant="outline" className="w-full" size="lg">
-                  {bulkPublishing
-                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing to Facebook...</>
-                    : <><ShoppingBag className="h-4 w-4 mr-2" /> Publish All to Facebook</>}
-                </Button>
+                <Card className="bg-card/50 border-border/30">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShoppingBag className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Publish to Sales Channels</span>
+                      </div>
+                      {selectedChannelIds.size > 0 && (
+                        <Badge variant="outline" className="text-[10px] py-0">{selectedChannelIds.size} selected</Badge>
+                      )}
+                    </div>
+                    {channelsLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading channels...
+                      </div>
+                    ) : availableChannels.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No sales channels found. Connect them in Shopify → Sales Channels.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {availableChannels.map((ch) => (
+                          <label key={ch.id} className="flex items-center gap-2 cursor-pointer text-sm py-1">
+                            <input
+                              type="checkbox"
+                              className="accent-primary"
+                              checked={selectedChannelIds.has(ch.id)}
+                              onChange={(e) => {
+                                setSelectedChannelIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) { next.add(ch.id); } else { next.delete(ch.id); }
+                                  return next;
+                                });
+                              }}
+                            />
+                            {ch.name}
+                          </label>
+                        ))}
+                        <Button
+                          onClick={handlePublishAll}
+                          disabled={bulkPublishing || selectedChannelIds.size === 0}
+                          className="w-full mt-2"
+                          size="sm"
+                        >
+                          {bulkPublishing
+                            ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Publishing...</>
+                            : <><ShoppingBag className="h-3.5 w-3.5 mr-1.5" /> Publish {shopifyProducts.length} Products to Selected</>}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               )}
 
               {/* Product cards */}
