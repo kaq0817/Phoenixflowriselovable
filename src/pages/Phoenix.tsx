@@ -114,37 +114,56 @@ function titleHasApparelSize(title: string): boolean {
   return /\b\d{1,3}\b/.test(normalized);
 }
 
+function normalizeShopifyTags(tags: ShopifyProduct["tags"] | string[] | null | undefined): string[] {
+  if (Array.isArray(tags)) {
+    return tags.map((tag) => `${tag}`.trim()).filter(Boolean);
+  }
+
+  return `${tags || ""}`
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const issues: string[] = [];
   let score = 100;
 
-  if (p.status?.toLowerCase() === "draft") {
+  // 1) Identity mismatch: LLC suffix in title
+  const hasIdentityMismatch = /iron\s*phoenix\s*ghg/i.test(p.title || "") || /\b(inc|llc|ghg\s*customs?)\b/i.test(p.title || "");
+  if (hasIdentityMismatch) {
+    score -= 40;
+    issues.push("Identity Mismatch: Title contains LLC suffix (High Risk)");
+  }
+
+  // 2) Draft penalty
+  const isDraft = p.status?.toLowerCase() === "draft";
+  if (isDraft) {
     score -= 30;
-    issues.push("Product is a draft — not live in your store");
+    issues.push("Product is a Draft — not live in your store");
   }
 
-  const hasImages = (p.images?.length || 0) > 0;
-  if (!hasImages) {
-    score -= 20;
-    issues.push("No images on this product");
+  // 3) Search & discovery: minimum 5 tags
+  const parsedTags = normalizeShopifyTags(p.tags);
+  const tagCount = parsedTags.length;
+  if (tagCount < 5) {
+    score -= 25;
+    issues.push(`Low Search Signal: Only ${tagCount} tags found (Need 5+)`);
   }
 
+  // 4) Content quality
   const strippedDesc = (p.body_html || "").replace(/<[^>]*>/g, "").trim();
-  if (strippedDesc.length < 100) {
+  if (strippedDesc.length < 150) {
     score -= 15;
-    issues.push("Description is too short for SEO");
+    issues.push("Description is too thin for SEO/Google compliance");
   }
 
-  const missingAlts = p.images?.some((img) => !img.alt || img.alt.trim() === "");
+  // 5) Image SEO
+  const hasImages = (p.images?.length || 0) > 0;
+  const missingAlts = p.images?.some((img) => !img.alt || img.alt.trim() === "") ?? false;
   if (missingAlts) {
     score -= 15;
-    issues.push("One or more images are missing alt text");
-  }
-
-  const hasTags = (p.tags?.trim()?.length || 0) > 0;
-  if (!hasTags) {
-    score -= 10;
-    issues.push("No tags — add tags to improve discoverability");
+    issues.push("Missing Image Alt text — hurts Google Image Search");
   }
 
   const hasTitle = (p.title?.trim()?.length || 0) > 0;
@@ -160,8 +179,8 @@ function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
     titleLength: hasTitle,
     altText: !missingAlts,
     description: strippedDesc.length > 0,
-    descriptionLength: strippedDesc.length >= 100,
-    tags: hasTags,
+    descriptionLength: strippedDesc.length >= 150,
+    tags: tagCount >= 5,
     variants: (p.variants?.length || 0) > 1,
     images: hasImages,
     issues,
@@ -428,7 +447,7 @@ export default function PhoenixPage() {
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
   const allScores = Array.from(platform === "shopify" ? shopifyScores.values() : etsyScores.values());
   const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b.total, 0) / allScores.length) : 0;
-  const needAttention = allScores.filter((s) => s.total < 60).length;
+  const needAttention = allScores.filter((s) => s.total < 85).length;
   const productCount = platform === "shopify" ? shopifyProducts.length : etsyListings.length;
 
   const renderComparisonRow = (label: string, current: string, optimized: string) => (
@@ -819,7 +838,6 @@ export default function PhoenixPage() {
     </div>
   );
 }
-
 
 
 

@@ -12,6 +12,25 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+interface ShopifyProduct {
+  id: number;
+  title: string;
+  body_html: string;
+  status: string;
+  tags: string | string[];
+  images: Array<{ alt?: string | null }>;
+  trashPriority?: number;
+}
+
+function normalizeTags(tags: string | string[] | null | undefined): string[] {
+  if (Array.isArray(tags)) return tags.map((t) => `${t}`.trim()).filter(Boolean);
+  return `${tags || ""}`.split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+function stripHtml(value: string | null | undefined): string {
+  return `${value || ""}`.replace(/<[^>]*>/g, "").trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -37,7 +56,7 @@ serve(async (req) => {
       });
     }
 
-    const { limit = 10, page_info, connectionId } = await req.json().catch(() => ({}));
+    const { limit = 10, connectionId } = await req.json().catch(() => ({}));
 
     if (!connectionId) {
       return new Response(JSON.stringify({ error: "Missing connectionId" }), {
@@ -63,56 +82,67 @@ serve(async (req) => {
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
 
-    // INTELLIGENT SCAN: Fetch a large batch (250) to find the actual trash
+    // DEEP SCAN: always evaluate up to 500 products (2 Shopify pages at 250 each)
     const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
-    const scanLimit = 250; 
-    let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&fields=${encodeURIComponent(fields)}`;
-    
-    if (page_info) {
-      apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&page_info=${page_info}&published_status=any&fields=${encodeURIComponent(fields)}`;
-    }
-
-    const response = await fetch(apiUrl, {
-      headers: { "X-Shopify-Access-Token": accessToken },
-    });
-
-    if (!response.ok) {
-      return new Response(JSON.stringify({ error: "Shopify API error" }), { status: 500, headers: corsHeaders });
-    }
-
-    const data = await response.json();
-    const allProducts = data.products || [];
-
-    // --- THE TRASH SORTER ---
-    // We score them here so the worst 10 items in the 250-batch float to the top
-    const scoredProducts = allProducts.map((p: any) => {
-      let priority = 0;
-      const title = p.title || "";
-      const body = p.body_html || "";
-      const tags = p.tags || "";
-
-      if (title.includes("Iron Phoenix GHG")) priority += 50; // Critical Identity Risk
-      if (p.status === "draft") priority += 30;              // Hidden item
-      if (body.length < 150) priority += 20;                 // Thin content
-      if (tags.split(',').length < 3) priority += 15;        // Missing tags
-      
-      return { ...p, trashPriority: priority };
-    });
-
-    // Sort by priority (worst first) and then take the requested limit (usually 10)
-    const finalProducts = scoredProducts
-      .sort((a, b) => b.trashPriority - a.trashPriority)
-      .slice(0, limit);
-
-    const linkHeader = response.headers.get("Link");
+    const scanLimit = 250;
+    const maxProductsToScan = 500;
+    const maxPagesToScan = Math.ceil(maxProductsToScan / scanLimit);
+    const requestedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+    const foundTrash: ShopifyProduct[] = [];
     let nextPageInfo: string | null = null;
-    if (linkHeader) {
-      const nextMatch = linkHeader.match(/<[^>]*page_info=([^&>]*)>;\s*rel="next"/);
-      if (nextMatch) nextPageInfo = nextMatch[1];
+    let pagesScanned = 0;
+    let productsScanned = 0;
+
+    while (productsScanned < maxProductsToScan && pagesScanned < maxPagesToScan) {
+      pagesScanned += 1;
+      let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&fields=${encodeURIComponent(fields)}`;
+      if (nextPageInfo) apiUrl += `&page_info=${nextPageInfo}`;
+
+      const response = await fetch(apiUrl, {
+        headers: { "X-Shopify-Access-Token": accessToken },
+      });
+
+      if (!response.ok) {
+        return new Response(JSON.stringify({ error: "Shopify API error" }), { status: 500, headers: corsHeaders });
+      }
+
+      const data = await response.json();
+      const batch: ShopifyProduct[] = data.products || [];
+      if (batch.length === 0) break;
+      productsScanned += batch.length;
+
+      const scoredProducts = batch.map((p) => {
+        let priority = 0;
+        const title = p.title || "";
+        const body = stripHtml(p.body_html);
+        const tagCount = normalizeTags(p.tags).length;
+        const hasMissingAlts = (p.images || []).some((img) => !img?.alt || img.alt.trim() === "");
+
+        if (/iron\s*phoenix\s*ghg/i.test(title)) priority += 50; // Critical Identity Risk
+        if ((p.status || "").toLowerCase() === "draft") priority += 30; // Hidden item
+        if (tagCount < 5) priority += 25; // Missing tags
+        if (body.length < 150) priority += 20; // Thin content
+        if (hasMissingAlts) priority += 15; // Missing image alts
+        
+        return { ...p, trashPriority: priority };
+      });
+
+      for (const product of scoredProducts.sort((a, b) => (b.trashPriority || 0) - (a.trashPriority || 0))) {
+        if ((product.trashPriority || 0) > 0) {
+          foundTrash.push(product);
+        }
+      }
+
+      const linkHeader = response.headers.get("Link");
+      const nextMatch = linkHeader?.match(/<[^>]*page_info=([^&>]*)>;\s*rel="next"/);
+      nextPageInfo = nextMatch ? nextMatch[1] : null;
+      if (!nextPageInfo) break;
     }
 
     return new Response(JSON.stringify({
-      products: finalProducts,
+      products: foundTrash
+        .sort((a, b) => (b.trashPriority || 0) - (a.trashPriority || 0))
+        .slice(0, requestedLimit),
       nextPageInfo,
       optimizerUsage: {
         used: connection.optimizer_runs ?? 0,
