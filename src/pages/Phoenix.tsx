@@ -223,7 +223,7 @@ export default function PhoenixPage() {
   const [availableChannels, setAvailableChannels] = useState<{ id: number; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<number>>(new Set());
   const [channelsLoading, setChannelsLoading] = useState(false);
-  const [scoreFilter, setScoreFilter] = useState<number | null>(null);
+  const [scoreFilter, setScoreFilter] = useState<number | null>(70);
 
   // On mount, only load store connections, do NOT auto-trigger scan or product fetch
   useEffect(() => {
@@ -760,7 +760,7 @@ export default function PhoenixPage() {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <CardTitle className="text-lg">Products</CardTitle>
                     <div className="flex items-center gap-1 text-xs">
-                      {([null, 70, 85] as (number | null)[]).map((threshold) => (
+                      {([30, 50, 70, null] as (number | null)[]).map((threshold) => (
                         <button
                           key={threshold ?? "all"}
                           onClick={() => setScoreFilter(threshold)}
