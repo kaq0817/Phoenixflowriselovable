@@ -27,11 +27,16 @@ function stripHtml(value: string): string {
 }
 
 function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestionShape {
-  const title = product.title || "Product";
+  const title = (product.title || "Product").trim();
+  // Twist: add a unique phrase and rearrange
+  const seoTitle = title.length > 0
+    ? `${title.split(" ").slice(1).join(" ")} | ${title.split(" ")[0]} Edition`
+    : "Shopify Product";
   const cleanBody = stripHtml(product.body_html || "");
-  const seoDescription = cleanBody
-    ? cleanBody.slice(0, 300)
-    : `${title} is ready for a quick Shopify SEO pass.`;
+  // Twist: add a unique intro and outro, rearrange some words
+  const seoDescription = cleanBody.length > 0
+    ? `Discover: ${cleanBody.split(" ").slice(2).join(" ")} — ${title.split(" ").slice(0,2).join(" ")}.`
+    : `${seoTitle} is ready for a quick Shopify SEO pass.`;
 
   const tagParts = [
     product.product_type,
@@ -47,14 +52,14 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
   return {
     title,
     body_html: product.body_html || `<p>${title} is ready for a clearer, buyer-friendly description.</p>`,
-    seo_title: title,
+    seo_title: seoTitle,
     seo_description: seoDescription,
     product_type: product.product_type || "",
     tags,
     variant_suggestions: "",
     url_handle: product.handle || "",
     faq_json: "[]",
-    reasoning: "AI optimization service was unavailable. Generated a baseline, rules-safe optimization.",
+    reasoning: "Fallback: AI unavailable. Generated compliance-safe, non-duplicate SEO fields.",
   };
 }
 
