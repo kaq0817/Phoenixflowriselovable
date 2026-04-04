@@ -39,38 +39,37 @@ serve(async (req) => {
 
     const { limit = 10, page_info, connectionId } = await req.json().catch(() => ({}));
 
-    // Debug log: incoming connectionId
-    console.log('[fetch-shopify-products] incoming connectionId:', connectionId);
-
     if (!connectionId) {
       return new Response(JSON.stringify({ error: "Missing connectionId" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Only allow fetching the specific connectionId for this user
     const { data: connectionRows, error: connErr } = await supabase
       .from("store_connections")
       .select("*")
       .eq("user_id", user.id)
       .eq("platform", "shopify")
       .eq("id", connectionId);
+    
     const connection = connectionRows?.[0];
 
     if (connErr || !connection) {
-      return new Response(JSON.stringify({ error: "No Shopify connection found for this user and connectionId" }), {
+      return new Response(JSON.stringify({ error: "No Shopify connection found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
-    // Debug log: resolved shop domain
-    console.log('[fetch-shopify-products] resolved shop domain:', shop);
 
+    // INTELLIGENT SCAN: Fetch a large batch (250) to find the actual trash
     const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
-    let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}&published_status=any&fields=${encodeURIComponent(fields)}`;
+    const scanLimit = 250; 
+    let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&fields=${encodeURIComponent(fields)}`;
+    
     if (page_info) {
-      apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${limit}&page_info=${page_info}&published_status=any&fields=${encodeURIComponent(fields)}`;
+      apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&page_info=${page_info}&published_status=any&fields=${encodeURIComponent(fields)}`;
     }
 
     const response = await fetch(apiUrl, {
@@ -78,19 +77,33 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.error("Shopify API error:", errText);
-      return new Response(JSON.stringify({ error: "Failed to fetch products from Shopify" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ error: "Shopify API error" }), { status: 500, headers: corsHeaders });
     }
 
     const data = await response.json();
+    const allProducts = data.products || [];
 
-    // Debug log: number of products returned
-    console.log('[fetch-shopify-products] number of products returned:', Array.isArray(data.products) ? data.products.length : 0);
+    // --- THE TRASH SORTER ---
+    // We score them here so the worst 10 items in the 250-batch float to the top
+    const scoredProducts = allProducts.map((p: any) => {
+      let priority = 0;
+      const title = p.title || "";
+      const body = p.body_html || "";
+      const tags = p.tags || "";
 
-    // Parse pagination link header
+      if (title.includes("Iron Phoenix GHG")) priority += 50; // Critical Identity Risk
+      if (p.status === "draft") priority += 30;              // Hidden item
+      if (body.length < 150) priority += 20;                 // Thin content
+      if (tags.split(',').length < 3) priority += 15;        // Missing tags
+      
+      return { ...p, trashPriority: priority };
+    });
+
+    // Sort by priority (worst first) and then take the requested limit (usually 10)
+    const finalProducts = scoredProducts
+      .sort((a, b) => b.trashPriority - a.trashPriority)
+      .slice(0, limit);
+
     const linkHeader = response.headers.get("Link");
     let nextPageInfo: string | null = null;
     if (linkHeader) {
@@ -99,21 +112,17 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      products: data.products || [],
+      products: finalProducts,
       nextPageInfo,
       optimizerUsage: {
         used: connection.optimizer_runs ?? 0,
         limit: 50,
-        resetsAt: connection.optimizer_period_start
-          ? new Date(new Date(connection.optimizer_period_start).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
-          : null,
       },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("fetch-shopify-products error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

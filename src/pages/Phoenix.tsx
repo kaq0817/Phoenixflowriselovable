@@ -123,7 +123,14 @@ function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
     issues.push("Product is a draft — not live in your store");
   }
 
-  if ((p.body_html || "").length < 200) {
+  const hasImages = (p.images?.length || 0) > 0;
+  if (!hasImages) {
+    score -= 20;
+    issues.push("No images on this product");
+  }
+
+  const strippedDesc = (p.body_html || "").replace(/<[^>]*>/g, "").trim();
+  if (strippedDesc.length < 100) {
     score -= 15;
     issues.push("Description is too short for SEO");
   }
@@ -134,23 +141,27 @@ function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
     issues.push("One or more images are missing alt text");
   }
 
-  if (!p.metafields_global_description_tag) {
+  const hasTags = (p.tags?.trim()?.length || 0) > 0;
+  if (!hasTags) {
     score -= 10;
-    issues.push("Missing SEO meta description");
+    issues.push("No tags — add tags to improve discoverability");
+  }
+
+  const hasTitle = (p.title?.trim()?.length || 0) > 0;
+  if (!hasTitle) {
+    score -= 10;
+    issues.push("Product has no title");
   }
 
   const total = Math.max(0, score);
-  const hasTitle = (p.title?.trim()?.length || 0) > 0;
-  const hasImages = (p.images?.length || 0) > 0;
-  const hasDesc = (p.body_html || "").length > 0;
   return {
     total,
     title: hasTitle,
     titleLength: hasTitle,
     altText: !missingAlts,
-    description: hasDesc,
-    descriptionLength: (p.body_html || "").length >= 200,
-    tags: (p.tags?.trim()?.length || 0) > 0,
+    description: strippedDesc.length > 0,
+    descriptionLength: strippedDesc.length >= 100,
+    tags: hasTags,
     variants: (p.variants?.length || 0) > 1,
     images: hasImages,
     issues,
