@@ -193,7 +193,8 @@ export default function OptimizerPage() {
     }
     setShopifyLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 10, connectionId: selectedShopifyConnectionId } });
+      // Always scan from the oldest products (page 1, ascending order)
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 10, connectionId: selectedShopifyConnectionId, scanPage: 1, pagesToScan: 1 } });
       if (error) throw error;
       setShopifyProducts(data.products || []);
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
