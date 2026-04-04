@@ -223,6 +223,7 @@ export default function PhoenixPage() {
   const [availableChannels, setAvailableChannels] = useState<{ id: number; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<number>>(new Set());
   const [channelsLoading, setChannelsLoading] = useState(false);
+  const [scoreFilter, setScoreFilter] = useState<number | null>(null);
 
   // On mount, only load store connections, do NOT auto-trigger scan or product fetch
   useEffect(() => {
@@ -756,15 +757,34 @@ export default function PhoenixPage() {
               {/* Product cards */}
               <Card className="bg-card/50 border-border/30">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Products</CardTitle>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <CardTitle className="text-lg">Products</CardTitle>
+                    <div className="flex items-center gap-1 text-xs">
+                      {([null, 70, 85] as (number | null)[]).map((threshold) => (
+                        <button
+                          key={threshold ?? "all"}
+                          onClick={() => setScoreFilter(threshold)}
+                          className={`px-2.5 py-1 rounded border transition-colors ${scoreFilter === threshold ? "bg-primary text-primary-foreground border-primary" : "border-border/40 text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {threshold === null ? "All" : `Under ${threshold}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {platform === "shopify" && [...shopifyProducts].sort((a, b) => (shopifyScores.get(a.id)?.total ?? 100) - (shopifyScores.get(b.id)?.total ?? 100)).map((p) => {
+                  {platform === "shopify" && [...shopifyProducts]
+                    .filter((p) => scoreFilter === null || (shopifyScores.get(p.id)?.total ?? 100) < scoreFilter)
+                    .sort((a, b) => (shopifyScores.get(a.id)?.total ?? 100) - (shopifyScores.get(b.id)?.total ?? 100))
+                    .map((p) => {
                     const score = shopifyScores.get(p.id);
                     if (!score) return null;
                     return renderProductCard(p.id, p.title, p.images?.[0]?.src, score);
                   })}
-                  {platform === "etsy" && [...etsyListings].sort((a, b) => (etsyScores.get(a.listing_id)?.total ?? 100) - (etsyScores.get(b.listing_id)?.total ?? 100)).map((l) => {
+                  {platform === "etsy" && [...etsyListings]
+                    .filter((l) => scoreFilter === null || (etsyScores.get(l.listing_id)?.total ?? 100) < scoreFilter)
+                    .sort((a, b) => (etsyScores.get(a.listing_id)?.total ?? 100) - (etsyScores.get(b.listing_id)?.total ?? 100))
+                    .map((l) => {
                     const score = etsyScores.get(l.listing_id);
                     if (!score) return null;
                     return renderProductCard(l.listing_id, l.title, l.images?.[0]?.url_170x135 || l.images?.[0]?.url_570xN, score);
