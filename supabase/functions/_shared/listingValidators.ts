@@ -471,11 +471,25 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
 
   // Pad with fallback tags — count only qualifying tags toward threshold so
   // single-word or vendor-named fallback tags don't inflate the count
-  if (tags.filter(tagQualifies).length < 8) {
+  if (tags.filter(tagQualifies).length < 10) {
     const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
     tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 30);
     notes.push("tags padded from product title, type, and variants");
   }
+
+  // Guarantee minimum tag count for output
+  if (tags.length < 10) {
+    const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
+    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 10);
+    notes.push("guaranteed at least 10 tags");
+  }
+
+
+  // Guarantee no empty SEO fields
+  let cleanSeoTitle = finalHardClean(seo_title);
+  let cleanSeoDescription = finalHardClean(seo_description);
+  if (!cleanSeoTitle) cleanSeoTitle = title;
+  if (!cleanSeoDescription) cleanSeoDescription = title;
 
   // Final cleanup: trim fragments → strip all quote variants → enforce long-tail + vendor + banned
   tags = tags
@@ -497,9 +511,8 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const rawHandle = raw.url_handle || sanitizePlainText(raw.title || product.title || "", 100);
   const url_handle = sanitizeHandle(rawHandle);
 
+
   title = finalHardClean(title);
-  const cleanSeoTitle = finalHardClean(seo_title);
-  const cleanSeoDescription = finalHardClean(seo_description);
   tagsString = finalHardClean(tagsString);
   const cleanHandle = finalHardClean(url_handle);
 
