@@ -225,13 +225,24 @@ export default function PhoenixPage() {
     setApplied(new Set());
     try {
       if (platform === "shopify" && connections.shopify) {
-        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 50, connectionId: selectedShopifyConnectionId || undefined } });
+        // FORCE DEEP SCAN: Fetching full catalog to surface 0% trash
+        const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { 
+          body: { 
+            limit: 250, 
+            connectionId: selectedShopifyConnectionId || undefined,
+            order: "created_at asc" // Back-to-front sweep
+          } 
+        });
+        
         if (error) throw error;
+        
         const products: ShopifyProduct[] = data.products || [];
         setShopifyProducts(products);
+        
         const scores = new Map<number, SEOScore>();
         products.forEach((p) => scores.set(p.id, scoreShopifyProduct(p)));
         setShopifyScores(scores);
+        
         setChannelsLoading(true);
         try {
           const { data: chData } = await supabase.functions.invoke("fetch-shopify-channels", {
@@ -242,22 +253,41 @@ export default function PhoenixPage() {
             !IGNORED.some((term) => ch.name.toLowerCase().includes(term))
           ));
           setSelectedChannelIds(new Set());
-        } catch { /* non-critical */ } finally { setChannelsLoading(false); }
+        } catch { /* Handled: non-critical */ } finally { 
+          setChannelsLoading(false); 
+        }
       }
+      
       if (platform === "etsy" && connections.etsy) {
-        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 50, state: "active", connectionId: selectedEtsyConnectionId || undefined } });
+        const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { 
+          body: { 
+            limit: 50, 
+            state: "active", 
+            connectionId: selectedEtsyConnectionId || undefined 
+          } 
+        });
+        
         if (error) throw error;
+        
         const listings: EtsyListing[] = data.results || [];
         setEtsyListings(listings);
+        
         const scores = new Map<number, SEOScore>();
         listings.forEach((l) => scores.set(l.listing_id, scoreEtsyListing(l)));
         setEtsyScores(scores);
       }
+      
       setScanned(true);
     } catch (err: unknown) {
-      const error = err as Error;
-      toast({ title: "Scan failed", description: error.message, variant: "destructive" });
-    } finally { setScanning(false); }
+      const errorObj = err as Error;
+      toast({ 
+        title: "Scan failed", 
+        description: errorObj.message, 
+        variant: "destructive" 
+      });
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleGenerateFix = async (id: number) => {
