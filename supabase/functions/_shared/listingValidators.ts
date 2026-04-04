@@ -473,7 +473,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   // single-word or vendor-named fallback tags don't inflate the count
   if (tags.filter(tagQualifies).length < 8) {
     const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
-    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 15);
+    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 30);
     notes.push("tags padded from product title, type, and variants");
   }
 
@@ -489,16 +489,9 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     )
     .filter(tagQualifies);
 
-  // Re-dedupe and enforce Shopify ≤250 char total combined string
+  // Re-dedupe — enforce 255 chars per individual tag (Shopify limit), no combined string limit
   tags = dedupeBySignature(tags, 255);
   let tagsString = tags.join(", ");
-  if (tagsString.length > 250) {
-    while (tagsString.length > 250 && tags.length > 1) {
-      tags = tags.slice(0, -1);
-      tagsString = tags.join(", ");
-    }
-    notes.push("tags trimmed to keep total combined string within 250 characters");
-  }
 
   // URL handle
   const rawHandle = raw.url_handle || sanitizePlainText(raw.title || product.title || "", 100);
