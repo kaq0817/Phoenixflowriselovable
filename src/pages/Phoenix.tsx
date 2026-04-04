@@ -756,12 +756,12 @@ export default function PhoenixPage() {
                   <CardTitle className="text-lg">Products</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {platform === "shopify" && shopifyProducts.map((p) => {
+                  {platform === "shopify" && [...shopifyProducts].sort((a, b) => (shopifyScores.get(a.id)?.total ?? 100) - (shopifyScores.get(b.id)?.total ?? 100)).map((p) => {
                     const score = shopifyScores.get(p.id);
                     if (!score) return null;
                     return renderProductCard(p.id, p.title, p.images?.[0]?.src, score);
                   })}
-                  {platform === "etsy" && etsyListings.map((l) => {
+                  {platform === "etsy" && [...etsyListings].sort((a, b) => (etsyScores.get(a.listing_id)?.total ?? 100) - (etsyScores.get(b.listing_id)?.total ?? 100)).map((l) => {
                     const score = etsyScores.get(l.listing_id);
                     if (!score) return null;
                     return renderProductCard(l.listing_id, l.title, l.images?.[0]?.url_170x135 || l.images?.[0]?.url_570xN, score);
