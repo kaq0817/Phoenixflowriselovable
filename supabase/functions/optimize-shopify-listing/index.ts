@@ -58,6 +58,17 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
   };
 }
 
+function domainToStoreName(domain: string | null | undefined): string {
+  if (!domain) return "";
+  // Strip .myshopify.com or any TLD, then title-case the slug
+  return domain
+    .replace(/\.myshopify\.com$/i, "")
+    .replace(/\.[a-z]{2,}$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -120,7 +131,7 @@ serve(async (req) => {
         } else {
           await supabaseAdmin.from("store_connections").update({ optimizer_runs: conn.optimizer_runs + 1 }).eq("id", connectionId);
         }
-        storeName = conn.shop_name || conn.shop_domain || "";
+        storeName = conn.shop_name || domainToStoreName(conn.shop_domain) || "";
       }
     }
 

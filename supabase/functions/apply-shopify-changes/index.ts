@@ -12,6 +12,16 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+function domainToStoreName(domain: string | null | undefined): string {
+  if (!domain) return "";
+  return domain
+    .replace(/\.myshopify\.com$/i, "")
+    .replace(/\.[a-z]{2,}$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -67,7 +77,7 @@ serve(async (req) => {
 
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
-    const shopLabel: string = connection.shop_name || connection.shop_domain || "";
+    const shopLabel: string = connection.shop_name || domainToStoreName(connection.shop_domain) || "";
 
     // Build update payload
     const updateBody: Record<string, unknown> = {};
