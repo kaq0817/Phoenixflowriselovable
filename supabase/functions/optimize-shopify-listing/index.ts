@@ -146,13 +146,21 @@ SHOPIFY SEO RULES:
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
 - IMAGE ALT TEXT: For every image listed in the product data, write descriptive SEO-friendly alt text. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); Image 1 = full clean product name + primary attribute; Images 2+ = angle, detail, or context suffix before the pipe (e.g. "Block World Pixelated Travel Mug - Handle Detail | Phoenix Rise"); NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
+- IMAGE FILENAMES: For every image, suggest a clean SEO-rich filename. Rules: all lowercase, hyphen-separated, no special chars, end in .jpg; Format: "[clean-product-name]-[detail]-[store-slug].jpg" where store-slug = "${storeName ? storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "store"}"; Image 1 = full product slug + store slug (e.g. "block-world-pixelated-travel-mug-phoenix-rise.jpg"); Images 2+ = product slug + detail + store slug (e.g. "block-world-pixelated-travel-mug-handle-detail-phoenix-rise.jpg"); NEVER use generic names like "image-1.jpg", vendor names, or LLC suffixes. Return as a JSON-encoded string in image_filenames: [{"image_id": <id>, "filename": "<name>.jpg"}].
 
 GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
 - APPAREL TITLES MUST include color and size range (e.g. "Black XS-4XL").
 - NEVER use special characters (curly quotes, em dashes, symbols, Unicode, emojis).
 - ONLY use plain ASCII: quotes (" "), hyphens (-), commas, periods, &, +, /.
 - NO ALL CAPS (except USB/LED). NO promotional text ("FREE SHIPPING", "SALE").
-- Descriptions must be factual with no exaggerated claims.`;
+- Descriptions must be factual with no exaggerated claims.
+
+FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook catalog review):
+- NEVER include medical or health claims (e.g. "cures", "treats", "heals", "relieves pain", "therapeutic", "medical grade", "FDA approved", "anti-anxiety", "boosts immunity", "detox"). These trigger automatic Facebook rejection.
+- NEVER reference prescription drugs, supplements claiming health benefits, or any before/after health outcomes.
+- NEVER use claims about weight loss, muscle gain, or physical transformation.
+- Descriptions must describe WHAT the product IS (material, design, use case) — not what it DOES to the body.
+- Lifestyle context is fine ("great for desk setups", "perfect for gaming sessions") — health outcomes are not.`;
 
     const userPrompt = `Optimize this Shopify product:
 Title: ${product.title || ""}
@@ -195,7 +203,10 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
                       variant_suggestions: { type: "string" },
                       url_handle: { type: "string" },
                       faq_json: { type: "string" },
-                      collections_suggestion: { type: "string" },                        image_alts: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"alt\": \"<text>\"}] — one entry per product image, max 125 chars per alt" },                      reasoning: { type: "string" },
+                      collections_suggestion: { type: "string" },
+                      image_alts: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"alt\": \"<text>\"}] — one entry per product image, max 125 chars per alt" },
+                      image_filenames: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"filename\": \"<slug>.jpg\"}] — one clean SEO filename per image, lowercase hyphenated, store-branded" },
+                      reasoning: { type: "string" },
                     },
                     required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "url_handle", "faq_json", "reasoning"],
                   }
@@ -228,7 +239,8 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return new Response(JSON.stringify({ error: message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

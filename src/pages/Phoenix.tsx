@@ -63,6 +63,8 @@ interface Fix {
   product_type?: string;
   seo_title?: string;
   seo_description?: string;
+  image_alts?: string;
+  image_filenames?: string;
   reasoning?: string;
 }
 
@@ -217,6 +219,10 @@ export default function PhoenixPage() {
   const [fixes, setFixes] = useState<Map<number, Fix>>(new Map());
   const [applyLoading, setApplyLoading] = useState<Set<number>>(new Set());
   const [applied, setApplied] = useState<Set<number>>(new Set());
+  const [bulkPublishing, setBulkPublishing] = useState(false);
+  const [availableChannels, setAvailableChannels] = useState<{ id: number; name: string }[]>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<Set<number>>(new Set());
+  const [channelsLoading, setChannelsLoading] = useState(false);
 
   // On mount, only load store connections, do NOT auto-trigger scan or product fetch
   useEffect(() => {
@@ -260,6 +266,17 @@ export default function PhoenixPage() {
         const scores = new Map<number, SEOScore>();
         products.forEach((p) => scores.set(p.id, scoreShopifyProduct(p)));
         setShopifyScores(scores);
+        // Load available sales channels for this store
+        setChannelsLoading(true);
+        try {
+          const { data: chData } = await supabase.functions.invoke("fetch-shopify-channels", {
+            body: { connectionId: selectedShopifyConnectionId || undefined },
+          });
+          setAvailableChannels(chData?.publications || []);
+          setSelectedChannelIds(new Set());
+        } catch { /* non-critical */ } finally {
+          setChannelsLoading(false);
+        }
       }
       if (platform === "etsy" && connections.etsy) {
         const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 10, state: "active", connectionId: selectedEtsyConnectionId || undefined } });
@@ -327,6 +344,49 @@ export default function PhoenixPage() {
       toast({ title: "Apply failed", description: message, variant: "destructive" });
     } finally {
       setApplyLoading((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  // Publish all scanned products to Facebook channel only
+  const handlePublishAll = async () => {
+    if (!selectedShopifyConnectionId || shopifyProducts.length === 0) return;
+    setBulkPublishing(true);
+    try {
+      // Fetch all publications for this store
+      const { data: pubData, error: pubErr } = await supabase.functions.invoke("fetch-shopify-channels", {
+        body: { connectionId: selectedShopifyConnectionId },
+      });
+      if (pubErr) throw pubErr;
+      const publications: { id: number; name: string }[] = pubData.publications || [];
+      // Only target Facebook — it has the strictest catalog rules
+      const facebookPubs = publications.filter((p) =>
+        p.name.toLowerCase().includes("facebook") || p.name.toLowerCase().includes("meta")
+      );
+      if (facebookPubs.length === 0) {
+        toast({ title: "Facebook channel not found", description: "No Facebook or Meta sales channel found for this store. Connect it in Shopify → Sales Channels first.", variant: "destructive" });
+        return;
+      }
+      let published = 0;
+      let skipped = 0;
+      for (const product of shopifyProducts) {
+        const { data: chData } = await supabase.functions.invoke("fetch-shopify-channels", {
+          body: { connectionId: selectedShopifyConnectionId, productId: product.id },
+        });
+        const alreadyIn: number[] = chData?.publishedPublicationIds || [];
+        for (const pub of facebookPubs) {
+          if (alreadyIn.includes(pub.id)) { skipped++; continue; }
+          await supabase.functions.invoke("apply-shopify-channels", {
+            body: { connectionId: selectedShopifyConnectionId, productId: product.id, publicationId: pub.id, action: "publish" },
+          });
+          published++;
+        }
+      }
+      toast({ title: "Facebook updated", description: `Published ${published} product${published !== 1 ? "s" : ""} to Facebook${skipped > 0 ? ` (${skipped} already active)` : ""}.` });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Publish failed";
+      toast({ title: "Publish failed", description: message, variant: "destructive" });
+    } finally {
+      setBulkPublishing(false);
     }
   };
 
@@ -458,6 +518,24 @@ export default function PhoenixPage() {
                         {fix.product_type && renderComparisonRow("Type", shopifyProducts.find((p) => p.id === id)?.product_type || "", fix.product_type)}
                         {fix.seo_title && renderComparisonRow("SEO Title", "", fix.seo_title)}
                         {fix.seo_description && renderComparisonRow("SEO Desc", "", fix.seo_description)}
+                        {fix.image_alts && (() => {
+                          try {
+                            const alts: { image_id: number; alt: string }[] = JSON.parse(fix.image_alts);
+                            if (!Array.isArray(alts) || alts.length === 0) return null;
+                            const preview = alts[0].alt;
+                            const more = alts.length > 1 ? ` (+${alts.length - 1} more)` : "";
+                            return renderComparisonRow("Image Alts", `${shopifyProducts.find((p) => p.id === id)?.images?.[0]?.alt || "none"}`, `${preview}${more}`);
+                          } catch { return null; }
+                        })()}
+                        {fix.image_filenames && (() => {
+                          try {
+                            const names: { image_id: number; filename: string }[] = JSON.parse(fix.image_filenames);
+                            if (!Array.isArray(names) || names.length === 0) return null;
+                            const preview = names[0].filename;
+                            const more = names.length > 1 ? ` (+${names.length - 1} more)` : "";
+                            return renderComparisonRow("Filenames", shopifyProducts.find((p) => p.id === id)?.images?.[0]?.src?.split("/").pop()?.split("?")[0] || "current", `${preview}${more}`);
+                          } catch { return null; }
+                        })()}
                       </>
                     ) : (
                       <>
@@ -628,6 +706,15 @@ export default function PhoenixPage() {
               {needAttention > 0 && (
                 <Button onClick={handleFixAll} className="w-full gradient-phoenix text-primary-foreground" size="lg">
                   <Wrench className="h-4 w-4 mr-2" /> Generate AI Fixes for All {needAttention > 0 ? `${allScores.filter(s => s.total < 85).length} Products` : "Products"}
+                </Button>
+              )}
+
+              {/* Publish all products to Facebook channel */}
+              {platform === "shopify" && shopifyProducts.length > 0 && (
+                <Button onClick={handlePublishAll} disabled={bulkPublishing} variant="outline" className="w-full" size="lg">
+                  {bulkPublishing
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing to Facebook...</>
+                    : <><ShoppingBag className="h-4 w-4 mr-2" /> Publish All to Facebook</>}
                 </Button>
               )}
 

@@ -67,6 +67,7 @@ export interface ShopifyProductLike {
   product_type?: string;
   vendor?: string;
   tags?: string;
+  handle?: string;
   variants?: ShopifyVariantLike[];
   images?: { id: number; src?: string; alt?: string | null; position?: number }[];
   metafields_global_title_tag?: string;
@@ -85,6 +86,7 @@ export interface ShopifySuggestionShape {
   faq_json?: string;
   collections_suggestion?: string;
   image_alts?: string;
+  image_filenames?: string;
   reasoning?: string;
 }
 
@@ -401,7 +403,27 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const apparel = isApparelProduct(product);
   const requiredSuffix = apparel ? buildRequiredApparelSuffix(product) : "";
 
-  let title = sanitizePlainText(raw.title || product.title || "", 70).replace(/"/g, "");
+  // Strip store/vendor branding from plain-text fields (title, seo_title)
+  // Removes: "| Vendor Name", "- Vendor Name" pipe/dash prefixed store suffixes,
+  // and known hard-coded brand patterns
+  function stripBranding(value: string): string {
+    let v = value;
+    // Strip vendor name if present
+    if (product.vendor) {
+      const escapedVendor = product.vendor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      v = v.replace(new RegExp(`\\s*[|\\-]\\s*${escapedVendor}.*$`, "i"), "").trim();
+    }
+    // Strip known hard-coded brand fragments regardless of case
+    v = v
+      .replace(/\s*[|\u002D]\s*iron phoenix\s*ghg\b.*/i, "")
+      .replace(/\s*[|\u002D]\s*iron phoenix\b.*/i, "")
+      .replace(/\bghg\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    return v;
+  }
+
+  let title = sanitizePlainText(stripBranding(raw.title || product.title || ""), 70).replace(/"/g, "");
   if (apparel && requiredSuffix) {
     const normalizedTitle = normalizeKeywordPhrase(title);
     const normalizedSuffix = normalizeKeywordPhrase(requiredSuffix);
@@ -416,7 +438,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const body_html = sanitizeHtml(
     raw.body_html || product.body_html || `<p>${sanitizePlainText(product.title || "")} is written to stay clear, factual, and easy to scan on Shopify.</p>`,
   );
-  const seo_title = sanitizePlainText(raw.seo_title || title || product.metafields_global_title_tag || product.title || "", 60).replace(/"/g, "");
+  const seo_title = sanitizePlainText(stripBranding(raw.seo_title || title || product.metafields_global_title_tag || product.title || ""), 60).replace(/"/g, "");
   // Target 120-155 chars for meta description (conversion-focused)
   let seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 155);
   if (seo_description.length < 60 && title) {
@@ -424,11 +446,15 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
 
-  // Helper: a tag qualifies if it is not vendor-named and not banned (single-word niche tags are allowed)
-  const tagQualifies = (t: string) =>
-    t.trim().length > 0 &&
-    (product.vendor ? !normalizeKeywordPhrase(t).includes(normalizeKeywordPhrase(product.vendor)) : true) &&
-    !isBannedTag(t, product.vendor);
+  // Helper: a tag qualifies if it is not vendor-named, not a branding fragment, and not banned
+  const brandFragments = ["iron phoenix ghg", "iron phoenix", "ghg"].map(normalizeKeywordPhrase);
+  const tagQualifies = (t: string) => {
+    if (!t.trim()) return false;
+    const normalized = normalizeKeywordPhrase(t);
+    if (brandFragments.some((frag) => normalized.includes(frag))) return false;
+    if (product.vendor && normalized.includes(normalizeKeywordPhrase(product.vendor))) return false;
+    return !isBannedTag(t, product.vendor);
+  };
 
   let tags = dedupeBySignature(
     String(raw.tags || product.tags || "").split(",").map((t) => t.trim()),
@@ -496,6 +522,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     faq_json: raw.faq_json || "",
     collections_suggestion: sanitizePlainText(raw.collections_suggestion || "", 300),
     image_alts: raw.image_alts || "",
+    image_filenames: raw.image_filenames || "",
     reasoning: appendValidationNotes(raw.reasoning, notes),
   };
 }
