@@ -59,13 +59,25 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
 }
 
 function buildFallbackImageAlts(product: ShopifyProductLike, storeName: string): string {
-  const safeTitle = (product.title || "Product").trim() || "Product";
+  // Remove any promotional, vendor, or generic terms from product name
+  let safeTitle = (product.title || "Product").trim() || "Product";
+  // Remove vendor/brand names (e.g. Iron Phoenix GHG, Our Phoenix Rise)
+  safeTitle = safeTitle.replace(/Iron Phoenix GHG|Our Phoenix Rise/gi, "").replace(/\s{2,}/g, " ").trim();
+  // Remove ALL CAPS, promotional, or generic phrases
+  safeTitle = safeTitle.replace(/(FREE SHIPPING|SALE|NEW|100%|BEST|HOT|DEAL|DISCOUNT|OFFER|PROMO)/gi, "").replace(/\s{2,}/g, " ").trim();
+  // Remove quotes and special chars
+  safeTitle = safeTitle.replace(/["'“”‘’•–—]/g, "").replace(/\s{2,}/g, " ").trim();
+  // Remove trailing/leading hyphens or pipes
+  safeTitle = safeTitle.replace(/^[\-\|\s]+|[\-\|\s]+$/g, "");
+  // Fallback if empty
+  if (!safeTitle) safeTitle = "Product";
   const safeStore = (storeName || "store").trim() || "store";
   const entries = (product.images || [])
     .filter((img) => typeof img.id === "number")
     .map((img, idx) => {
       const detail = idx === 0 ? "Primary View" : `Detail ${idx + 1}`;
-      const alt = `${safeTitle} - ${detail} | ${safeStore}`.slice(0, 125).trim();
+      // Add a compliance-safe alt text, never just the product name
+      const alt = `${safeTitle} ${detail} | ${safeStore}`.replace(/\s{2,}/g, " ").slice(0, 125).trim();
       return { image_id: img.id, alt };
     });
 
