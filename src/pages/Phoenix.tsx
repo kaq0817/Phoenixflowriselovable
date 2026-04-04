@@ -21,8 +21,10 @@ interface ShopifyProduct {
   product_type: string;
   vendor: string;
   tags: string;
+  status?: string;
+  metafields_global_description_tag?: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string }[];
-  images: { src: string; alt?: string }[];
+  images: { id: number; src: string; alt?: string; position?: number }[];
   handle: string;
 // Copyright (c) 2026 [Your Name or Company]
 // All rights reserved.
@@ -114,39 +116,46 @@ function titleHasApparelSize(title: string): boolean {
 
 function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const issues: string[] = [];
-  const suggestions: string[] = [];
-  let points = 0;
-  const maxPoints = 7;
-  const title = p.title?.trim() || "";
-  const hasTitle = title.length > 0;
-  const titleLength = title.length >= 10 && title.length <= 70;
-  if (hasTitle) points++; else issues.push("Missing product title");
-  if (titleLength) points++; else if (hasTitle) { issues.push(`Title ${title.length < 10 ? "too short" : "too long"} (${title.length} chars)`); suggestions.push("Aim for 10-70 chars with key attributes"); }
-  if (hasTitle && isApparelProduct(p)) {
-    const hasColor = titleHasApparelColor(title);
-    const hasSize = titleHasApparelSize(title);
-    if (!hasColor || !hasSize) {
-      issues.push("Apparel titles must include the real color and size/size range to avoid misrepresentation.");
-      suggestions.push("Add the actual color and size/size range to the title (e.g., Brand Product Black M-XL).");
-      // Penalize if apparel title is missing required attributes.
-      if (titleLength) points = Math.max(0, points - 1);
-    }
+  let score = 100;
+
+  if (p.status?.toLowerCase() === "draft") {
+    score -= 30;
+    issues.push("Product is a draft — not live in your store");
   }
+
+  if ((p.body_html || "").length < 200) {
+    score -= 15;
+    issues.push("Description is too short for SEO");
+  }
+
+  const missingAlts = p.images?.some((img) => !img.alt || img.alt.trim() === "");
+  if (missingAlts) {
+    score -= 15;
+    issues.push("One or more images are missing alt text");
+  }
+
+  if (!p.metafields_global_description_tag) {
+    score -= 10;
+    issues.push("Missing SEO meta description");
+  }
+
+  const total = Math.max(0, score);
+  const hasTitle = (p.title?.trim()?.length || 0) > 0;
   const hasImages = (p.images?.length || 0) > 0;
-  const altText = hasImages && p.images.some((img) => img.alt && img.alt.trim().length > 0);
-  if (altText) points++; else if (hasImages) { issues.push("Images missing alt text"); suggestions.push("Add descriptive alt text"); }
-  if (hasImages) points++; else { issues.push("No product images"); suggestions.push("Add at least 3 photos"); }
-  const desc = (p.body_html || "").replace(/<[^>]*>/g, "").trim();
-  const hasDesc = desc.length > 0;
-  const descLength = desc.length >= 50;
-  if (hasDesc) points++; else issues.push("Missing description");
-  if (descLength) points++; else if (hasDesc) { issues.push(`Description too short (${desc.length} chars)`); suggestions.push("Expand with benefits, materials, sizing"); }
-  const hasVariants = (p.variants?.length || 0) > 1;
-  if (hasVariants) points++; else suggestions.push("Consider adding variants");
-  const hasTags = (p.tags?.trim()?.length || 0) > 0;
-  if (!hasTags) suggestions.push("Add product tags for internal collections and filters (not primary SEO).");
-  const total = Math.round((points / maxPoints) * 100);
-  return { total, title: hasTitle, titleLength, altText, description: hasDesc, descriptionLength: descLength, tags: hasTags, variants: hasVariants, images: hasImages, issues, suggestions };
+  const hasDesc = (p.body_html || "").length > 0;
+  return {
+    total,
+    title: hasTitle,
+    titleLength: hasTitle,
+    altText: !missingAlts,
+    description: hasDesc,
+    descriptionLength: (p.body_html || "").length >= 200,
+    tags: (p.tags?.trim()?.length || 0) > 0,
+    variants: (p.variants?.length || 0) > 1,
+    images: hasImages,
+    issues,
+    suggestions: [],
+  };
 }
 
 function scoreEtsyListing(l: EtsyListing): SEOScore {
@@ -223,7 +232,7 @@ export default function PhoenixPage() {
   const [availableChannels, setAvailableChannels] = useState<{ id: number; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<number>>(new Set());
   const [channelsLoading, setChannelsLoading] = useState(false);
-  const [scoreFilter, setScoreFilter] = useState<number | null>(70);
+  const [scoreFilter, setScoreFilter] = useState<number | null>(85);
 
   // On mount, only load store connections, do NOT auto-trigger scan or product fetch
   useEffect(() => {
@@ -760,7 +769,7 @@ export default function PhoenixPage() {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <CardTitle className="text-lg">Products</CardTitle>
                     <div className="flex items-center gap-1 text-xs">
-                      {([30, 50, 70, null] as (number | null)[]).map((threshold) => (
+                      {([50, 70, 85, null] as (number | null)[]).map((threshold) => (
                         <button
                           key={threshold ?? "all"}
                           onClick={() => setScoreFilter(threshold)}

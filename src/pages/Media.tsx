@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Image as ImageIcon,
   Images,
   Loader2,
   RefreshCw,
+  Save,
   Store,
   TriangleAlert,
   Type,
@@ -35,7 +38,7 @@ interface ShopifyProduct {
   vendor: string;
   product_type: string;
   handle: string;
-  images: { src: string; alt?: string | null }[];
+  images: { id: number; src: string; alt?: string | null }[];
 }
 
 interface MediaRecord {
@@ -70,6 +73,9 @@ export default function MediaPage() {
   const [filter, setFilter] = useState<MediaFilter>("needs-attention");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedAlt, setExpandedAlt] = useState<number | null>(null);
+  const [altEdits, setAltEdits] = useState<Record<number, Record<number, string>>>({});
+  const [savingAlt, setSavingAlt] = useState<number | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -112,6 +118,37 @@ export default function MediaPage() {
     if (loading || !selectedConnectionId || products.length > 0) return;
     void fetchProducts(selectedConnectionId);
   }, [fetchProducts, loading, selectedConnectionId, products.length]);
+
+  const saveAltText = async (product: ShopifyProduct) => {
+    const edits = altEdits[product.id];
+    if (!edits || Object.keys(edits).length === 0) return;
+    setSavingAlt(product.id);
+    try {
+      const { error } = await supabase.functions.invoke("apply-shopify-changes", {
+        body: {
+          productId: product.id,
+          optimizedData: {},
+          connectionId: selectedConnectionId,
+          imageAltEdits: edits,
+        },
+      });
+      if (error) throw error;
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id !== product.id
+            ? p
+            : { ...p, images: p.images.map((img) => ({ ...img, alt: edits[img.id] ?? img.alt })) }
+        )
+      );
+      setAltEdits((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
+      toast({ title: "Alt text saved", description: `Updated ${Object.keys(edits).length} image${Object.keys(edits).length !== 1 ? "s" : ""} on Shopify.` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Save failed";
+      toast({ title: "Save failed", description: message, variant: "destructive" });
+    } finally {
+      setSavingAlt(null);
+    }
+  };
 
   const mediaRecords = useMemo<MediaRecord[]>(() => {
     return products.map((product) => {
@@ -443,6 +480,68 @@ export default function MediaPage() {
                             ? "Image coverage is present, but the alt text still needs cleanup."
                             : "This product has enough media coverage to move forward."}
                     </p>
+
+                    {(() => {
+                      const product = products.find((p) => p.id === item.id);
+                      if (!product || product.images.length === 0) return null;
+                      const isExpanded = expandedAlt === item.id;
+                      const edits = altEdits[item.id] || {};
+                      const isDirty = Object.keys(edits).length > 0;
+                      const isSaving = savingAlt === item.id;
+                      return (
+                        <div className="border-t border-border/20 pt-3 mt-1 space-y-2">
+                          <button
+                            className="flex items-center gap-2 text-xs text-primary font-medium hover:underline"
+                            onClick={() => setExpandedAlt(isExpanded ? null : item.id)}
+                          >
+                            <ImageIcon className="h-3.5 w-3.5" />
+                            Edit Alt Text ({product.images.length} image{product.images.length !== 1 ? "s" : ""})
+                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </button>
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="space-y-3 overflow-hidden"
+                              >
+                                {product.images.map((img, i) => (
+                                  <div key={img.id} className="flex gap-3 items-start">
+                                    <img src={img.src} alt={img.alt || ""} className="w-14 h-14 rounded-md object-cover border border-border/30 shrink-0" />
+                                    <div className="flex-1 space-y-1">
+                                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Image {i + 1}</p>
+                                      <input
+                                        type="text"
+                                        className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                                        placeholder="Describe this image..."
+                                        value={edits[img.id] ?? (img.alt || "")}
+                                        onChange={(e) =>
+                                          setAltEdits((prev) => ({
+                                            ...prev,
+                                            [item.id]: { ...(prev[item.id] || {}), [img.id]: e.target.value },
+                                          }))
+                                        }
+                                        maxLength={512}
+                                      />
+                                      <p className="text-[10px] text-muted-foreground text-right">{(edits[img.id] ?? (img.alt || "")).length}/512</p>
+                                    </div>
+                                  </div>
+                                ))}
+                                <Button
+                                  size="sm"
+                                  disabled={!isDirty || isSaving}
+                                  onClick={() => saveAltText(product)}
+                                  className="w-full"
+                                >
+                                  {isSaving ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...</> : <><Save className="h-3.5 w-3.5 mr-1.5" /> Save Alt Text to Shopify</>}
+                                </Button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

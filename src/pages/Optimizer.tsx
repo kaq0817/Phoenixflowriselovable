@@ -23,6 +23,7 @@ interface ShopifyProduct {
   product_type: string;
   vendor: string;
   tags: string;
+  status?: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; option3?: string }[];
   images: { id: number; src: string; alt: string | null; position: number }[];
   handle: string;
@@ -116,6 +117,8 @@ export default function OptimizerPage() {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [altTextExpanded, setAltTextExpanded] = useState(false);
   const [imageAltEdits, setImageAltEdits] = useState<Record<number, string>>({});
+  const [savingAltText, setSavingAltText] = useState(false);
+  const [altsAIFilled, setAltsAIFilled] = useState(0);
 
   // Sales channels
   const [salesChannels, setSalesChannels] = useState<{ id: number; name: string }[]>([]);
@@ -304,6 +307,7 @@ export default function OptimizerPage() {
         try {
           const aiAlts: { image_id: number; alt: string }[] = JSON.parse(data.suggestions.image_alts);
           if (Array.isArray(aiAlts)) {
+            setAltsAIFilled(aiAlts.length);
             setImageAltEdits(prev => {
               const updated = { ...prev };
               for (const entry of aiAlts) {
@@ -353,6 +357,29 @@ export default function OptimizerPage() {
   };
 
   const toggle = (key: string) => setExpandedSection(expandedSection === key ? null : key);
+
+  const saveAltTextOnly = async () => {
+    if (!selectedProduct || Object.keys(imageAltEdits).length === 0) return;
+    setSavingAltText(true);
+    try {
+      const { error } = await supabase.functions.invoke("apply-shopify-changes", {
+        body: {
+          productId: selectedProduct.id,
+          optimizedData: {},
+          connectionId: selectedShopifyConnectionId || undefined,
+          imageAltEdits,
+        },
+      });
+      if (error) throw error;
+      setAltsAIFilled(0);
+      toast({ title: "Alt text saved", description: "Image alt text updated on Shopify." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Save failed";
+      toast({ title: "Save failed", description: message, variant: "destructive" });
+    } finally {
+      setSavingAltText(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -503,7 +530,7 @@ export default function OptimizerPage() {
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <h2 className="font-semibold text-base leading-tight">{selectedProduct.title}</h2>
-                          <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setSelectedProduct(null); setShopifySuggestions(null); }}>
+                          <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setSelectedProduct(null); setShopifySuggestions(null); setAltsAIFilled(0); }}>
                             Back
                           </Button>
                         </div>
@@ -532,18 +559,26 @@ export default function OptimizerPage() {
 
                   {/* Image alt text — always visible once a product is selected */}
                   {selectedProduct.images && selectedProduct.images.length > 0 && (
-                    <Card className="bg-card/50 border-border/30 overflow-hidden">
+                    <Card className={`border-border/30 overflow-hidden ${altsAIFilled > 0 ? "bg-primary/5 border-primary/30" : "bg-card/50"}`}>
                       <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setAltTextExpanded((v) => !v)}>
                         <div className="flex items-center gap-2">
                           <ImageIcon className="h-4 w-4 text-primary" />
                           <span className="text-sm font-medium">Image Alt Text</span>
                           <Badge variant="outline" className="text-[10px] py-0">{selectedProduct.images.length} image{selectedProduct.images.length !== 1 ? "s" : ""}</Badge>
+                          {altsAIFilled > 0 && (
+                            <Badge className="bg-primary/20 text-primary border-primary/30 border text-[10px] px-1.5">AI filled {altsAIFilled}</Badge>
+                          )}
                         </div>
                         {altTextExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                       </button>
                       {altTextExpanded && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
-                          <p className="text-xs text-muted-foreground">Alt text is used by screen readers and appears in Google Image search. Describe what is in the photo — no keyword stuffing.</p>
+                          {altsAIFilled > 0 && (
+                            <div className="flex items-center gap-2 rounded-md bg-primary/10 border border-primary/20 px-3 py-2 text-sm text-primary">
+                              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                              Gemini generated alt text for {altsAIFilled} image{altsAIFilled !== 1 ? "s" : ""}. Look good? Hit save.
+                            </div>
+                          )}
                           {selectedProduct.images.map((img, i) => (
                             <div key={img.id} className="flex gap-3 items-start">
                               <img src={img.src} alt={img.alt || ""} className="w-16 h-16 rounded-lg object-cover border border-border/30 shrink-0" />
@@ -552,7 +587,7 @@ export default function OptimizerPage() {
                                 <input
                                   type="text"
                                   className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
-                                  placeholder="Describe this image for accessibility and SEO..."
+                                  placeholder="Describe this image..."
                                   value={imageAltEdits[img.id] ?? (img.alt || "")}
                                   onChange={(e) => setImageAltEdits(prev => ({ ...prev, [img.id]: e.target.value }))}
                                   maxLength={512}
@@ -561,6 +596,9 @@ export default function OptimizerPage() {
                               </div>
                             </div>
                           ))}
+                          <Button size="sm" disabled={savingAltText || Object.keys(imageAltEdits).length === 0} onClick={saveAltTextOnly} className="w-full">
+                            {savingAltText ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...</> : "Save Alt Text to Shopify"}
+                          </Button>
                         </motion.div>
                       )}
                     </Card>
@@ -580,7 +618,7 @@ export default function OptimizerPage() {
                     </button>
                     {expandedSection === "sales_channels" && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-2">
-                        <p className="text-xs text-muted-foreground mb-3">Toggle to publish or unpublish this product on each sales channel. Changes apply immediately.</p>
+
                         {channelsLoading ? (
                           <div className="flex items-center gap-2 py-2">
                             <Loader2 className="h-4 w-4 animate-spin text-primary" />
