@@ -3783,6 +3783,9 @@
     "https://esm.sh/stripe@18.5.0/denonext/stripe.mjs": "522acfbff793e7ad68c7f1ea61ced3286a0029331a4443e952922ad0a1796157"
   },
   "workspace": {
+    "dependencies": [
+      "npm:@supabase/supabase-js@2.99.1"
+    ],
     "packageJson": {
       "dependencies": [
         "npm:@eslint/js@^9.32.0",

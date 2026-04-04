@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 import { getShopifyApiVersion } from "../_shared/shopify.ts";
 
@@ -12,7 +11,18 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-serve(async (req) => {
+const DENO = (globalThis as typeof globalThis & {
+  Deno?: {
+    serve: (handler: (req: Request) => Response | Promise<Response>) => void;
+    env: { get: (key: string) => string | undefined };
+  };
+}).Deno;
+
+if (!DENO) {
+  throw new Error("Deno runtime is required for this function");
+}
+
+DENO.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -24,8 +34,8 @@ serve(async (req) => {
     }
 
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      DENO.env.get("SUPABASE_URL")!,
+      DENO.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
 
@@ -37,12 +47,31 @@ serve(async (req) => {
       });
     }
 
-    const { connectionId, productId, publicationId, action } = await req.json();
+    const body = await req.json().catch(() => null) as {
+      connectionId?: string;
+      productId?: string | number;
+      publicationId?: string | number;
+      action?: string;
+    } | null;
+
+    const connectionId = body?.connectionId;
+    const productId = body?.productId;
+    const publicationIdRaw = body?.publicationId;
+    const action = body?.action;
+    const publicationId = Number(publicationIdRaw);
+
     if (!connectionId || !productId || !publicationId || !action) {
       return new Response(JSON.stringify({ error: "Missing required fields: connectionId, productId, publicationId, action" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    if (!Number.isFinite(publicationId)) {
+      return new Response(JSON.stringify({ error: "publicationId must be a valid number" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action !== "publish" && action !== "unpublish") {
       return new Response(JSON.stringify({ error: "action must be 'publish' or 'unpublish'" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -86,7 +115,7 @@ serve(async (req) => {
         });
       }
 
-      const data = await res.json();
+      const data = await res.json() as { product_publication?: unknown };
       return new Response(JSON.stringify({ success: true, product_publication: data.product_publication }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -103,7 +132,9 @@ serve(async (req) => {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const ppData = await ppRes.json();
+      const ppData = await ppRes.json() as {
+        product_publications?: Array<{ publication_id: number; id: number }>;
+      };
       const record = (ppData.product_publications || []).find(
         (pp: { publication_id: number; id: number }) => pp.publication_id === publicationId
       );
@@ -133,6 +164,11 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    return new Response(JSON.stringify({ error: "Unsupported action" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("apply-shopify-channels error:", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {

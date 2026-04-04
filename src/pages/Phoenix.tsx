@@ -15,19 +15,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 interface ShopifyProduct {
-  const hasIdentityMismatch = (p.title || "").toLowerCase().includes("iron phoenix ghg");
-  if (hasIdentityMismatch) {
-    score -= 40;
-    issues.push("Identity Mismatch: Title contains LLC suffix (High Risk)");
+  id: number;
+  title: string;
+  body_html: string;
   status?: string;
   metafields_global_description_tag?: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string }[];
   images: { id: number; src: string; alt?: string; position?: number }[];
   handle: string;
-// Copyright (c) 2026 [Your Name or Company]
-// All rights reserved.
-// This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
-// For licensing inquiries, contact: [your contact email]
+  tags: string | string[];
+  product_type?: string;
 }
 
 interface EtsyListing {
@@ -112,41 +109,77 @@ function titleHasApparelSize(title: string): boolean {
   return /\b\d{1,3}\b/.test(normalized);
 }
 
-function scoreShopifyProduct(product: ShopifyProduct) {
+function normalizeShopifyTags(tags: ShopifyProduct["tags"] | string[] | null | undefined): string[] {
+  if (Array.isArray(tags)) {
+    return tags.map((tag) => `${tag}`.trim()).filter(Boolean);
+  }
+
+  return `${tags || ""}`
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
+  const issues: string[] = [];
   let score = 100;
-  const issues = [];
 
-  // 1. THE "IDENTITY" HAMMER (Misrepresentation Fix)
-  if (product.title.includes("Iron Phoenix GHG")) {
-    score -= 40; 
-    issues.push("Identity Mismatch: Title contains LLC suffix");
+  // 1) Identity mismatch: LLC suffix in title
+  const hasIdentityMismatch = /iron\s*phoenix\s*ghg/i.test(p.title || "") || /\b(inc|llc|ghg\s*customs?)\b/i.test(p.title || "");
+  if (hasIdentityMismatch) {
+    score -= 40;
+    issues.push("Identity Mismatch: Title contains LLC suffix (High Risk)");
   }
 
-  // 2. THE "GHOST" PRODUCT (Draft Fix)
-  if (product.status?.toLowerCase() === "draft") {
+  // 2) Draft penalty
+  const isDraft = p.status?.toLowerCase() === "draft";
+  if (isDraft) {
     score -= 30;
-    issues.push("Product is a Draft (Not live)");
+    issues.push("Product is a Draft — not live in your store");
   }
 
-  // 3. THE "SEARCH" GAP (Missing Tags Fix)
-  // If tags are empty or just have 1-2 generic words, tank the score
-  const tagList = product.tags ? product.tags.split(',').map(t => t.trim()) : [];
-  if (tagList.length < 5) {
+  // 3) Search & discovery: minimum 5 tags
+  const parsedTags = normalizeShopifyTags(p.tags);
+  const tagCount = parsedTags.length;
+  if (tagCount < 5) {
     score -= 25;
-    issues.push(`Low Tag Count (${tagList.length}/5 minimum)`);
+    issues.push(`Low Search Signal: Only ${tagCount} tags found (Need 5+)`);
   }
 
-  // 4. THE "CONTENT" GAP (Missing Body Fix)
-  if (!product.body_html || product.body_html.length < 200) {
-    score -= 20;
-    issues.push("Description is too thin for Google compliance");
+  // 4) Content quality
+  const strippedDesc = (p.body_html || "").replace(/<[^>]*>/g, "").trim();
+  if (strippedDesc.length < 150) {
+    score -= 15;
+    issues.push("Description is too thin for SEO/Google compliance");
   }
 
-  return { 
-    score: Math.max(0, score), 
+  // 5) Image SEO
+  const hasImages = (p.images?.length || 0) > 0;
+  const missingAlts = p.images?.some((img) => !img.alt || img.alt.trim() === "") ?? false;
+  if (missingAlts) {
+    score -= 15;
+    issues.push("Missing Image Alt text — hurts Google Image Search");
+  }
+
+  const hasTitle = (p.title?.trim()?.length || 0) > 0;
+  if (!hasTitle) {
+    score -= 10;
+    issues.push("Product has no title");
+  }
+
+  const total = Math.max(0, score);
+  return {
+    total,
+    title: hasTitle,
+    titleLength: hasTitle,
+    altText: !missingAlts,
+    description: strippedDesc.length > 0,
+    descriptionLength: strippedDesc.length >= 150,
+    tags: tagCount >= 5,
+    variants: (p.variants?.length || 0) > 1,
+    images: hasImages,
     issues,
-    // This forces the UI to treat it as "Need Fixing" if score is < 85
-    needsFix: score < 85 
+    suggestions: [],
   };
 }
 
@@ -175,6 +208,7 @@ function scoreEtsyListing(l: EtsyListing): SEOScore {
   const total = Math.round((points / maxPoints) * 100);
   return { total, title: hasTitle, titleLength, altText: false, description: hasDesc, descriptionLength: descLength, tags: hasTags, variants: hasMaterials, images: hasImages, issues, suggestions };
 }
+
 
 function getScoreColor(score: number) {
   if (score >= 85) return "text-phoenix-success";
@@ -415,8 +449,7 @@ export default function PhoenixPage() {
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
   const allScores = Array.from(platform === "shopify" ? shopifyScores.values() : etsyScores.values());
   const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b.total, 0) / allScores.length) : 0;
-  const needAttention = allScores.filter((s) => s.total < 60).length;
-    const needAttention = allScores.filter((s) => s.total < 85).length;
+  const needAttention = allScores.filter((s) => s.total < 85).length;
   const productCount = platform === "shopify" ? shopifyProducts.length : etsyListings.length;
 
   const renderComparisonRow = (label: string, current: string, optimized: string) => (
@@ -513,7 +546,16 @@ export default function PhoenixPage() {
                       <>
                         {fix.title && renderComparisonRow("Title", shopifyProducts.find((p) => p.id === id)?.title || "", fix.title)}
                         {fix.body_html && renderComparisonRow("Description", (shopifyProducts.find((p) => p.id === id)?.body_html || "").replace(/<[^>]*>/g, "").slice(0, 80) + "...", fix.body_html.replace(/<[^>]*>/g, "").slice(0, 80) + "...")}
-                        {fix.tags && renderComparisonRow("Tags", shopifyProducts.find((p) => p.id === id)?.tags || "", typeof fix.tags === "string" ? fix.tags : fix.tags.join(", "))}
+                        {fix.tags && renderComparisonRow(
+                          "Tags",
+                          (() => {
+                            const tags = shopifyProducts.find((p) => p.id === id)?.tags;
+                            if (typeof tags === "string") return tags;
+                            if (Array.isArray(tags)) return tags.join(", ");
+                            return "";
+                          })(),
+                          typeof fix.tags === "string" ? fix.tags : fix.tags.join(", ")
+                        )}
                         {fix.product_type && renderComparisonRow("Type", shopifyProducts.find((p) => p.id === id)?.product_type || "", fix.product_type)}
                         {fix.seo_title && renderComparisonRow("SEO Title", "", fix.seo_title)}
                         {fix.seo_description && renderComparisonRow("SEO Desc", "", fix.seo_description)}
@@ -540,7 +582,11 @@ export default function PhoenixPage() {
                       <>
                         {fix.title && renderComparisonRow("Title", etsyListings.find((l) => l.listing_id === id)?.title || "", fix.title)}
                         {fix.description && renderComparisonRow("Description", (etsyListings.find((l) => l.listing_id === id)?.description || "").slice(0, 80) + "...", fix.description.slice(0, 80) + "...")}
-                        {fix.tags && renderComparisonRow("Tags", (etsyListings.find((l) => l.listing_id === id)?.tags || []).join(", "), Array.isArray(fix.tags) ? fix.tags.join(", ") : fix.tags)}
+                        {fix.tags && renderComparisonRow(
+                          "Tags",
+                          (etsyListings.find((l) => l.listing_id === id)?.tags || []).join(", "),
+                          Array.isArray(fix.tags) ? fix.tags.join(", ") : fix.tags
+                        )}
                         {fix.materials && renderComparisonRow("Materials", (etsyListings.find((l) => l.listing_id === id)?.materials || []).join(", "), fix.materials.join(", "))}
                       </>
                     )}
@@ -783,7 +829,7 @@ export default function PhoenixPage() {
                 <CardContent className="space-y-2">
                   {platform === "shopify" && [...shopifyProducts]
                     .filter((p) => scoreFilter === null || (shopifyScores.get(p.id)?.total ?? 100) < scoreFilter)
-                    .sort((a, b) => (shopifyScores.get(a.id)?.total ?? 100) - (shopifyScores.get(b.id)?.total ?? 100))
+                    .sort((a, b) => (shopifyScores.get(b.id)?.total ?? 100) - (shopifyScores.get(a.id)?.total ?? 100))
                                         .sort((a, b) => (shopifyScores.get(b.id)?.total ?? 100) - (shopifyScores.get(a.id)?.total ?? 100))
                     .map((p) => {
                     const score = shopifyScores.get(p.id);
@@ -792,7 +838,7 @@ export default function PhoenixPage() {
                   })}
                   {platform === "etsy" && [...etsyListings]
                     .filter((l) => scoreFilter === null || (etsyScores.get(l.listing_id)?.total ?? 100) < scoreFilter)
-                    .sort((a, b) => (etsyScores.get(a.listing_id)?.total ?? 100) - (etsyScores.get(b.listing_id)?.total ?? 100))
+                    .sort((a, b) => (etsyScores.get(b.listing_id)?.total ?? 100) - (etsyScores.get(a.listing_id)?.total ?? 100))
                                         .sort((a, b) => (etsyScores.get(b.listing_id)?.total ?? 100) - (etsyScores.get(a.listing_id)?.total ?? 100))
                     .map((l) => {
                     const score = etsyScores.get(l.listing_id);
