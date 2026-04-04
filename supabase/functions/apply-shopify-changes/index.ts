@@ -67,6 +67,7 @@ serve(async (req) => {
 
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
+    const shopLabel: string = connection.shop_name || connection.shop_domain || "";
 
     // Build update payload
     const updateBody: Record<string, unknown> = {};
@@ -144,9 +145,32 @@ serve(async (req) => {
       await upsertMetafield("custom", "faq", faqValue, "json");
     }
 
-    // Update image alt text if provided
+    // Update image alt text — prefer explicit imageAltEdits map, fall back to optimizedData.image_alts JSON string
+    let resolvedAltEdits: Record<string, string> | null = null;
     if (imageAltEdits && typeof imageAltEdits === "object") {
-      for (const [imageId, altText] of Object.entries(imageAltEdits)) {
+      resolvedAltEdits = imageAltEdits as Record<string, string>;
+    } else if (optimizedData.image_alts && typeof optimizedData.image_alts === "string") {
+      try {
+        const parsed: { image_id: number; alt: string }[] = JSON.parse(optimizedData.image_alts);
+        if (Array.isArray(parsed)) {
+          resolvedAltEdits = {};
+          for (const entry of parsed) {
+            if (typeof entry.image_id === "number" && entry.alt) {
+              resolvedAltEdits[String(entry.image_id)] = entry.alt;
+            }
+          }
+        }
+      } catch { /* ignore malformed image_alts */ }
+    }
+    if (resolvedAltEdits) {
+      for (const [imageId, altText] of Object.entries(resolvedAltEdits)) {
+        if (!altText) continue;
+        // Brand the alt to the current store so Google Merchant sees consistent identity
+        const brandedAlt = shopLabel && !altText.includes(shopLabel)
+          ? `${altText.split("|")[0].trimEnd()} | ${shopLabel}`
+          : altText;
+        // Enforce Shopify's 512-char image alt limit (Google recommends under 125)
+        const finalAlt = brandedAlt.slice(0, 512);
         await fetch(
           `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/images/${imageId}.json`,
           {
@@ -155,7 +179,7 @@ serve(async (req) => {
               "X-Shopify-Access-Token": accessToken,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ image: { id: Number(imageId), alt: altText } }),
+            body: JSON.stringify({ image: { id: Number(imageId), alt: finalAlt } }),
           }
         );
       }

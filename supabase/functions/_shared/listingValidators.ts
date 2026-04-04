@@ -68,6 +68,7 @@ export interface ShopifyProductLike {
   vendor?: string;
   tags?: string;
   variants?: ShopifyVariantLike[];
+  images?: { id: number; src?: string; alt?: string | null; position?: number }[];
   metafields_global_title_tag?: string;
   metafields_global_description_tag?: string;
 }
@@ -83,6 +84,7 @@ export interface ShopifySuggestionShape {
   url_handle?: string;
   faq_json?: string;
   collections_suggestion?: string;
+  image_alts?: string;
   reasoning?: string;
 }
 
@@ -493,6 +495,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     url_handle: cleanHandle,
     faq_json: raw.faq_json || "",
     collections_suggestion: sanitizePlainText(raw.collections_suggestion || "", 300),
+    image_alts: raw.image_alts || "",
     reasoning: appendValidationNotes(raw.reasoning, notes),
   };
 }

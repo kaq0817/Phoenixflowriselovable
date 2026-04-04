@@ -43,6 +43,7 @@ interface ShopifySuggestions {
   url_handle?: string;
   faq_json?: string;
   collections_suggestion?: string;
+  image_alts?: string;
   reasoning: string;
 }
 
@@ -299,6 +300,22 @@ export default function OptimizerPage() {
         throw error;
       }
       setShopifySuggestions(data.suggestions);
+      if (data.suggestions?.image_alts) {
+        try {
+          const aiAlts: { image_id: number; alt: string }[] = JSON.parse(data.suggestions.image_alts);
+          if (Array.isArray(aiAlts)) {
+            setImageAltEdits(prev => {
+              const updated = { ...prev };
+              for (const entry of aiAlts) {
+                if (typeof entry.image_id === "number" && entry.alt) {
+                  updated[entry.image_id] = entry.alt;
+                }
+              }
+              return updated;
+            });
+          }
+        } catch { /* ignore parse errors */ }
+      }
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
       setExpandedSection("title");
     } catch (err: unknown) {

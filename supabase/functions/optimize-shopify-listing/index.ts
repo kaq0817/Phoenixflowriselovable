@@ -92,6 +92,8 @@ serve(async (req) => {
     }
 
     // Usage gating (50/month)
+    let storeName = "";
+
     if (connectionId) {
       const supabaseAdmin = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -101,7 +103,7 @@ serve(async (req) => {
 
       const { data: conn, error: connErr } = await supabaseAdmin
         .from("store_connections")
-        .select("id, optimizer_runs, optimizer_period_start")
+        .select("id, optimizer_runs, optimizer_period_start, shop_name, shop_domain")
         .eq("id", connectionId)
         .eq("user_id", userData.user.id)
         .single();
@@ -118,6 +120,7 @@ serve(async (req) => {
         } else {
           await supabaseAdmin.from("store_connections").update({ optimizer_runs: conn.optimizer_runs + 1 }).eq("id", connectionId);
         }
+        storeName = conn.shop_name || conn.shop_domain || "";
       }
     }
 
@@ -126,17 +129,23 @@ serve(async (req) => {
       `${v.title || "Default"} - $${v.price || "0.00"} (${v.inventory_quantity || 0} in stock)`,
     ).join("\n");
 
+    const productImages = product.images || [];
+    const imageInfo = productImages.length > 0
+      ? `\nImages (${productImages.length}):\n${productImages.map((img, i) => `Image ${i + 1} (id: ${img.id}, position: ${img.position ?? i + 1}): current_alt="${img.alt || "none"}"`).join("\n")}`
+      : "";
+
     const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
 SHOPIFY SEO RULES:
 - TITLE: Descriptor-first product name only. Under 70 chars. No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
-- SEO TITLE: Must be under 60 chars. Append "| Phoenix Rise" only if the result stays at or under 60 chars. Never use "Iron Phoenix GHG" anywhere.
+- SEO TITLE: Must be under 60 chars. ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff.
 - DESCRIPTION (body_html): H3 headings (Features, Benefits, Specs). Exactly one bullet list (3-5 items). HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
 - TAGS: Think like a Google Shopping shopper searching for THIS SPECIFIC product. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then use real buyer-intent search queries for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). Generic category tags like "coffee cup", "travel mug", "shirt" alone will land on page 3000 — use THEMED niche terms. PRESERVE the existing specific tags. Upgrade generic ones with the product's actual theme. Single-word niche tags (e.g. "Tumbler", "8-bit", "Zombie", "Gaming") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Combined total string must be 250 chars or fewer.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
+- IMAGE ALT TEXT: For every image listed in the product data, write descriptive SEO-friendly alt text. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); Image 1 = full clean product name + primary attribute; Images 2+ = angle, detail, or context suffix before the pipe (e.g. "Block World Pixelated Travel Mug - Handle Detail | Phoenix Rise"); NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
 
 GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
 - APPAREL TITLES MUST include color and size range (e.g. "Black XS-4XL").
@@ -152,7 +161,7 @@ Type: ${product.product_type || ""}
 Vendor: ${product.vendor || ""}
 Tags: ${product.tags || ""}
 Variants:
-${variantInfo}
+${variantInfo}${imageInfo}
 
 Current SEO Title: ${product.metafields_global_title_tag || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}
@@ -186,8 +195,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
                       variant_suggestions: { type: "string" },
                       url_handle: { type: "string" },
                       faq_json: { type: "string" },
-                      collections_suggestion: { type: "string" },
-                      reasoning: { type: "string" },
+                      collections_suggestion: { type: "string" },                        image_alts: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"alt\": \"<text>\"}] — one entry per product image, max 125 chars per alt" },                      reasoning: { type: "string" },
                     },
                     required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "url_handle", "faq_json", "reasoning"],
                   }

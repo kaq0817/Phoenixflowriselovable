@@ -118,17 +118,6 @@ const SAFE_EXTERNAL_DOMAINS = new Set([
   "cdn.shopify.com",
   "fonts.shopifycdn.com",
   "shop.app",
-  "ourphoenixrise.com",
-  "gohardgaming.com",
-  "www.gohardgaming.com",
-  "ironphoenix.store",
-  "www.ironphoenix.store",
-  "shadowseekers-forge.creator-spring.com",
-  "www.shadowseekers-forge.creator-spring.com",
-  "ironphoenixghg.store",
-  "pixelchicbotreasures.etsy.com",
-  "ironphoenixghg.etsy.com",
-  "gohardgamingdiscord.printify.me",
   "googletagmanager.com",
   "www.googletagmanager.com",
   "tagmanager.google.com",
@@ -646,13 +635,18 @@ function detectContentRisks(
       continue;
     }
 
-    if (/(iron phoenix|go hard gaming|ghg|etsy)/i.test(lowered) && currentShopLabel && !lowered.includes(currentShopLabel)) {
+    if (
+      currentShopLabel &&
+      currentShopLabel.length > 3 &&
+      !lowered.includes(currentShopLabel) &&
+      /\b(store|shop|boutique|co\.?|llc|inc|corp)\b/i.test(lowered)
+    ) {
       risks.push({
         title: title || handle || "Untitled article",
         handle,
         blogTitle,
         severity: "warning",
-        reason: "This article appears to use older or mismatched store identity language.",
+        reason: "This article appears to reference a different store identity.",
         recommendation: "Normalize brand naming, domain references, and calls to action to the active store identity.",
       });
     }
@@ -690,31 +684,9 @@ function evaluateSupportSilo(input: {
   supportLocation: string;
   supportNumber: string;
 }): ThemeAnalysis["supportSiloStatus"] {
-  const normalizedStore = input.storeLabel.toLowerCase();
-  const expectedStoreMarker = normalizedStore.includes("saratoga")
-    ? "Saratoga"
-    : normalizedStore.includes("clifton")
-      ? "Clifton Park"
-      : null;
-
-  if (!expectedStoreMarker) {
-    return {
-      expectedStoreMarker: null,
-      matchesLocation: true,
-      matchesPhoneContext: true,
-    };
-  }
-
-  const marker = expectedStoreMarker.toLowerCase();
-  const normalizedSupport = input.supportLocation.toLowerCase();
-  const saratogaAliases = ["saratoga", "saratoga county", "ballston spa"];
-  const matchesSaratoga = expectedStoreMarker === "Saratoga"
-    ? saratogaAliases.some((alias) => normalizedSupport.includes(alias))
-    : false;
-
   return {
-    expectedStoreMarker,
-    matchesLocation: matchesSaratoga || normalizedSupport.includes(marker),
+    expectedStoreMarker: null,
+    matchesLocation: input.supportLocation.trim().length > 0,
     matchesPhoneContext: input.supportNumber.trim().length > 0,
   };
 }
@@ -899,9 +871,20 @@ function normalizeWhitespace(value: string): string {
 
 function normalizeState(state: string | undefined): string {
   const value = (state || "").trim();
-  if (!value) return "Wyoming";
-  if (value.toUpperCase() === "WY") return "Wyoming";
-  return value;
+  if (!value) return value;
+  const stateMap: Record<string, string> = {
+    AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+    CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+    HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+    KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+    MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+    MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+    NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+    OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+    SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+    VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  };
+  return stateMap[value.toUpperCase()] || value;
 }
 
 function normalizeDomain(value: string): string {
