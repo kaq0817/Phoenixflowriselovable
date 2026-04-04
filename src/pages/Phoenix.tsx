@@ -272,7 +272,10 @@ export default function PhoenixPage() {
           const { data: chData } = await supabase.functions.invoke("fetch-shopify-channels", {
             body: { connectionId: selectedShopifyConnectionId || undefined },
           });
-          setAvailableChannels(chData?.publications || []);
+          const IGNORED = ["google", "facebook", "instagram"];
+          setAvailableChannels((chData?.publications || []).filter((ch: { id: number; name: string }) =>
+            !IGNORED.some((term) => ch.name.toLowerCase().includes(term))
+          ));
           setSelectedChannelIds(new Set());
         } catch { /* non-critical */ } finally {
           setChannelsLoading(false);

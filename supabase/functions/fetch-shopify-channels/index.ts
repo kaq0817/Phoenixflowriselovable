@@ -60,22 +60,45 @@ serve(async (req) => {
 
     const { shop_domain: shop, access_token: accessToken } = connection;
 
-    // 1. Fetch all available publications (sales channels)
-    const pubRes = await fetch(
-      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/publications.json`,
-      { headers: { "X-Shopify-Access-Token": accessToken } }
+    // Fetch all available publications (sales channels) via GraphQL
+    const gqlRes = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `{
+            publications(first: 20) {
+              edges {
+                node {
+                  id
+                  name
+                }
+              }
+            }
+          }`,
+        }),
+      }
     );
 
-    if (!pubRes.ok) {
-      const errText = await pubRes.text();
+    if (!gqlRes.ok) {
+      const errText = await gqlRes.text();
       console.error("Shopify publications fetch failed:", errText);
       return new Response(JSON.stringify({ error: "Failed to fetch publications from Shopify", detail: errText }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const pubData = await pubRes.json();
-    const publications: { id: number; name: string }[] = pubData.publications || [];
+    const gqlData = await gqlRes.json();
+    const publications: { id: number; name: string }[] = (gqlData.data?.publications?.edges || []).map(
+      (edge: { node: { id: string; name: string } }) => ({
+        id: parseInt(edge.node.id.replace("gid://shopify/Publication/", ""), 10),
+        name: edge.node.name,
+      })
+    );
 
     // 2. If productId provided, fetch which channels the product is published to
     let publishedPublicationIds: number[] = [];
