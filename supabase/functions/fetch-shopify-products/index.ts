@@ -59,7 +59,12 @@ serve(async (req: Request) => {
       });
     }
 
-    const { limit = 10, connectionId } = await req.json().catch(() => ({}));
+    const {
+      limit = 10,
+      connectionId,
+      scanPage = 30,
+      pagesToScan = 1,
+    } = await req.json().catch(() => ({}));
 
     if (!connectionId) {
       return new Response(JSON.stringify({ error: "Missing connectionId" }), {
@@ -85,22 +90,27 @@ serve(async (req: Request) => {
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
 
-    // THE DEEP SCAN: Pulling 250 items to surface the real trash
-    // DEEP SCAN: always evaluate up to 500 products (2 Shopify pages at 250 each)
+    // Focused scan: jump to a target Shopify page and score only a small page window
     const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
-    const scanLimit = 250;
-    const maxProductsToScan = 500;
-    const maxPagesToScan = Math.ceil(maxProductsToScan / scanLimit);
+    const oldestFirstOrder = "created_at+asc";
+    const scanLimit = 10;
+    const targetPage = Math.max(1, Number(scanPage) || 30);
+    const pagesWindow = Math.max(1, Math.min(Number(pagesToScan) || 1, 5));
     const requestedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
     const foundTrash: ShopifyProduct[] = [];
     let nextPageInfo: string | null = null;
-    let pagesScanned = 0;
-    let productsScanned = 0;
+    let pageNumber = 0;
+    let scoredPages = 0;
 
-    while (productsScanned < maxProductsToScan && pagesScanned < maxPagesToScan) {
-      pagesScanned += 1;
-      let apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&fields=${encodeURIComponent(fields)}`;
-      if (nextPageInfo) apiUrl += `&page_info=${nextPageInfo}`;
+    while (scoredPages < pagesWindow) {
+      pageNumber += 1;
+      let apiUrl: string;
+      if (nextPageInfo) {
+        // Cursor requests should only carry limit + page_info.
+        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&page_info=${encodeURIComponent(nextPageInfo)}`;
+      } else {
+        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&order=${oldestFirstOrder}&fields=${encodeURIComponent(fields)}`;
+      }
 
       const response = await fetch(apiUrl, {
         headers: { "X-Shopify-Access-Token": accessToken },
@@ -113,33 +123,49 @@ serve(async (req: Request) => {
       const data = await response.json();
       const batch: ShopifyProduct[] = data.products || [];
       if (batch.length === 0) break;
-      productsScanned += batch.length;
+
+      const linkHeader = response.headers.get("Link");
+      const nextMatch = linkHeader?.match(/<[^>]*[?&]page_info=([^&>]*)[^>]*>;\s*rel="next"/i);
+      nextPageInfo = nextMatch ? decodeURIComponent(nextMatch[1]) : null;
+
+      // Skip early pages and only score from the requested page onward.
+      if (pageNumber < targetPage) {
+        if (!nextPageInfo) break;
+        continue;
+      }
+
+      scoredPages += 1;
 
       const scoredProducts = batch.map((p) => {
         let priority = 0;
         const title = p.title || "";
         const body = stripHtml(p.body_html);
         const tagCount = normalizeTags(p.tags).length;
+        const hasImages = Array.isArray(p.images) && p.images.length > 0;
         const hasMissingAlts = (p.images || []).some((img) => !img?.alt || img.alt.trim() === "");
+        const normalizedAlts = (p.images || [])
+          .map((img) => `${img?.alt || ""}`.trim().toLowerCase())
+          .filter(Boolean);
+        const hasDuplicateAlts = normalizedAlts.length > 1 && new Set(normalizedAlts).size !== normalizedAlts.length;
 
         if (/iron\s*phoenix\s*ghg/i.test(title)) priority += 50; // Critical Identity Risk
+        if (/\b(inc|llc|ghg\s*customs?)\b/i.test(title)) priority += 35; // Identity mismatch terms in title
         if ((p.status || "").toLowerCase() === "draft") priority += 30; // Hidden item
-        if (tagCount < 5) priority += 25; // Missing tags
+        if (tagCount < 5) priority += 25; // Missing/empty tags
         if (body.length < 150) priority += 20; // Thin content
+        if (!hasImages) priority += 20; // Missing product image
         if (hasMissingAlts) priority += 15; // Missing image alts
+        if (hasDuplicateAlts) priority += 15; // Duplicate image alts
         
         return { ...p, trashPriority: priority };
       });
 
       for (const product of scoredProducts.sort((a, b) => (b.trashPriority || 0) - (a.trashPriority || 0))) {
-        if ((product.trashPriority || 0) > 0) {
+        if ((product.trashPriority || 0) > 0 && (product.trashPriority || 0) <= 85) {
           foundTrash.push(product);
         }
       }
 
-      const linkHeader = response.headers.get("Link");
-      const nextMatch = linkHeader?.match(/<[^>]*page_info=([^&>]*)>;	s*rel="next"/);
-      nextPageInfo = nextMatch ? nextMatch[1] : null;
       if (!nextPageInfo) break;
     }
 

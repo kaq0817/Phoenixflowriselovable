@@ -428,12 +428,12 @@ export default function PhoenixPage() {
     if (platform === "shopify") {
       shopifyProducts.forEach((p) => {
         const score = shopifyScores.get(p.id);
-        if (score && score.total < 85) ids.push(p.id);
+        if (score && score.total <= 85) ids.push(p.id);
       });
     } else {
       etsyListings.forEach((l) => {
         const score = etsyScores.get(l.listing_id);
-        if (score && score.total < 85) ids.push(l.listing_id);
+        if (score && score.total <= 85) ids.push(l.listing_id);
       });
     }
     for (const id of ids) {
@@ -449,7 +449,7 @@ export default function PhoenixPage() {
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
   const allScores = Array.from(platform === "shopify" ? shopifyScores.values() : etsyScores.values());
   const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b.total, 0) / allScores.length) : 0;
-  const needAttention = allScores.filter((s) => s.total < 85).length;
+  const needAttention = allScores.filter((s) => s.total <= 85).length;
   const productCount = platform === "shopify" ? shopifyProducts.length : etsyListings.length;
 
   const renderComparisonRow = (label: string, current: string, optimized: string) => (
@@ -750,7 +750,7 @@ export default function PhoenixPage() {
               {/* Fix All button */}
               {needAttention > 0 && (
                 <Button onClick={handleFixAll} className="w-full gradient-phoenix text-primary-foreground" size="lg">
-                  <Wrench className="h-4 w-4 mr-2" /> Generate AI Fixes for All {needAttention > 0 ? `${allScores.filter(s => s.total < 85).length} Products` : "Products"}
+                  <Wrench className="h-4 w-4 mr-2" /> Generate AI Fixes for All {needAttention > 0 ? `${allScores.filter(s => s.total <= 85).length} Products` : "Products"}
                 </Button>
               )}
 

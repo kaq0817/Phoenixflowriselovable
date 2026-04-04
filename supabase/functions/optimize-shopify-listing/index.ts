@@ -58,6 +58,20 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
   };
 }
 
+function buildFallbackImageAlts(product: ShopifyProductLike, storeName: string): string {
+  const safeTitle = (product.title || "Product").trim() || "Product";
+  const safeStore = (storeName || "store").trim() || "store";
+  const entries = (product.images || [])
+    .filter((img) => typeof img.id === "number")
+    .map((img, idx) => {
+      const detail = idx === 0 ? "Primary View" : `Detail ${idx + 1}`;
+      const alt = `${safeTitle} - ${detail} | ${safeStore}`.slice(0, 125).trim();
+      return { image_id: img.id, alt };
+    });
+
+  return JSON.stringify(entries);
+}
+
 function domainToStoreName(domain: string | null | undefined): string {
   if (!domain) return "";
   // Strip .myshopify.com or any TLD, then title-case the slug
@@ -242,9 +256,13 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
       }
     }
 
-    if (!suggestions) {
-      suggestions = normalizeShopifySuggestions(product, buildFallbackSuggestions(product));
-    }
+      if (!suggestions) {
+        suggestions = normalizeShopifySuggestions(product, buildFallbackSuggestions(product));
+      }
+
+      if ((!suggestions.image_alts || !suggestions.image_alts.trim()) && (product.images || []).length > 0) {
+        suggestions.image_alts = buildFallbackImageAlts(product, storeName);
+      }
 
     return new Response(JSON.stringify({ suggestions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

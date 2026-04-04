@@ -27,10 +27,10 @@ interface ShopifyProduct {
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; option3?: string }[];
   images: { id: number; src: string; alt: string | null; position: number }[];
   handle: string;
-// Copyright (c) 2026 [Your Name or Company]
+// Copyright (c) 2026 Go Hard Gaming Discord LLC. 
 // All rights reserved.
 // This software and its source code are proprietary and confidential. Unauthorized copying, distribution, modification, or use of this code, in whole or in part, is strictly prohibited without express written permission from the copyright holder.
-// For licensing inquiries, contact: [your contact email]
+// For licensing inquiries, contact: karen.brandmeyer@ironphoenixflow.com
 }
 
 interface ShopifySuggestions {
@@ -78,6 +78,38 @@ interface StoreConnectionOption {
   created_at: string;
 }
 
+function slugifyForFilename(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .trim();
+}
+
+function buildUniqueAltDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
+  const safeTitle = (product.title || "Product").trim() || "Product";
+  const safeStore = (storeLabel || "store").trim() || "store";
+  const drafts: Record<number, string> = {};
+  for (let i = 0; i < (product.images || []).length; i += 1) {
+    const img = product.images[i];
+    const detail = i === 0 ? "Primary View" : `Detail ${i + 1}`;
+    drafts[img.id] = `${safeTitle} - ${detail} | ${safeStore}`.slice(0, 512);
+  }
+  return drafts;
+}
+
+function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
+  const productSlug = slugifyForFilename(product.title || "product") || "product";
+  const storeSlug = slugifyForFilename(storeLabel || "store") || "store";
+  const drafts: Record<number, string> = {};
+  for (let i = 0; i < (product.images || []).length; i += 1) {
+    const img = product.images[i];
+    const detail = i === 0 ? "primary-view" : `detail-${i + 1}`;
+    drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.jpg`;
+  }
+  return drafts;
+}
+
 function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
   return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
 }
@@ -117,6 +149,7 @@ export default function OptimizerPage() {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [altTextExpanded, setAltTextExpanded] = useState(false);
   const [imageAltEdits, setImageAltEdits] = useState<Record<number, string>>({});
+  const [imageFilenameDrafts, setImageFilenameDrafts] = useState<Record<number, string>>({});
   const [savingAltText, setSavingAltText] = useState(false);
   const [altsAIFilled, setAltsAIFilled] = useState(0);
 
@@ -286,6 +319,9 @@ export default function OptimizerPage() {
       initialAlts[img.id] = img.alt || "";
     }
     setImageAltEdits(initialAlts);
+    const activeConnection = storeConnections.find((c) => c.id === selectedShopifyConnectionId);
+    const storeLabel = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
+    setImageFilenameDrafts(buildUniqueFilenameDrafts(product, storeLabel));
     setAltTextExpanded(true);
     fetchSalesChannels(product.id, selectedShopifyConnectionId);
     try {
@@ -392,6 +428,8 @@ export default function OptimizerPage() {
   const noConnections = !connections.shopify && !connections.etsy;
   const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
+  const selectedShopifyConnection = storeConnections.find((c) => c.id === selectedShopifyConnectionId);
+  const selectedStoreLabel = selectedShopifyConnection?.shop_name || selectedShopifyConnection?.shop_domain || "store";
 
   // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Product image component ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   const ProductImage = ({ src, alt, size = "md" }: { src?: string; alt: string; size?: "sm" | "md" | "lg" }) => {
@@ -573,6 +611,32 @@ export default function OptimizerPage() {
                       </button>
                       {altTextExpanded && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                if (!selectedProduct) return;
+                                setImageAltEdits(buildUniqueAltDrafts(selectedProduct, selectedStoreLabel));
+                                setImageFilenameDrafts(buildUniqueFilenameDrafts(selectedProduct, selectedStoreLabel));
+                                setAltsAIFilled(0);
+                              }}
+                            >
+                              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate Alt + Photo Names
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                const rows = (selectedProduct?.images || []).map((img, i) => `Image ${i + 1}: ${imageFilenameDrafts[img.id] || ""}`);
+                                await navigator.clipboard.writeText(rows.join("\n"));
+                                toast({ title: "Photo names copied", description: "Generated image filenames are on your clipboard." });
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Photo Names
+                            </Button>
+                          </div>
+
                           {altsAIFilled > 0 && (
                             <div className="flex items-center gap-2 rounded-md bg-primary/10 border border-primary/20 px-3 py-2 text-sm text-primary">
                               <Sparkles className="h-3.5 w-3.5 shrink-0" />
@@ -593,6 +657,12 @@ export default function OptimizerPage() {
                                   maxLength={512}
                                 />
                                 <p className="text-[10px] text-muted-foreground text-right">{(imageAltEdits[img.id] ?? (img.alt || "")).length}/512</p>
+                                <input
+                                  type="text"
+                                  readOnly
+                                  className="w-full h-8 rounded-md border border-input bg-muted/30 px-3 text-xs text-muted-foreground"
+                                  value={imageFilenameDrafts[img.id] || ""}
+                                />
                               </div>
                             </div>
                           ))}

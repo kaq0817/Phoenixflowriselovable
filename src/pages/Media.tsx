@@ -4,11 +4,13 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Copy,
   Image as ImageIcon,
   Images,
   Loader2,
   RefreshCw,
   Save,
+  Sparkles,
   Store,
   TriangleAlert,
   Type,
@@ -63,6 +65,58 @@ function formatAverageImageCount(items: MediaRecord[]) {
   return (total / items.length).toFixed(1);
 }
 
+function buildUniqueAltDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
+  const fallbackStore = storeLabel.trim() || "Store";
+  const titleBase = (product.title || "Product").trim() || "Product";
+
+  const normalizedCounts = new Map<string, number>();
+  for (const img of product.images || []) {
+    const key = (img.alt || "").trim().toLowerCase();
+    if (!key) continue;
+    normalizedCounts.set(key, (normalizedCounts.get(key) || 0) + 1);
+  }
+
+  const drafts: Record<number, string> = {};
+  for (let i = 0; i < (product.images || []).length; i += 1) {
+    const img = product.images[i];
+    const rawAlt = (img.alt || "").trim();
+    const isDuplicate = rawAlt ? (normalizedCounts.get(rawAlt.toLowerCase()) || 0) > 1 : false;
+    const hasStore = rawAlt.includes("|") && rawAlt.split("|").some((part) => part.trim().toLowerCase() === fallbackStore.toLowerCase());
+
+    if (rawAlt && !isDuplicate && hasStore) {
+      drafts[img.id] = rawAlt.slice(0, 512);
+      continue;
+    }
+
+    const detail = i === 0 ? "Primary View" : `Detail ${i + 1}`;
+    drafts[img.id] = `${titleBase} - ${detail} | ${fallbackStore}`.slice(0, 512);
+  }
+
+  return drafts;
+}
+
+function slugifyForFilename(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .trim();
+}
+
+function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
+  const productSlug = slugifyForFilename(product.title || "product") || "product";
+  const storeSlug = slugifyForFilename(storeLabel || "store") || "store";
+  const drafts: Record<number, string> = {};
+
+  for (let i = 0; i < (product.images || []).length; i += 1) {
+    const img = product.images[i];
+    const detail = i === 0 ? "primary-view" : `detail-${i + 1}`;
+    drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.jpg`;
+  }
+
+  return drafts;
+}
+
 export default function MediaPage() {
   const { session } = useAuth();
   const { toast } = useToast();
@@ -75,6 +129,7 @@ export default function MediaPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedAlt, setExpandedAlt] = useState<number | null>(null);
   const [altEdits, setAltEdits] = useState<Record<number, Record<number, string>>>({});
+  const [filenameDrafts, setFilenameDrafts] = useState<Record<number, Record<number, string>>>({});
   const [savingAlt, setSavingAlt] = useState<number | null>(null);
 
   useEffect(() => {
@@ -251,6 +306,13 @@ export default function MediaPage() {
       icon: CheckCircle2,
     },
   ];
+
+  const selectedConnection = useMemo(
+    () => connections.find((connection) => connection.id === selectedConnectionId) || null,
+    [connections, selectedConnectionId],
+  );
+
+  const selectedStoreLabel = selectedConnection ? getStoreLabel(selectedConnection) : "";
 
   if (loading) {
     return (
@@ -486,13 +548,34 @@ export default function MediaPage() {
                       if (!product || product.images.length === 0) return null;
                       const isExpanded = expandedAlt === item.id;
                       const edits = altEdits[item.id] || {};
+                      const filenames = filenameDrafts[item.id] || {};
                       const isDirty = Object.keys(edits).length > 0;
                       const isSaving = savingAlt === item.id;
                       return (
                         <div className="border-t border-border/20 pt-3 mt-1 space-y-2">
                           <button
                             className="flex items-center gap-2 text-xs text-primary font-medium hover:underline"
-                            onClick={() => setExpandedAlt(isExpanded ? null : item.id)}
+                            onClick={() => {
+                              if (isExpanded) {
+                                setExpandedAlt(null);
+                                return;
+                              }
+                              setExpandedAlt(item.id);
+                              setAltEdits((prev) => {
+                                if (prev[item.id] && Object.keys(prev[item.id]).length > 0) return prev;
+                                return {
+                                  ...prev,
+                                  [item.id]: buildUniqueAltDrafts(product, selectedStoreLabel),
+                                };
+                              });
+                              setFilenameDrafts((prev) => {
+                                if (prev[item.id] && Object.keys(prev[item.id]).length > 0) return prev;
+                                return {
+                                  ...prev,
+                                  [item.id]: buildUniqueFilenameDrafts(product, selectedStoreLabel),
+                                };
+                              });
+                            }}
                           >
                             <ImageIcon className="h-3.5 w-3.5" />
                             Edit Alt Text ({product.images.length} image{product.images.length !== 1 ? "s" : ""})
@@ -506,6 +589,40 @@ export default function MediaPage() {
                                 exit={{ height: 0, opacity: 0 }}
                                 className="space-y-3 overflow-hidden"
                               >
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => {
+                                      setAltEdits((prev) => ({
+                                        ...prev,
+                                        [item.id]: buildUniqueAltDrafts(product, selectedStoreLabel),
+                                      }));
+                                      setFilenameDrafts((prev) => ({
+                                        ...prev,
+                                        [item.id]: buildUniqueFilenameDrafts(product, selectedStoreLabel),
+                                      }));
+                                    }}
+                                  >
+                                    <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate Alt + Photo Names
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={async () => {
+                                      const nameText = product.images
+                                        .map((img, idx) => `Image ${idx + 1}: ${filenames[img.id] || ""}`)
+                                        .join("\n");
+                                      await navigator.clipboard.writeText(nameText);
+                                      toast({ title: "Photo names copied", description: "Generated image filenames are on your clipboard." });
+                                    }}
+                                  >
+                                    <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Photo Names
+                                  </Button>
+                                </div>
+
                                 {product.images.map((img, i) => (
                                   <div key={img.id} className="flex gap-3 items-start">
                                     <img src={img.src} alt={img.alt || ""} className="w-14 h-14 rounded-md object-cover border border-border/30 shrink-0" />
@@ -525,6 +642,12 @@ export default function MediaPage() {
                                         maxLength={512}
                                       />
                                       <p className="text-[10px] text-muted-foreground text-right">{(edits[img.id] ?? (img.alt || "")).length}/512</p>
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        className="w-full h-8 rounded-md border border-input bg-muted/30 px-3 text-xs text-muted-foreground"
+                                        value={filenames[img.id] || ""}
+                                      />
                                     </div>
                                   </div>
                                 ))}

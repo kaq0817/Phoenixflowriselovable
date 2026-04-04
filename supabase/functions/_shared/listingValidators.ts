@@ -503,6 +503,18 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   tagsString = finalHardClean(tagsString);
   const cleanHandle = finalHardClean(url_handle);
 
+  const normalizedImageAlts = typeof raw.image_alts === "string"
+    ? raw.image_alts
+    : Array.isArray(raw.image_alts)
+      ? JSON.stringify(raw.image_alts)
+      : "";
+
+  const normalizedImageFilenames = typeof raw.image_filenames === "string"
+    ? raw.image_filenames
+    : Array.isArray(raw.image_filenames)
+      ? JSON.stringify(raw.image_filenames)
+      : "";
+
   return {
     title,
     body_html,
@@ -514,8 +526,8 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     url_handle: cleanHandle,
     faq_json: raw.faq_json || "",
     collections_suggestion: sanitizePlainText(raw.collections_suggestion || "", 300),
-    image_alts: raw.image_alts || "",
-    image_filenames: raw.image_filenames || "",
+    image_alts: normalizedImageAlts,
+    image_filenames: normalizedImageFilenames,
     reasoning: appendValidationNotes(raw.reasoning, notes),
   };
 }

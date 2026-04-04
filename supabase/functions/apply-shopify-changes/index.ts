@@ -22,6 +22,48 @@ function domainToStoreName(domain: string | null | undefined): string {
     .trim();
 }
 
+function enforceUniqueAltTexts(
+  edits: Record<string, string>,
+  shopLabel: string,
+): Record<string, string> {
+  const entries = Object.entries(edits)
+    .sort(([a], [b]) => Number(a) - Number(b));
+
+  const used = new Set<string>();
+  const unique: Record<string, string> = {};
+
+  for (let i = 0; i < entries.length; i += 1) {
+    const [imageId, inputAlt] = entries[i];
+    const raw = `${inputAlt || ""}`.trim();
+    if (!raw) continue;
+
+    const [leftRaw, rightRaw] = raw.split("|");
+    const left = leftRaw.trim();
+    const right = (rightRaw || "").trim() || shopLabel;
+
+    let candidate = right ? `${left} | ${right}` : left;
+    let normalized = candidate.toLowerCase();
+
+    if (used.has(normalized)) {
+      const detail = i === 0 ? "Primary View" : `Detail ${i + 1}`;
+      candidate = right ? `${left} - ${detail} | ${right}` : `${left} - ${detail}`;
+      normalized = candidate.toLowerCase();
+    }
+
+    let suffix = 2;
+    while (used.has(normalized)) {
+      candidate = right ? `${left} - Detail ${i + 1}-${suffix} | ${right}` : `${left} - Detail ${i + 1}-${suffix}`;
+      normalized = candidate.toLowerCase();
+      suffix += 1;
+    }
+
+    used.add(normalized);
+    unique[imageId] = candidate.slice(0, 512);
+  }
+
+  return unique;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -173,14 +215,9 @@ serve(async (req) => {
       } catch { /* ignore malformed image_alts */ }
     }
     if (resolvedAltEdits) {
-      for (const [imageId, altText] of Object.entries(resolvedAltEdits)) {
+      const uniqueAltEdits = enforceUniqueAltTexts(resolvedAltEdits, shopLabel);
+      for (const [imageId, altText] of Object.entries(uniqueAltEdits)) {
         if (!altText) continue;
-        // Brand the alt to the current store so Google Merchant sees consistent identity
-        const brandedAlt = shopLabel && !altText.includes(shopLabel)
-          ? `${altText.split("|")[0].trimEnd()} | ${shopLabel}`
-          : altText;
-        // Enforce Shopify's 512-char image alt limit (Google recommends under 125)
-        const finalAlt = brandedAlt.slice(0, 512);
         await fetch(
           `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/images/${imageId}.json`,
           {
@@ -189,7 +226,7 @@ serve(async (req) => {
               "X-Shopify-Access-Token": accessToken,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ image: { id: Number(imageId), alt: finalAlt } }),
+            body: JSON.stringify({ image: { id: Number(imageId), alt: altText } }),
           }
         );
       }
@@ -207,7 +244,6 @@ serve(async (req) => {
     });
   }
 });
-
 
 
 
