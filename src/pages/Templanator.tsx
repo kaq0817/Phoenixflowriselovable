@@ -1511,10 +1511,11 @@ export default function Templanator() {
                               </div>
 
                               <div className="space-y-1">
-                                <p className="text-xs font-medium text-muted-foreground">Full Post HTML</p>
+                                <p className="text-xs font-medium text-muted-foreground">Blog Post Content</p>
                                 <Textarea
-                                  className="min-h-[280px] font-mono text-xs"
+                                  className="min-h-[280px] font-sans text-base"
                                   value={article.bodyHtml}
+                                  placeholder="Write your blog post here... (no HTML required)"
                                   onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", event.target.value)}
                                 />
                               </div>
