@@ -2638,7 +2638,7 @@ function buildLocalFindingsExplanation(
   }
 
   if (scan.stats.belowFoldImagesMissingLazy > 0) {
-    lines.push(`- Lazy loading: ${scan.stats.belowFoldImagesMissingLazy} below-the-fold images still need loading=\"lazy\".`);
+    lines.push(`- Lazy loading: ${scan.stats.belowFoldImagesMissingLazy} below-the-fold images still need loading="lazy".`);
   }
 
   const fixablePolicies = scan.policyLinks.filter((link) => link.status === "dead-link-risk");
