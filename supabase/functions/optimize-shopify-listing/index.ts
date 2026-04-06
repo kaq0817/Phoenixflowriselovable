@@ -64,28 +64,44 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
 }
 
 function buildFallbackImageAlts(product: ShopifyProductLike, storeName: string): string {
-  // Remove any promotional, vendor, or generic terms from product name
-  let safeTitle = (product.title || "Product").trim() || "Product";
-  // Remove vendor/brand names (e.g. Iron Phoenix GHG, Our Phoenix Rise)
-  safeTitle = safeTitle.replace(/Iron Phoenix GHG|Our Phoenix Rise/gi, "").replace(/\s{2,}/g, " ").trim();
-  // Remove ALL CAPS, promotional, or generic phrases
-  safeTitle = safeTitle.replace(/(FREE SHIPPING|SALE|NEW|100%|BEST|HOT|DEAL|DISCOUNT|OFFER|PROMO)/gi, "").replace(/\s{2,}/g, " ").trim();
-  // Remove quotes and special chars
-  safeTitle = safeTitle.replace(/["'“”‘’•–—]/g, "").replace(/\s{2,}/g, " ").trim();
-  // Remove trailing/leading hyphens or pipes
-  safeTitle = safeTitle.replace(/^[\-\|\s]+|[\-\|\s]+$/g, "");
-  // Fallback if empty
-  if (!safeTitle) safeTitle = "Product";
-  const safeStore = (storeName || "store").trim() || "store";
+  // 1. Initial cleanup of the title
+  let safeTitle = (product.title || "Product Display").trim() || "Product Display";
+
+  // 2. Remove Internal/Niche Brand references (Scrubbing Iron Phoenix & Phoenix Rise)
+  // We use a clean regex to catch your specific internal niches without breaking the string
+  const internalNiches = /Our Phoenix Rise|Iron Phoenix GHG|Go Hard Gaming/gi;
+  safeTitle = safeTitle.replace(internalNiches, "").replace(/\s{2,}/g, " ").trim();
+
+  // 3. Remove Promotional/GMC-Banned phrases (Standard SEO Compliance)
+  const promoPhrases = /(FREE SHIPPING|SALE|NEW|100%|BEST|HOT|DEAL|DISCOUNT|OFFER|PROMO|GUARANTEED|CHEAP)/gi;
+  safeTitle = safeTitle.replace(promoPhrases, "").replace(/\s{2,}/g, " ").trim();
+
+  // 4. Final Character Sanitize
+  safeTitle = safeTitle.replace(/["'“”‘’•–—|]/g, "").replace(/\s{2,}/g, " ").trim();
+  safeTitle = safeTitle.replace(/^[-|\s]+|[-|\s]+$/g, "");
+
+  // 5. Fallback if the scrubbing left the title empty
+  if (!safeTitle || safeTitle.length < 3) safeTitle = "Product Overview";
+
+  const safeStore = (storeName || "Store").trim();
+
+  // 6. Generate the Alt Text objects
   const entries = (product.images || [])
     .filter((img) => typeof img.id === "number")
     .map((img, idx) => {
-      const detail = idx === 0 ? "Primary View" : `Detail ${idx + 1}`;
-      // Add a compliance-safe alt text, never just the product name
-      const alt = `${safeTitle} ${detail} | ${safeStore}`.replace(/\s{2,}/g, " ").slice(0, 125).trim();
+      const detail = idx === 0 ? "Main Perspective" : `Detailed View ${idx + 1}`;
+      
+      // Constructing the final Alt text: [Product] [View] | [Customer Store Name]
+      // This follows the Phoenix Flow optimization standard for image SEO
+      const alt = `${safeTitle} ${detail} | ${safeStore}`
+        .replace(/\s{2,}/g, " ")
+        .slice(0, 125) // Stay under the 125 character accessibility limit
+        .trim();
+        
       return { image_id: img.id, alt };
     });
 
+  // Note: Ensure this returns the stringified entries if your API expects a string
   return JSON.stringify(entries);
 }
 

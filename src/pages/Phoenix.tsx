@@ -93,51 +93,71 @@ function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const title = (p.title || "").trim();
   const body = (p.body_html || "").toLowerCase();
   const tags = normalizeShopifyTags(p.tags);
+  
+  // Use first variant weight if base weight is missing
   const weight = p.weight || p.variants?.[0]?.weight || 0;
   const imageAlt = p.images?.[0]?.alt?.trim() || "";
   
-  // NEW: Pull SEO Metafields (You may need to ensure these are in your Interface)
   const seoTitle = (p.seo_title || "").trim();
   const seoDesc = (p.seo_description || "").trim();
 
-  // 1. BRAND IDENTITY
-  const hasIdentity = title.includes("Our Phoenix Rise") || title.includes("Iron Phoenix GHG");
-  if (!hasIdentity) issues.push("STYLE_NO_SUFFIX: Title must contain brand identifier");
+  // 1. BRAND & TITLE ARCHITECTURE (GMC Compliance)
+  // Instead of checking for YOUR brand, we check for a Professional Title Structure.
+  // GMC flags titles that are too short or all caps.
+  if (title.length < 20) issues.push("TITLE_TOO_SHORT: Titles should be 20-70 characters for optimal CTR");
+  if (title === title.toUpperCase() && title.length > 10) issues.push("TITLE_ALL_CAPS: GMC risk - avoid excessive capitalization");
 
-  // 2. SEO META CHECKS (The "Scanner" Fix)
-  if (seoTitle.length === 0) issues.push("SEO_MISSING_TITLE: Missing Search Engine Title");
-  if (seoDesc.length < 100) issues.push("SEO_SHORT_DESC: Meta description is missing or too short (<100 chars)");
-  if (seoDesc.length > 160) issues.push("SEO_LONG_DESC: Meta description exceeds 160 chars (will be truncated)");
+  // 2. SEO META CHECKS (The "Search Engine" Visibility)
+  if (!seoTitle) issues.push("SEO_MISSING_TITLE: Missing Search Engine Meta Title");
+  if (seoDesc.length < 100) issues.push("SEO_SHORT_DESC: Meta description too short for rich snippets (<100 chars)");
+  if (seoDesc.length > 160) issues.push("SEO_LONG_DESC: Meta description exceeds 160 chars (will be truncated in search)");
 
-  // 3. IMAGE & ALT TEXT
-  if (imageAlt.length === 0) issues.push("SEO_MISSING_ALT: Primary image missing Alt text");
-  if (imageAlt.toLowerCase() === title.toLowerCase()) issues.push("SEO_LAZY_ALT: Alt text matches title exactly (Low SEO value)");
+  // 3. IMAGE & ACCESSIBILITY (The "Alt Text" Standard)
+  if (!imageAlt) {
+    issues.push("SEO_MISSING_ALT: Primary image missing Alt text (Accessibility Failure)");
+  } else if (imageAlt.toLowerCase() === title.toLowerCase()) {
+    issues.push("SEO_LAZY_ALT: Alt text matches title exactly (Wasted SEO opportunity)");
+  }
 
-  // 4. CONTENT DEPTH
+  // 4. CONTENT DEPTH & TAGGING
   const plainText = body.replace(/<[^>]*>/g, "").trim();
-  if (plainText.length < 50) issues.push("ATTR_MISSING_DESC: Description must be 50+ characters");
-  if (tags.length < 5) issues.push(`SEO_TAG_VOID: Found ${tags.length}/5 required tags`);
-
-  // 5. REGULATORY & SHIPPING
-  if (weight <= 0) issues.push("ATTR_MISSING_WEIGHT: Shipping weight must be > 0");
+  if (plainText.length < 150) issues.push("CONTENT_THIN: Product descriptions under 150 chars risk 'Thin Content' flags");
   
-  const isWellness = ["wellness", "supplement", "soap", "coffee", "ashwagandha", "berberine", "protein", "shake"].some(k => 
+  // Professional stores should have at least 5 descriptive tags for internal search/filtering
+  if (tags.length < 5) issues.push(`SEO_TAG_VOID: Found only ${tags.length}/5 recommended product tags`);
+
+  // 5. REGULATORY, LOGISTICS & SAFETY (The "Phoenix Flow" Specialty)
+  // Shipping weight is a hard requirement for most Google Shopping setups
+  if (weight <= 0) issues.push("ATTR_MISSING_WEIGHT: Missing shipping weight (Required for carrier-calculated rates)");
+  
+  const isWellness = ["wellness", "supplement", "soap", "coffee", "ashwagandha", "berberine", "protein", "shake", "vitality", "fusion"].some(k => 
     title.toLowerCase().includes(k) || tags.some(t => t.toLowerCase().includes(k))
   );
-  const hasRegulatoryData = body.includes("ingredient") || body.includes("supplement facts") || body.includes("nutrition facts");
-  if (isWellness && !hasRegulatoryData) issues.push("ATTR_MISSING_INGREDIENTS: Regulatory risk - missing facts/ingredients");
 
-  // SCORING LOGIC: Switch from Binary (0/100) to Weighted
-  // Each issue takes a 10-15 point bite out of the score.
+  const hasRegulatoryData = body.includes("ingredient") || body.includes("supplement facts") || body.includes("nutrition facts");
+  const hasDisclaimer = body.includes("fda") || body.includes("not intended to diagnose");
+
+  if (isWellness) {
+    if (!hasRegulatoryData) issues.push("COMPLIANCE_MISSING_DATA: Regulatory risk - Missing ingredient or supplement facts");
+    if (!hasDisclaimer) issues.push("COMPLIANCE_MISSING_DISCLAIMER: Missing mandatory FDA legal disclaimer");
+  }
+
+  // SCORING LOGIC: Weighted deduction system
   let calculatedScore = 100;
   if (issues.length > 0) {
-    // Basic math: 100 minus (number of issues * 15), minimum 0.
-    calculatedScore = Math.max(0, 100 - (issues.length * 15));
+    const criticalCount = issues.filter((issue) =>
+      issue.includes("COMPLIANCE") ||
+      issue.includes("ATTR_MISSING_WEIGHT") ||
+      issue.includes("TITLE_ALL_CAPS")
+    ).length;
+    const standardCount = issues.length - criticalCount;
+    const deductions = (criticalCount * 20) + (standardCount * 10);
+    calculatedScore = Math.max(0, 100 - deductions);
   }
 
   return {
     total: calculatedScore,
-    title: hasIdentity && seoTitle.length > 0,
+    title: title.length > 0 && seoTitle.length > 0,
     titleLength: seoTitle.length >= 10 && seoTitle.length <= 70,
     altText: imageAlt.length > 0 && imageAlt !== title,
     description: plainText.length >= 50 && seoDesc.length >= 100,

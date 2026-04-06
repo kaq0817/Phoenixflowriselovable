@@ -16,7 +16,7 @@ export interface AppSupportConfig {
 
 export const appSupportConfig: AppSupportConfig = {
   purpose: "Help Phoenix Flow customers understand how to use the app's main workflows.",
-  audience: "Consumers of Iron Phoenix Flow who need product help, not internal engineering changes.",
+  audience: "Consumers of Phoenix Flow who need product help, not internal engineering changes.",
   modules: [
     {
       id: "templanator",

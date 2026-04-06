@@ -17,8 +17,8 @@ export interface AppIdentityConfig {
 }
 
 export const appIdentityConfig: AppIdentityConfig = {
-  appName: "Iron Phoenix Flow",
-  legalName: "Iron Phoenix Flow",
+  appName: "Phoenix Flow",
+  legalName: "Phoenix Flow",
   domains: [
     {
       type: "app_domain",

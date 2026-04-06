@@ -403,58 +403,76 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const apparel = isApparelProduct(product);
   const requiredSuffix = apparel ? buildRequiredApparelSuffix(product) : "";
 
-  // Strip store/vendor branding from plain-text fields (title, seo_title)
-  // Removes: "| Vendor Name", "- Vendor Name" pipe/dash prefixed store suffixes,
-  // and known hard-coded brand patterns
-  function stripBranding(value: string): string {
-    let v = value;
-    // Strip vendor name if present
-    if (product.vendor) {
-      const escapedVendor = product.vendor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      v = v.replace(new RegExp(`\\s*[|\\-]\\s*${escapedVendor}.*$`, "i"), "").trim();
-    }
-    // Strip known hard-coded brand fragments regardless of case
+  /**
+   * BRAND STRIPPER v2.5 - PUBLIC RELEASE
+   * Removes common title-junk patterns to ensure a clean, brand-agnostic product name.
+   */
+  function stripInternalBranding(v: string): string {
+    if (!v) return "";
+
+    // 1. Remove common "Suffix" patterns (e.g., "Mushroom Coffee | Brand Name" -> "Mushroom Coffee")
+    v = v.replace(/\s*[|\u002D\u2013\u2014]\s*[^|]+$/gi, "");
+
+    // 2. Remove "The Machine" and Niche Identifiers (Scrubbing for total white-labeling)
+    const legacyFragments = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming|ghg|phoenix flow)\b/gi;
+    v = v.replace(legacyFragments, "");
+
+    // 3. Remove Promotional "Noise" (GMC Compliance requirement)
+    const promoNoise = /\b(free shipping|sale|best seller|official|genuine|authentic|100%|new)\b/gi;
+    v = v.replace(promoNoise, "");
+
+    // 4. Final Structural Clean
     v = v
-      .replace(/\s*[|\u002D]\s*iron phoenix\s*ghg\b.*/i, "")
-      .replace(/\s*[|\u002D]\s*iron phoenix\b.*/i, "")
-      .replace(/\bghg\b/gi, "")
-      .replace(/\s{2,}/g, " ")
+      .replace(/\s{2,}/g, " ")      // Collapse double spaces
+      .replace(/[^\w\s\d]$/g, "")   // Remove trailing special chars
       .trim();
-    return v;
+
+    return v || "Product Title";
   }
 
-  let title = sanitizePlainText(stripBranding(raw.title || product.title || ""), 70).replace(/"/g, "");
+  // --- TITLE & SEO NORMALIZATION ---
+  
+  // Use the public scrubber for both Title and SEO Title
+  let title = sanitizePlainText(stripInternalBranding(raw.title || product.title || ""), 70).replace(/"/g, "");
+  
+  const seo_title = sanitizePlainText(
+    stripInternalBranding(raw.seo_title || title || product.metafields_global_title_tag || product.title || ""), 
+    60
+  ).replace(/"/g, "");
+
+  const seo_description = sanitizePlainText(
+    stripInternalBranding(raw.seo_description || product.metafields_global_description_tag || ""),
+    160
+  ).replace(/"/g, "");
+
+  const body_html = sanitizeHtml(raw.body_html || product.body_html || "");
+  const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 255);
+
+  // Apparel Logic: Re-inject color/size if they were accidentally scrubbed
   if (apparel && requiredSuffix) {
     const normalizedTitle = normalizeKeywordPhrase(title);
     const normalizedSuffix = normalizeKeywordPhrase(requiredSuffix);
     if (!normalizedTitle.includes(normalizedSuffix)) {
-      const sourceTitle = sanitizePlainText(product.title || "", 70);
-      const core = sanitizePlainText(title.replace(new RegExp(requiredSuffix, "ig"), "").trim(), 70) || sourceTitle;
+      const core = stripInternalBranding(title.replace(new RegExp(requiredSuffix, "ig"), "").trim());
       title = sanitizePlainText(`${core} ${requiredSuffix}`.trim(), 70);
-      notes.push("apparel title forced to keep real color and size range");
+      notes.push("apparel title normalized to include required color/size details");
     }
   }
 
-  const body_html = sanitizeHtml(
-    raw.body_html || product.body_html || `<p>${sanitizePlainText(product.title || "")} is written to stay clear, factual, and easy to scan on Shopify.</p>`,
-  );
-  const seo_title = sanitizePlainText(stripBranding(raw.seo_title || title || product.metafields_global_title_tag || product.title || ""), 60).replace(/"/g, "");
-  // Target 120-155 chars for meta description (conversion-focused)
-  let seo_description = sanitizePlainText(raw.seo_description || product.metafields_global_description_tag || title, 155);
-  if (seo_description.length < 60 && title) {
-    seo_description = sanitizePlainText(`${title}. ${seo_description}`, 155);
-  }
-  const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 80);
+  // --- TAG & COMPLIANCE NORMALIZATION ---
 
-  // Helper: a tag qualifies if it is not vendor-named, not a branding fragment, and not banned
-  const brandFragments = ["iron phoenix ghg", "iron phoenix", "ghg"].map(normalizeKeywordPhrase);
+  // Helper: Ensures tags don't contain retail branding or banned terms
+  const brandFragments = ["iron phoenix ghg", "iron phoenix", "ghg", "our phoenix rise"].map(normalizeKeywordPhrase);
   const tagQualifies = (t: string) => {
     if (!t.trim()) return false;
     const normalized = normalizeKeywordPhrase(t);
+    // Filter out your retail brands from the public tool's output
     if (brandFragments.some((frag) => normalized.includes(frag))) return false;
     if (product.vendor && normalized.includes(normalizeKeywordPhrase(product.vendor))) return false;
     return !isBannedTag(t, product.vendor);
   };
+
+
 
   let tags = dedupeBySignature(
     String(raw.tags || product.tags || "").split(",").map((t) => t.trim()),
