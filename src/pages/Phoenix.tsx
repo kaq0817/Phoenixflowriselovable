@@ -19,6 +19,8 @@ interface ShopifyProduct {
   title: string;
   body_html: string;
   status?: string;
+  seo_title?: string; // Added to fix TypeScript error
+  seo_description?: string; // Added to fix TypeScript error
   metafields_global_description_tag?: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; weight?: number }[];
   images: { id: number; src: string; alt?: string; position?: number }[];
@@ -93,44 +95,53 @@ function scoreShopifyProduct(p: ShopifyProduct): SEOScore {
   const tags = normalizeShopifyTags(p.tags);
   const weight = p.weight || p.variants?.[0]?.weight || 0;
   const imageAlt = p.images?.[0]?.alt?.trim() || "";
+  
+  // NEW: Pull SEO Metafields (You may need to ensure these are in your Interface)
+  const seoTitle = (p.seo_title || "").trim();
+  const seoDesc = (p.seo_description || "").trim();
 
+  // 1. BRAND IDENTITY
   const hasIdentity = title.includes("Our Phoenix Rise") || title.includes("Iron Phoenix GHG");
   if (!hasIdentity) issues.push("STYLE_NO_SUFFIX: Title must contain brand identifier");
 
-  if (tags.length < 5) issues.push(`SEO_TAG_VOID: Found ${tags.length}/5 required tags`);
+  // 2. SEO META CHECKS (The "Scanner" Fix)
+  if (seoTitle.length === 0) issues.push("SEO_MISSING_TITLE: Missing Search Engine Title");
+  if (seoDesc.length < 100) issues.push("SEO_SHORT_DESC: Meta description is missing or too short (<100 chars)");
+  if (seoDesc.length > 160) issues.push("SEO_LONG_DESC: Meta description exceeds 160 chars (will be truncated)");
 
+  // 3. IMAGE & ALT TEXT
+  if (imageAlt.length === 0) issues.push("SEO_MISSING_ALT: Primary image missing Alt text");
+  if (imageAlt.toLowerCase() === title.toLowerCase()) issues.push("SEO_LAZY_ALT: Alt text matches title exactly (Low SEO value)");
+
+  // 4. CONTENT DEPTH
   const plainText = body.replace(/<[^>]*>/g, "").trim();
   if (plainText.length < 50) issues.push("ATTR_MISSING_DESC: Description must be 50+ characters");
+  if (tags.length < 5) issues.push(`SEO_TAG_VOID: Found ${tags.length}/5 required tags`);
 
+  // 5. REGULATORY & SHIPPING
   if (weight <= 0) issues.push("ATTR_MISSING_WEIGHT: Shipping weight must be > 0");
-
+  
   const isWellness = ["wellness", "supplement", "soap", "coffee", "ashwagandha", "berberine", "protein", "shake"].some(k => 
     title.toLowerCase().includes(k) || tags.some(t => t.toLowerCase().includes(k))
   );
   const hasRegulatoryData = body.includes("ingredient") || body.includes("supplement facts") || body.includes("nutrition facts");
   if (isWellness && !hasRegulatoryData) issues.push("ATTR_MISSING_INGREDIENTS: Regulatory risk - missing facts/ingredients");
 
-  const needsDims = ["art", "rug", "decor", "blanket", "slippers", "canvas"].some(k => 
-    title.toLowerCase().includes(k) || (p.product_type || "").toLowerCase().includes(k)
-  );
-  const hasDims = /([\d.]+)\s*[x*]\s*([\d.]+)/.test(body) || body.includes("dimensions");
-  if (needsDims && !hasDims) issues.push("ATTR_MISSING_DIMENSIONS: Scale metrics absent from description");
-
-  if (imageAlt.length === 0) issues.push("SEO_MISSING_ALT: Primary image missing Alt text");
-
-  if (title.includes('"') || title.includes("'")) issues.push("STYLE_TITLE_QUOTE: Non-standard punctuation in title");
-
-  if (p.status?.toLowerCase() === "draft") issues.push("STATUS_IS_DRAFT: Product is not active");
-
-  const total = issues.length === 0 ? 100 : 0;
+  // SCORING LOGIC: Switch from Binary (0/100) to Weighted
+  // Each issue takes a 10-15 point bite out of the score.
+  let calculatedScore = 100;
+  if (issues.length > 0) {
+    // Basic math: 100 minus (number of issues * 15), minimum 0.
+    calculatedScore = Math.max(0, 100 - (issues.length * 15));
+  }
 
   return {
-    total,
-    title: hasIdentity,
-    titleLength: true,
-    altText: imageAlt.length > 0,
-    description: plainText.length >= 50,
-    descriptionLength: plainText.length >= 50,
+    total: calculatedScore,
+    title: hasIdentity && seoTitle.length > 0,
+    titleLength: seoTitle.length >= 10 && seoTitle.length <= 70,
+    altText: imageAlt.length > 0 && imageAlt !== title,
+    description: plainText.length >= 50 && seoDesc.length >= 100,
+    descriptionLength: seoDesc.length >= 100 && seoDesc.length <= 160,
     tags: tags.length >= 5,
     variants: (p.variants?.length || 0) > 0,
     images: (p.images?.length || 0) > 0,

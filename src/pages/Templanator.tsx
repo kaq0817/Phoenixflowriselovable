@@ -136,7 +136,7 @@ interface ScanResult {
   };
   lcpCandidate: ThemeLcpCandidate | null;
   policyLinks: ThemePolicyLink[];
-  collectionPillars: CollectionPillar[];
+  collectionPillar: CollectionPillar[];
   crossStoreLinks: CrossStoreLink[];
   contentRisks?: ContentRisk[];
   riskArticles?: ContentRiskArticle[];
@@ -165,6 +165,17 @@ interface PushResult {
   totalModified: number;
   appliedFiles?: string[];
   errors?: string[];
+}
+
+interface ScannedProduct {
+  id: number;
+  title: string;
+  handle: string;
+  body_html: string;
+  tags: string;
+  status?: string;
+  images: { id: number; src: string; alt: string | null; position: number }[];
+  trashPriority?: number;
 }
 
 type FixTrack = "lcp" | "domains" | "remaining";
@@ -251,6 +262,7 @@ export default function Templanator() {
   const [supportLocation, setSupportLocation] = useState("");
   const [supportNumber, setSupportNumber] = useState("");
   const [baseDomain, setBaseDomain] = useState("");
+  const [themeAddress, setThemeAddress] = useState("");
   const [baseDomainConfirmed, setBaseDomainConfirmed] = useState(false);
   const [baseDomainChecking, setBaseDomainChecking] = useState(false);
   const [baseDomainStatus, setBaseDomainStatus] = useState("");
@@ -285,6 +297,8 @@ export default function Templanator() {
   const [articleEdits, setArticleEdits] = useState<Record<number, ContentRiskArticle>>({});
   const [expandedArticleId, setExpandedArticleId] = useState<number | null>(null);
   const [savingArticleId, setSavingArticleId] = useState<number | null>(null);
+  const [scannedProducts, setScannedProducts] = useState<ScannedProduct[]>([]);
+  const [productScanLoading, setProductScanLoading] = useState(false);
   const identityReady = Boolean(
     legalEntityName.trim() &&
       stateOfIncorporation.trim() &&
@@ -523,7 +537,44 @@ export default function Templanator() {
   useEffect(() => {
     if (!selectedStore?.shop_domain) return;
     setCloudflareTargetHost((prev) => prev || selectedStore.shop_domain || "");
+    setThemeAddress(selectedStore.shop_domain || "");
   }, [selectedStore]);
+  // Utility to extract all business identity mentions from theme assets and content
+  function extractBusinessIdentityMentions(scanResult: ScanResult | null, businessNames: string[]): { asset: string; line: number; context: string }[] {
+    const results: { asset: string; line: number; context: string }[] = [];
+    if (!scanResult?.assets) return results;
+    const patterns = businessNames.map((name) => new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"));
+    for (const [asset, content] of Object.entries(scanResult.assets)) {
+      if (!content) continue;
+      const lines = content.split(/\r?\n/);
+      lines.forEach((line, idx) => {
+        patterns.forEach((pattern) => {
+          if (pattern.test(line)) {
+            results.push({ asset, line: idx + 1, context: line.trim() });
+          }
+        });
+      });
+    }
+    return results;
+  }
+
+  // Dynamically extract all unique business identity candidates from theme assets for compliance scanning
+  const businessIdentityCandidates = useMemo(() => {
+    if (!scanResult?.assets) return [];
+    const found = new Set<string>();
+    for (const content of Object.values(scanResult.assets)) {
+      if (!content) continue;
+      // Heuristic: match capitalized multi-word phrases, LLC, Inc, Corp, etc.
+      const matches = content.match(/([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+|[A-Z][a-zA-Z]+ [A-Z]{2,}|[A-Z][a-zA-Z]+ (LLC|Inc|Corp|Ltd|Company|Co\.|Corporation|Limited))/g);
+      if (matches) matches.forEach((m) => found.add(m.trim()));
+    }
+    return Array.from(found).filter((name) => name.length > 3);
+  }, [scanResult]);
+
+  // Use detected candidates for compliance scanning
+  const businessIdentityMentions = useMemo(() => {
+    return extractBusinessIdentityMentions(scanResult, businessIdentityCandidates);
+  }, [scanResult, businessIdentityCandidates]);
 
   useEffect(() => {
     const selected = NICHE_PALETTES.find((palette) => palette.value === nichePalette);
@@ -1004,6 +1055,61 @@ export default function Templanator() {
     setFileApprovals((prev) => prev.map((file) => ({ ...file, approved })));
   };
 
+  // --- Product do-not-find helpers (localStorage, per-store per-month) ---
+  const dnfKey = (connId: string) => {
+    const now = new Date();
+    return `templanator_dnf_${connId}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  const loadDnfSet = (connId: string): Set<number> => {
+    try {
+      const raw = localStorage.getItem(dnfKey(connId));
+      return raw ? new Set<number>(JSON.parse(raw) as number[]) : new Set<number>();
+    } catch {
+      return new Set<number>();
+    }
+  };
+
+  const saveDnfSet = (connId: string, ids: Set<number>) => {
+    try {
+      localStorage.setItem(dnfKey(connId), JSON.stringify(Array.from(ids)));
+    } catch { /* quota — best effort */ }
+  };
+
+  const handleScanProducts = async () => {
+    if (!selectedConn || productScanLoading) return;
+    setProductScanLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
+        body: { connectionId: selectedConn, limit: 50, scanPage: 1, pagesToScan: 5 },
+      });
+      if (error) throw error;
+      const dnf = loadDnfSet(selectedConn);
+      const filtered: ScannedProduct[] = (data.products || []).filter(
+        (p: ScannedProduct) => !dnf.has(p.id),
+      );
+      setScannedProducts(filtered);
+      toast({
+        title: "Product scan complete",
+        description: filtered.length > 0
+          ? `${filtered.length} products need attention.`
+          : "No flagged products found.",
+      });
+    } catch (err: unknown) {
+      toast({ title: "Product scan failed", description: getErrorMessage(err), variant: "destructive" });
+    } finally {
+      setProductScanLoading(false);
+    }
+  };
+
+  const markProductFixed = (productId: number) => {
+    if (!selectedConn) return;
+    const dnf = loadDnfSet(selectedConn);
+    dnf.add(productId);
+    saveDnfSet(selectedConn, dnf);
+    setScannedProducts((prev) => prev.filter((p) => p.id !== productId));
+  };
+
   const resetSession = () => {
     setStep(1);
     setScanResult(null);
@@ -1015,6 +1121,7 @@ export default function Templanator() {
     setArticleEdits({});
     setExpandedArticleId(null);
     setSavingArticleId(null);
+    setScannedProducts([]);
   };
 
   const renderPreviewCard = (track: FixTrack) => {
@@ -1550,6 +1657,77 @@ export default function Templanator() {
             </Card>
           ) : null}
 
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <Store className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <h3 className="font-semibold">Product Compliance Scan</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Finds products with thin content, missing images, bad alt text, or identity risks. Products you mark fixed are skipped for the rest of this month.
+                  </p>
+                </div>
+                <Badge variant="outline">{scannedProducts.length} flagged</Badge>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={productScanLoading || !selectedConn}
+                onClick={handleScanProducts}
+              >
+                {productScanLoading
+                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scanning products...</>
+                  : <><Zap className="h-4 w-4 mr-2" /> Scan Products</>}
+              </Button>
+
+              {scannedProducts.length > 0 ? (
+                <div className="space-y-3">
+                  {scannedProducts.map((product) => (
+                    <div key={product.id} className="rounded-lg border border-border/30 bg-muted/10 p-4 space-y-2">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-sm">{product.title}</p>
+                          <p className="text-xs text-muted-foreground">Handle: {product.handle}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">Priority {product.trashPriority ?? 0}</Badge>
+                          {(product.status || "").toLowerCase() === "draft" ? (
+                            <Badge variant="destructive">draft</Badge>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => markProductFixed(product.id)}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Fixed
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {product.images.length === 0 ? (
+                          <span className="text-destructive">No images</span>
+                        ) : product.images.some((img) => !img.alt || img.alt.trim() === "") ? (
+                          <span className="text-yellow-500">Missing alt text</span>
+                        ) : null}
+                        {!product.tags || product.tags.split(",").filter(Boolean).length < 5 ? (
+                          <span className="text-yellow-500">Thin tags ({product.tags ? product.tags.split(",").filter(Boolean).length : 0})</span>
+                        ) : null}
+                        {!product.body_html || product.body_html.replace(/<[^>]*>/g, "").trim().length < 150 ? (
+                          <span className="text-yellow-500">Thin description</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : productScanLoading ? null : (
+                <p className="text-sm text-muted-foreground">
+                  Run a scan to surface products that need attention. Already-fixed products from this month are automatically excluded.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           {brokenLinkCount > 0 ? (
             <Card className="bg-card/50 border-border/30">
               <CardContent className="p-6 space-y-3">
@@ -1591,7 +1769,7 @@ export default function Templanator() {
                           <p className="text-xs text-muted-foreground">Target: {link.targetPath}</p>
                           <p className="text-xs text-muted-foreground">
                             {link.status === "missing"
-                              ? "Missing from footer. Create or attach this policy in Shopify Admin."
+                              ? "Missing from footer. Create or attach this policy in Shopify Admin if it does not exist yet."
                               : `Currently points to ${link.href || "an unknown URL"}.`}
                           </p>
                         </div>
@@ -1843,66 +2021,6 @@ export default function Templanator() {
                     {cloudflareTargetConfirmed ? "target verified" : "target not verified"}
                   </Badge>
                   {cloudflareTargetStatus ? <p className="text-xs text-muted-foreground">{cloudflareTargetStatus}</p> : null}
-                </div>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
-                  <div>
-                    <p className="text-sm font-semibold">3. What Categories Do You Want To Split Out?</p>
-                    <p className="text-xs text-muted-foreground">One per line.</p>
-                  </div>
-                  <Textarea
-                    className="min-h-[120px] bg-background/50"
-                    placeholder={"Category One\nCategory Two\nCategory Three"}
-                    value={manualCategoryDraft}
-                    onChange={(e) => setManualCategoryDraft(e.target.value)}
-                  />
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">Manual list.</p>
-                    <Button className="gradient-phoenix text-primary-foreground" onClick={addManualPlannerCategories}>
-                      Add Categories To Planner
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-border/30 bg-muted/10 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">Scan Suggestions</p>
-                      <p className="text-xs text-muted-foreground">Optional.</p>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => setShowDetectedSuggestions((prev) => !prev)}>
-                      {showDetectedSuggestions ? "Hide Suggestions" : "Show Suggestions"}
-                    </Button>
-                  </div>
-                  {showDetectedSuggestions ? (
-                    <div className="space-y-2">
-                      {(scanResult.collectionPillars ?? []).length > 0 ? (
-                        scanResult.collectionPillars.map((pillar) => (
-                          <div key={pillar.handle} className="flex items-center justify-between gap-3 rounded-xl border border-border/30 bg-background/40 p-3">
-                            <div>
-                              <p className="text-sm font-medium">{pillar.title}</p>
-                              <p className="text-xs text-muted-foreground">{pillar.productsCount} products</p>
-                            </div>
-                            <Button
-                              size="sm"
-                              className="gradient-phoenix text-primary-foreground"
-                              onClick={() => addDetectedPlannerCategory(pillar.title, pillar.handle, pillar.productsCount)}
-                            >
-                              Add
-                            </Button>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-xs text-muted-foreground">No suggestions returned.</p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
-                      Hidden until you ask for them.
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -2686,6 +2804,8 @@ function StatBox({ label, value, sub }: { label: string; value: number; sub?: st
     </div>
   );
 }
+
+
 
 
 

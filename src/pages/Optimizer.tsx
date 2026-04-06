@@ -33,6 +33,9 @@ interface ShopifySuggestions {
   body_html: string;
   seo_title: string;
   seo_description: string;
+  // NEW FIELDS TO MATCH YOUR AUDIT
+  og_title?: string;
+  og_description?: string;
   product_type: string;
   tags: string;
   variant_suggestions?: string;
@@ -41,6 +44,7 @@ interface ShopifySuggestions {
   collections_suggestion?: string;
   image_alts?: string;
   reasoning: string;
+  product_schema_status?: 'valid' | 'missing_fields';
 }
 
 interface EtsyListing {
@@ -695,6 +699,20 @@ export default function OptimizerPage() {
                       <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} sectionKey="type" />
                       <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} sectionKey="tags" />
 
+                      <ComparisonRow
+                        label="Social (OG) Title"
+                        icon={<Link className="h-4 w-4 text-primary" />}
+                        original="Derived from title"
+                        optimized={shopifySuggestions.og_title || shopifySuggestions.seo_title}
+                        sectionKey="og_title"
+                      />
+                      <ComparisonRow
+                        label="OG Description"
+                        icon={<FileText className="h-4 w-4 text-primary" />}
+                        original="Empty"
+                        optimized={shopifySuggestions.og_description || shopifySuggestions.seo_description}
+                        sectionKey="og_desc"
+                      />
                       <div className="flex gap-3 pt-2">
                         <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">
                           {shopifyApplying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Applying...</> : <><CheckCircle2 className="h-4 w-4 mr-2" /> Apply All Changes to Shopify</>}
