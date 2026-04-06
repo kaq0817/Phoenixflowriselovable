@@ -878,9 +878,13 @@ export default function Templanator() {
 
     setComplianceLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("compliance-scan", {
+      const invokePromise = supabase.functions.invoke("compliance-scan", {
         body: { url: selectedStore.shop_domain },
       });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Compliance scan timed out. The storefront may be slow to respond — please try again.")), 95000)
+      );
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
       if (error) throw error;
       setComplianceReport((data as { report?: ComplianceReport }).report ?? null);
       toast({
