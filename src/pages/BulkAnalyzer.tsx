@@ -183,8 +183,9 @@ export default function BulkAnalyzerPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
-  const [nextScanPage, setNextScanPage] = useState(1);
+  const [nextPageInfoCursor, setNextPageInfoCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [doneIds, setDoneIds] = useState<Set<number>>(new Set());
 
   const scopedConnections = useMemo(() => {
     if (!activeStoreId) return storeConnections;
@@ -197,7 +198,7 @@ export default function BulkAnalyzerPage() {
     setListings([]);
     setSelected(new Set());
     setResults(new Map());
-    setNextScanPage(1);
+    setNextPageInfoCursor(null);
     setHasMore(false);
   };
 
@@ -226,15 +227,28 @@ export default function BulkAnalyzerPage() {
     resetAnalyzerState();
   }, [scopedConnections, selectedConnectionId]);
 
-  const fetchListings = async (scanPage = 1, append = false) => {
+  // Load persisted done IDs whenever the selected connection changes
+  useEffect(() => {
+    if (!selectedConnectionId) { setDoneIds(new Set()); return; }
+    try {
+      const raw = localStorage.getItem(`bulk-done-ids:${selectedConnectionId}`);
+      setDoneIds(raw ? new Set<number>(JSON.parse(raw)) : new Set());
+    } catch {
+      setDoneIds(new Set());
+    }
+  }, [selectedConnectionId]);
+
+  const fetchListings = async (cursor: string | null, append = false) => {
     if (!selectedConnectionId) return;
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 10, connectionId: selectedConnectionId, scanPage, pagesToScan: 5 },
+        body: { limit: 10, connectionId: selectedConnectionId, pagesToScan: 5, pageInfoCursor: cursor },
       });
       if (error) throw error;
-      const incoming: ShopifyProduct[] = data.products || [];
+      const incoming: ShopifyProduct[] = (data.products || []).filter(
+        (p: ShopifyProduct) => !doneIds.has(p.id),
+      );
       setListings((prev) => {
         if (!append) return incoming;
         const existingIds = new Set(prev.map((p) => p.id));
@@ -244,10 +258,9 @@ export default function BulkAnalyzerPage() {
         setSelected(new Set());
         setResults(new Map());
       }
-      const nextPage = scanPage + 5;
-      setNextScanPage(nextPage);
-      // If we got a full batch back there may be more pages
-      setHasMore(incoming.length >= 10);
+      const nextCursor: string | null = data.nextPageInfo ?? null;
+      setNextPageInfoCursor(nextCursor);
+      setHasMore(!!nextCursor);
     } catch (err) {
       const error = err as Error;
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -334,6 +347,17 @@ export default function BulkAnalyzerPage() {
         if (item) next.set(id, { ...item, status: "applied" });
         return next;
       });
+      // Persist so this product is never shown again in future sessions
+      setDoneIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        try {
+          localStorage.setItem(`bulk-done-ids:${selectedConnectionId}`, JSON.stringify(Array.from(next)));
+        } catch { /* ignore quota errors */ }
+        return next;
+      });
+      // Remove from listings immediately
+      setListings((prev) => prev.filter((p) => p.id !== id));
       toast({ title: "Applied!", description: "Product updated on Shopify." });
     } catch (err) {
       const error = err as Error;
@@ -420,7 +444,7 @@ export default function BulkAnalyzerPage() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Product Inventory</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => void fetchListings(1, false)} disabled={!selectedConnectionId || loading}>
+            <Button size="sm" variant="outline" onClick={() => void fetchListings(null, false)} disabled={!selectedConnectionId || loading}>
               <RefreshCw className={loading ? "animate-spin" : ""} />
             </Button>
           </div>
@@ -452,7 +476,7 @@ export default function BulkAnalyzerPage() {
                 );
               })}
               {hasMore && (
-                <Button variant="outline" className="w-full mt-2" onClick={() => void fetchListings(nextScanPage, true)} disabled={loading}>
+                <Button variant="outline" className="w-full mt-2" onClick={() => void fetchListings(nextPageInfoCursor, true)} disabled={loading}>
                   {loading ? "Loading..." : "Load More Products"}
                 </Button>
               )}

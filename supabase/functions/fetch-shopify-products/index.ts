@@ -62,8 +62,8 @@ serve(async (req: Request) => {
     const {
       limit = 10,
       connectionId,
-      scanPage = 30,
-      pagesToScan = 1,
+      pagesToScan = 5,
+      pageInfoCursor = null,
     } = await req.json().catch(() => ({}));
 
     if (!connectionId) {
@@ -90,23 +90,21 @@ serve(async (req: Request) => {
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
 
-    // Focused scan: jump to a target Shopify page and score only a small page window
+    // Scan up to pagesToScan pages starting from the provided cursor (or the beginning)
     const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
     const oldestFirstOrder = "created_at+asc";
     const scanLimit = 10;
-    const targetPage = Math.max(1, Number(scanPage) || 30);
-    const pagesWindow = Math.max(1, Math.min(Number(pagesToScan) || 1, 5));
+    const pagesWindow = Math.max(1, Math.min(Number(pagesToScan) || 5, 5));
     const requestedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
     const foundTrash: ShopifyProduct[] = [];
-    let nextPageInfo: string | null = null;
-    let pageNumber = 0;
+    // Start from the cursor the client sent, or from the beginning
+    let nextPageInfo: string | null = pageInfoCursor || null;
     let scoredPages = 0;
 
     while (scoredPages < pagesWindow) {
-      pageNumber += 1;
       let apiUrl: string;
       if (nextPageInfo) {
-        // Cursor requests should only carry limit + page_info.
+        // Cursor-based: only limit + page_info allowed by Shopify
         apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&page_info=${encodeURIComponent(nextPageInfo)}`;
       } else {
         apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&order=${oldestFirstOrder}&fields=${encodeURIComponent(fields)}`;
@@ -127,12 +125,6 @@ serve(async (req: Request) => {
       const linkHeader = response.headers.get("Link");
       const nextMatch = linkHeader?.match(/<[^>]*[?&]page_info=([^&>]*)[^>]*>;\s*rel="next"/i);
       nextPageInfo = nextMatch ? decodeURIComponent(nextMatch[1]) : null;
-
-      // Skip early pages and only score from the requested page onward.
-      if (pageNumber < targetPage) {
-        if (!nextPageInfo) break;
-        continue;
-      }
 
       scoredPages += 1;
 
