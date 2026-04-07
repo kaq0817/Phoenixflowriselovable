@@ -153,7 +153,7 @@ serve(async (req: Request) => {
       });
 
       for (const product of scoredProducts.sort((a, b) => (b.trashPriority || 0) - (a.trashPriority || 0))) {
-        if ((product.trashPriority || 0) > 0 && (product.trashPriority || 0) <= 85) {
+        if ((product.trashPriority || 0) > 0) {
           foundTrash.push(product);
         }
       }

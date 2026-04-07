@@ -136,6 +136,9 @@ export default function OptimizerPage() {
   const [shopifySuggestions, setShopifySuggestions] = useState<ShopifySuggestions | null>(null);
   const [shopifyOptimizing, setShopifyOptimizing] = useState(false);
   const [shopifyApplying, setShopifyApplying] = useState(false);
+  const [shopifyNextCursor, setShopifyNextCursor] = useState<string | null>(null);
+  const [shopifyHasMore, setShopifyHasMore] = useState(false);
+  const [shopifyDoneIds, setShopifyDoneIds] = useState<Set<number>>(new Set());
 
   // Etsy
   const [etsyListings, setEtsyListings] = useState<EtsyListing[]>([]);
@@ -183,16 +186,35 @@ export default function OptimizerPage() {
     })();
   }, [session]);
 
-  const fetchShopifyProducts = async () => {
+  const fetchShopifyProducts = async (cursor: string | null = null, append = false) => {
     if (!selectedShopifyConnectionId) {
       toast({ title: "Select a store", description: "Choose a Shopify store before loading products." });
       return;
     }
     setShopifyLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", { body: { limit: 10, connectionId: selectedShopifyConnectionId, scanPage: 1, pagesToScan: 1 } });
+      const currentDoneIds = (() => {
+        try {
+          const raw = localStorage.getItem(`optimizer-done-ids:${selectedShopifyConnectionId}`);
+          return raw ? new Set<number>(JSON.parse(raw)) : new Set<number>();
+        } catch { return new Set<number>(); }
+      })();
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
+        body: { limit: 10, connectionId: selectedShopifyConnectionId, pagesToScan: 5, pageInfoCursor: cursor },
+      });
       if (error) throw error;
-      setShopifyProducts(data.products || []);
+      const incoming: ShopifyProduct[] = (data.products || []).filter(
+        (p: ShopifyProduct) => !currentDoneIds.has(p.id),
+      );
+      setShopifyProducts((prev) => {
+        if (!append) return incoming;
+        const existingIds = new Set(prev.map((p) => p.id));
+        return [...prev, ...incoming.filter((p) => !existingIds.has(p.id))];
+      });
+      setShopifyDoneIds(currentDoneIds);
+      const nextCursor: string | null = data.nextPageInfo ?? null;
+      setShopifyNextCursor(nextCursor);
+      setShopifyHasMore(!!nextCursor);
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
     } catch (err: unknown) {
       const errorObj = err as Error;
@@ -374,10 +396,19 @@ export default function OptimizerPage() {
         },
       });
       if (error) throw error;
+      const appliedId = selectedProduct.id;
+      setShopifyDoneIds((prev) => {
+        const next = new Set(prev);
+        next.add(appliedId);
+        try {
+          localStorage.setItem(`optimizer-done-ids:${selectedShopifyConnectionId}`, JSON.stringify(Array.from(next)));
+        } catch { /* ignore */ }
+        return next;
+      });
+      setShopifyProducts((prev) => prev.filter((p) => p.id !== appliedId));
       toast({ title: "Done!", description: "Changes applied to your Shopify store." });
       setSelectedProduct(null);
       setShopifySuggestions(null);
-      fetchShopifyProducts();
     } catch (err: unknown) {
       const errorObj = err as Error;
       toast({ title: "Apply failed", description: errorObj.message, variant: "destructive" });
@@ -533,6 +564,9 @@ export default function OptimizerPage() {
                     setSelectedProduct(null);
                     setShopifySuggestions(null);
                     setShopifyProducts([]);
+                    setShopifyNextCursor(null);
+                    setShopifyHasMore(false);
+                    setShopifyDoneIds(new Set());
                   }}
                 >
                   <option value="">Select a Shopify store</option>
@@ -726,7 +760,7 @@ export default function OptimizerPage() {
               <>
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">{selectedShopifyConnectionId ? `${shopifyProducts.length} products` : "Select a store."}</p>
-                  <Button variant="outline" size="sm" onClick={fetchShopifyProducts} disabled={!selectedShopifyConnectionId}>Refresh</Button>
+                  <Button variant="outline" size="sm" onClick={() => void fetchShopifyProducts(null, false)} disabled={!selectedShopifyConnectionId}>Refresh</Button>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {shopifyProducts.map((product) => (
@@ -737,12 +771,18 @@ export default function OptimizerPage() {
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm line-clamp-2">{product.title}</p>
                             <Badge variant="outline" className="text-[10px] mt-1">{product.product_type}</Badge>
+
                           </div>
                         </CardContent>
                       </Card>
                     </motion.div>
                   ))}
                 </div>
+                {shopifyHasMore && (
+                  <Button variant="outline" className="w-full" onClick={() => void fetchShopifyProducts(shopifyNextCursor, true)} disabled={shopifyLoading}>
+                    {shopifyLoading ? "Loading..." : "Load More Products"}
+                  </Button>
+                )}
               </>
             )}
           </TabsContent>
