@@ -50,23 +50,12 @@ interface StoreConnectionOption {
   created_at: string;
 }
 
-const BULK_ANALYZER_DRAFT_KEY = "bulk-analyzer-draft";
-
 interface OptimizationResult {
   listing: ShopifyProduct;
   suggestions: Suggestions | null;
   score: number;
   status: "pending" | "optimizing" | "done" | "error" | "applied";
   error?: string;
-}
-
-interface BulkAnalyzerDraft {
-  connectionId: string;
-  listings: ShopifyProduct[];
-  selected: number[];
-  results: OptimizationResult[];
-  expandedResult: number | null;
-  savedAt: string;
 }
 
 function isUsableShopifyConnection(connection: {
@@ -77,25 +66,8 @@ function isUsableShopifyConnection(connection: {
   return connection.platform === "shopify" && !!connection.shop_domain;
 }
 
-function getDraftKey(userId: string, connectionId: string) {
-  return `${BULK_ANALYZER_DRAFT_KEY}:${userId}:${connectionId}`;
-}
-
 function getConnectionLabel(connection: StoreConnectionOption) {
   return connection.shop_name || connection.shop_domain || "Shopify store";
-}
-
-function serializeResults(results: Map<number, OptimizationResult>) {
-  return Array.from(results.values());
-}
-
-function deserializeResults(items: OptimizationResult[]) {
-  return new Map(
-    items.map((item) => {
-      const normalizedStatus = item.status === "optimizing" ? "pending" : item.status;
-      return [item.listing.id, { ...item, status: normalizedStatus } as OptimizationResult];
-    }),
-  );
 }
 
 /**
@@ -243,7 +215,7 @@ export default function BulkAnalyzerPage() {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 10, connectionId: selectedConnectionId, pagesToScan: 5, pageInfoCursor: cursor },
+        body: { limit: 50, connectionId: selectedConnectionId, pageInfoCursor: cursor },
       });
       if (error) throw error;
       const incoming: ShopifyProduct[] = (data.products || []).filter(

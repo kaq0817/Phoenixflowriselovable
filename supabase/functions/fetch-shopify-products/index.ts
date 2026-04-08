@@ -60,9 +60,8 @@ serve(async (req: Request) => {
     }
 
     const {
-      limit = 10,
+      limit = 50,
       connectionId,
-      pagesToScan = 5,
       pageInfoCursor = null,
     } = await req.json().catch(() => ({}));
 
@@ -90,24 +89,24 @@ serve(async (req: Request) => {
     const shop = connection.shop_domain;
     const accessToken = connection.access_token;
 
-    // Scan up to pagesToScan pages starting from the provided cursor (or the beginning)
+    // Scan ALL pages until Shopify says there are no more
     const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
     const oldestFirstOrder = "created_at+asc";
-    const scanLimit = 10;
-    const pagesWindow = Math.max(1, Math.min(Number(pagesToScan) || 5, 5));
-    const requestedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+    const MAX_PAGES = 20; // Safety cap: 20 × 250 = 5,000 products max
+    const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+    const scanLimitPerPage = 250; // Shopify's maximum per page
     const foundTrash: ShopifyProduct[] = [];
     // Start from the cursor the client sent, or from the beginning
     let nextPageInfo: string | null = pageInfoCursor || null;
     let scoredPages = 0;
 
-    while (scoredPages < pagesWindow) {
+    while (scoredPages < MAX_PAGES) {
       let apiUrl: string;
       if (nextPageInfo) {
         // Cursor-based: only limit + page_info allowed by Shopify
-        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&page_info=${encodeURIComponent(nextPageInfo)}`;
+        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimitPerPage}&page_info=${encodeURIComponent(nextPageInfo)}`;
       } else {
-        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimit}&published_status=any&order=${oldestFirstOrder}&fields=${encodeURIComponent(fields)}`;
+        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimitPerPage}&published_status=any&order=${oldestFirstOrder}&fields=${encodeURIComponent(fields)}`;
       }
 
       const response = await fetch(apiUrl, {

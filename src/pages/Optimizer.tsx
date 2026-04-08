@@ -200,7 +200,7 @@ export default function OptimizerPage() {
         } catch { return new Set<number>(); }
       })();
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 10, connectionId: selectedShopifyConnectionId, pagesToScan: 5, pageInfoCursor: cursor },
+        body: { limit: 50, connectionId: selectedShopifyConnectionId, pageInfoCursor: cursor },
       });
       if (error) throw error;
       const incoming: ShopifyProduct[] = (data.products || []).filter(
