@@ -46,22 +46,7 @@ interface ShopifySuggestions {
   reasoning: string;
   product_schema_status?: 'valid' | 'missing_fields';
 }
-  const getSafeTitle = (listing: ScanListing): string => {
-  if (!listing.title || listing.title.trim() === "") {
-    const color = listing.color || listing.variant_title || "";
-    const size = listing.size || "";
-    const fallback = `${color} ${size}`.trim();
-    return fallback !== "" ? fallback : "Product Title Missing";
-  }
-  return listing.title;
-};
 
-const gmcGuard = (text: string | undefined | null, max: number): string => {
-  const safeText = text || "";
-  if (safeText.length <= max) return safeText;
-  const lastSpace = safeText.lastIndexOf(" ", max);
-  return lastSpace > 0 ? safeText.substring(0, lastSpace) : safeText.substring(0, max);
-};
 interface EtsyListing {
   listing_id: number;
   title: string;
@@ -100,25 +85,45 @@ function slugifyForFilename(value: string): string {
     .trim();
 }
 
-function buildUniqueAltDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
-  const safeTitle = (product.title || "Product").trim() || "Product";
-  const safeStore = (storeLabel || "store").trim() || "store";
-  const drafts: Record<number, string> = {};
-  for (let i = 0; i < (product.images || []).length; i += 1) {
-    const img = product.images[i];
-    const detail = i === 0 ? "Primary View" : `Detail ${i + 1}`;
-    drafts[img.id] = `${safeTitle} - ${detail} | ${safeStore}`.slice(0, 512);
-  }
-  return drafts;
+const INTERNAL_BRAND_RE = /Iron Phoenix GHG|Iron Phoenix|Go Hard Gaming|Phoenix Rise/gi;
+const PROMO_RE = /FREE SHIPPING|SALE|NEW\b|100%|BEST\b|HOT\b|DEAL|DISCOUNT|OFFER|PROMO|GUARANTEED|CHEAP/gi;
+
+function cleanProductTitle(raw: string): string {
+  return (raw || "Product")
+    .replace(INTERNAL_BRAND_RE, "")
+    .replace(PROMO_RE, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
+function truncateToWordBoundary(str: string, max: number): string {
+  if (str.length <= max) return str;
+  return str.slice(0, max).replace(/\s+\S*$/, "").trim();
+}
+
+
+const FILENAME_ANGLE_SLUGS = [
+  "main",
+  "side-angle",
+  "close-up",
+  "alternate",
+  "feature-detail",
+  "lifestyle",
+  "top-view",
+  "back-view",
+  "scale",
+  "packaging",
+];
+
+
 function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
-  const productSlug = slugifyForFilename(product.title || "product") || "product";
+  const fullSlug = slugifyForFilename(cleanProductTitle(product.title || "product")) || "product";
+  const productSlug = truncateToWordBoundary(fullSlug, 40).replace(/-$/, "") || "product";
   const storeSlug = slugifyForFilename(storeLabel || "store") || "store";
   const drafts: Record<number, string> = {};
   for (let i = 0; i < (product.images || []).length; i += 1) {
     const img = product.images[i];
-    const detail = i === 0 ? "primary-view" : `detail-${i + 1}`;
+    const detail = FILENAME_ANGLE_SLUGS[i] ?? `view-${i + 1}`;
     drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.jpg`;
   }
   return drafts;
@@ -172,6 +177,7 @@ export default function OptimizerPage() {
   const [imageAltEdits, setImageAltEdits] = useState<Record<number, string>>({});
   const [imageFilenameDrafts, setImageFilenameDrafts] = useState<Record<number, string>>({});
   const [savingAltText, setSavingAltText] = useState(false);
+  const [altScanLoading, setAltScanLoading] = useState(false);
   const [altsAIFilled, setAltsAIFilled] = useState(0);
 
   // Sales channels
@@ -473,6 +479,41 @@ useEffect(() => {
 
   const toggle = (key: string) => setExpandedSection(expandedSection === key ? null : key);
 
+  const scanImageAlts = async () => {
+    if (!selectedProduct || !selectedProduct.images?.length) return;
+    setAltScanLoading(true);
+    try {
+      const activeConnection = storeConnections.find((c) => c.id === selectedShopifyConnectionId);
+      const storeName = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
+      const { data, error } = await supabase.functions.invoke("generate-image-alts", {
+        body: {
+          images: selectedProduct.images.map((img) => ({ id: img.id, src: img.src })),
+          productTitle: selectedProduct.title,
+          storeName,
+        },
+      });
+      if (error) throw error;
+      const results: { image_id: number; alt: string; filename: string }[] = data.results || [];
+      const altEdits: Record<number, string> = {};
+      const filenameDrafts: Record<number, string> = {};
+      for (const r of results) {
+        if (r.image_id) {
+          altEdits[r.image_id] = r.alt || "";
+          filenameDrafts[r.image_id] = r.filename || "";
+        }
+      }
+      setImageAltEdits(altEdits);
+      setImageFilenameDrafts(filenameDrafts);
+      setAltsAIFilled(results.length);
+      toast({ title: "Images scanned", description: `Generated alt text for ${results.length} images.` });
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      toast({ title: "Scan failed", description: errorObj.message, variant: "destructive" });
+    } finally {
+      setAltScanLoading(false);
+    }
+  };
+
   const saveAltTextOnly = async () => {
     if (!selectedProduct || Object.keys(imageAltEdits).length === 0) return;
     setSavingAltText(true);
@@ -507,8 +548,6 @@ useEffect(() => {
   const noConnections = !connections.shopify && !connections.etsy;
   const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
-  const selectedShopifyConnection = storeConnections.find((c) => c.id === selectedShopifyConnectionId);
-  const selectedStoreLabel = selectedShopifyConnection?.shop_name || selectedShopifyConnection?.shop_domain || "store";
 
   const ProductImage = ({ src, alt, size = "md" }: { src?: string; alt: string; size?: "sm" | "md" | "lg" }) => {
     const sizeClasses = { sm: "w-14 h-14", md: "w-20 h-20", lg: "w-32 h-32" };
@@ -725,14 +764,13 @@ useEffect(() => {
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => {
-                                if (!selectedProduct) return;
-                                setImageAltEdits(buildUniqueAltDrafts(selectedProduct, selectedStoreLabel));
-                                setImageFilenameDrafts(buildUniqueFilenameDrafts(selectedProduct, selectedStoreLabel));
-                                setAltsAIFilled(0);
-                              }}
+                              disabled={altScanLoading}
+                              onClick={scanImageAlts}
                             >
-                              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate Alt + Photo Names
+                              {altScanLoading
+                                ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Scanning images...</>
+                                : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Scan Images for Alt + Names</>
+                              }
                             </Button>
                           </div>
                           {selectedProduct.images.map((img, i) => (
@@ -759,6 +797,9 @@ useEffect(() => {
                           ))}
                           <Button size="sm" disabled={savingAltText || Object.keys(imageAltEdits).length === 0} onClick={saveAltTextOnly} className="w-full">
                             {savingAltText ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...</> : "Save Alt Text to Shopify"}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="w-full text-muted-foreground" onClick={() => setAltTextExpanded(false)}>
+                            <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> Collapse
                           </Button>
                         </motion.div>
                       )}

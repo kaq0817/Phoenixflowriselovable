@@ -67,19 +67,21 @@ serve(async (req) => {
     const results = await Promise.all(active.map(async (product) => {
       const fda = needsFdaDisclaimer(product.title);
 
-      const prompt = `You are a Google Merchant Center (GMC) compliance expert writing Shopify product descriptions.
+      const prompt = `You are a Shopify conversion copywriter. Your job is to make the person reading this description feel like they NEED to own this product — "she must buy that" or "he would look incredible in that."
 
-RULES — follow every one:
-- Use ONLY physical attributes: material, size, quantity, color, weight, age group, country of origin.
-- NO marketing fluff: no "best", "amazing", "revolutionary", "premium quality" without a spec to back it up.
-- NO all-caps words (except acronyms like USA, FDA, UV).
-- NO exclamation points.
-- Descriptions must be factual. Write what it IS, not what it DOES to the buyer.
+Write for a real human who is scrolling and deciding in 8 seconds. Lead with who this product is for and why it fits their life, identity, or style. Make them picture themselves owning it.
+
+COPY RULES:
+- Open with 1 punchy hook sentence: who is this for and what does it do for them (not what it IS — what it MEANS to own it).
+- Then 4-6 benefit-driven bullets. Each bullet should answer "why do I want this?" not just list specs. Lead with the benefit, follow with the spec if helpful.
+- Confident, specific language. No vague filler ("high quality", "perfect for everyone"). Be specific about the person and the moment.
+- No exclamation points. Strong copy doesn't need them.
+- No ALL CAPS (except acronyms: USA, UV, FDA).
 - HTML only. Allowed tags: <h3>, <p>, <ul>, <li>, <strong>. Nothing else.
-- Structure: <h3> product name, <p> one-sentence factual summary, <ul> 4-6 spec bullets, optional FDA notice.${fda ? `
+- Structure: <h3> product name, <p> hook sentence (who this is for + why they'll love it), <ul> 4-6 benefit bullets.${fda ? `
 - REQUIRED: End with this exact FDA disclaimer paragraph: <p><em>*These statements have not been evaluated by the Food and Drug Administration. This product is not intended to diagnose, treat, cure, or prevent any disease.</em></p>` : ""}
 
-${globalContext ? `Brand tone / context: ${globalContext}` : ""}
+${globalContext ? `Brand context (use this to set tone and audience): ${globalContext}` : ""}
 Product title: ${product.title}
 Features / attributes: ${product.features || "Not provided"}
 

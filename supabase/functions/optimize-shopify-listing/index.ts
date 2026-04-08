@@ -221,7 +221,7 @@ SHOPIFY SEO RULES:
 - SEO TITLE: Must be under 60 chars. Use | as the only separator (never hyphens as separators). ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff. Use | as the only structural separator if needed — never use a hyphen as a separator.
-- DESCRIPTION (body_html): H3 headings (Features, Benefits, Specs). Exactly one bullet list (3-5 items). HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
+- DESCRIPTION (body_html): Write for a real buyer who is deciding in 8 seconds. Lead with who this product is for and why they'll love owning it — not just what it is. One punchy hook <p> (paint the picture: who reaches for this, when do they wear/use it, what does it say about them), then one <ul> with 4-6 benefit-driven bullets (each answers "why do I want this?" — lead with the benefit, spec follows naturally). Confident, specific language. No vague filler ("high quality", "perfect for everyone"). No exclamation points. HTML tags: <h3>, <p>, <ul>, <li>, <strong> only. This is the product page — it is NOT subject to GMC ad-feed rules. Write to convert.
 - TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
@@ -233,14 +233,14 @@ GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
 - NEVER use special characters (curly quotes, em dashes, symbols, Unicode, emojis).
 - ONLY use plain ASCII: quotes (" "), hyphens (-), commas, periods, &, +, /.
 - NO ALL CAPS (except USB/LED). NO promotional text ("FREE SHIPPING", "SALE").
-- Descriptions must be factual with no exaggerated claims.
+- Meta descriptions (seo_description) must be factual with no exaggerated claims. The body_html product page description is separate — see its rules above.
 
 FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook catalog review):
 - NEVER include medical or health claims (e.g. "cures", "treats", "heals", "relieves pain", "therapeutic", "medical grade", "FDA approved", "anti-anxiety", "boosts immunity", "detox"). These trigger automatic Facebook rejection.
 - NEVER reference prescription drugs, supplements claiming health benefits, or any before/after health outcomes.
 - NEVER use claims about weight loss, muscle gain, or physical transformation.
-- Descriptions must describe WHAT the product IS (material, design, use case) — not what it DOES to the body.
-- Lifestyle context is fine ("great for desk setups", "perfect for gaming sessions") — health outcomes are not.`;
+- The seo_description meta field must describe WHAT the product IS — not health outcomes.
+- Lifestyle context and identity-driven copy are fine ("the mug you reach for every morning", "the hoodie that makes the fit") — health outcome claims are not (no "cures", "treats", "heals" etc).`;
 
     const userPrompt = `Optimize this Shopify product:
 Title: ${product.title || ""}

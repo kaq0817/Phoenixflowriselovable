@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Scan, AlertTriangle, CheckCircle2, Info, ChevronDown, ChevronUp,
   Loader2, Zap, TrendingUp, SpellCheck, Tag, FileText, Clock,
-  Download, ShoppingBag, Store,
+  Download, ShoppingBag, Store, BarChart2, Settings, RefreshCcw,
 } from "lucide-react";
 import { exportListingScanPdf, exportListingScanCsv } from "@/lib/reportExports";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -623,6 +623,59 @@ export default function ListingScanPage() {
         </Tabs>
       )}
 
+
+      {/* Shopify Tools Section */}
+      <section className="mt-12">
+        <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+          Shopify Tools
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="transition-all hover:border-border">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <BarChart2 className="w-5 h-5 text-purple-500 mt-1" />
+                <div>
+                  <h3 className="text-lg font-semibold">Optimizer</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Open one Shopify product and optimize it step by step.
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" className="w-full mt-2">Open Optimizer</Button>
+            </CardContent>
+          </Card>
+
+          <Card className="transition-all hover:border-border">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <Settings className="w-5 h-5 text-purple-500 mt-1" />
+                <div>
+                  <h3 className="text-lg font-semibold">Templanator</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Private Shopify repair workflow.
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" className="w-full mt-2">Open Templanator</Button>
+            </CardContent>
+          </Card>
+
+          <Card className="transition-all hover:border-border">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <RefreshCcw className="w-5 h-5 text-purple-500 mt-1" />
+                <div>
+                  <h3 className="text-lg font-semibold">Theme Compliance</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Theme audit and compliance checks.
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" className="w-full mt-2">Open Theme Compliance</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
       {/* Past Scans */}
       {pastJobs.length > 0 && (
