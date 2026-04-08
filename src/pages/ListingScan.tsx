@@ -60,7 +60,9 @@ interface ScanJob {
   platform: string;
   store_connection_id: string | null;
 }
-
+  function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
+    return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+  }
 interface StoreConnectionOption {
   id: string;
   platform: Platform;
@@ -236,9 +238,7 @@ export default function ListingScanPage() {
     return () => { supabase.removeChannel(channel); };
   }, [currentJob, toast, fetchPastJobs]);
 
-  function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-    return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
-  }
+
 
   async function startScan() {
     setScanning(true);
