@@ -12,7 +12,6 @@ const corsHeaders = {
 interface ImageInput {
   id: number;
   src: string;
-  position?: number;
 }
 
 interface ImageAltResult {
@@ -29,7 +28,7 @@ async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: 
     const mimeType = contentType.split(";")[0].trim();
     if (!mimeType.startsWith("image/")) return null;
     const buffer = await res.arrayBuffer();
-    if (buffer.byteLength > 4 * 1024 * 1024) return null; // skip >4MB
+    if (buffer.byteLength > 4 * 1024 * 1024) return null;
     const bytes = new Uint8Array(buffer);
     let binary = "";
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -47,74 +46,74 @@ function slugify(value: string): string {
     .trim();
 }
 
-// Process a batch of images through Gemini Vision
-async function analyzeBatch(
-  images: { id: number; index: number; base64: string; mimeType: string }[],
-  productTitle: string,
+// Analyze ONE image — no product title in the prompt so Gemini must use its eyes
+async function analyzeOneImage(
+  imageId: number,
+  base64: string,
+  mimeType: string,
   storeName: string,
+  storeSlug: string,
   apiKey: string,
-): Promise<ImageAltResult[]> {
-  const storeSlug = slugify(storeName || "store") || "store";
+): Promise<ImageAltResult> {
+  const prompt = `You are a Google Merchant Center compliance auditor. GMC will SUSPEND this listing if the image alt text does not accurately describe what is PHYSICALLY VISIBLE in the image.
 
-  const imageParts = images.map((img) => ({
-    inlineData: { mimeType: img.mimeType, data: img.base64 },
-  }));
+Your only job: look at this image and describe exactly what you see.
 
-  const imageLabels = images.map((img, i) => `Image ${i + 1} (id: ${img.id})`).join(", ");
+RULES — violation = GMC suspension:
+1. LOOK AT THE IMAGE. Do not guess based on context. Do not invent. Do not copy a product title.
+2. Identify the specific object in the image: is it a necklace? a ring? a red box? a soap flower? a gift bag? a bottle? Describe THAT specific thing.
+3. Note the color, material, and angle if visible.
+4. Do NOT use generic words like "product", "item", "view", "detail". Name the actual object.
+5. Do NOT include vendor names like "Iron Phoenix", "Iron Phoenix GHG".
+6. Alt text must be under 125 characters. Format: "[object] [color/detail] [angle] | ${storeName}"
+7. Filename: all lowercase, hyphens only, ends in .jpg. Format: "[object]-[color]-[angle]-${storeSlug}.jpg"
 
-  const prompt = `You are a visual SEO specialist. I am giving you ${images.length} product image(s) to analyze. The product listing is called "${productTitle}" but that title covers MANY different items — each image may show something completely different (a necklace, a ring, a box, a specific color variant, etc).
+Examples of CORRECT output:
+- alt: "Silver rose pendant necklace on white background | ${storeName}"  filename: "silver-rose-pendant-necklace-front-${storeSlug}.jpg"
+- alt: "Pink soap flower in red heart gift box open lid | ${storeName}"   filename: "pink-soap-flower-red-heart-gift-box-${storeSlug}.jpg"
+- alt: "Gold rotating jewelry display stand close-up | ${storeName}"     filename: "gold-rotating-jewelry-display-stand-${storeSlug}.jpg"
 
-Store name: "${storeName}"
-Image IDs in order: ${imageLabels}
-
-YOUR JOB: Look at each image with your own eyes. Describe ONLY what you actually see in that specific image — the physical object, its color, material, angle, and any notable design details. DO NOT copy the product title. DO NOT assume every image shows the same thing.
-
-For each image write:
-
-ALT TEXT:
-- Describe what is VISUALLY PRESENT: the specific item (necklace, ring, red box, blue bottle, etc.), its color, material, angle
-- If you see jewelry → describe the jewelry. If you see packaging → describe the packaging. If you see a lifestyle shot → describe the scene.
-- Format: "[specific item description] | ${storeName}"
-- Under 125 characters. No "image of", no "picture of", no vendor name "Iron Phoenix GHG"
-
-FILENAME:
-- Based on what you actually see, not the product title
-- All lowercase, hyphen-separated, ends in .jpg
-- Format: "[item-type]-[color-or-detail]-[angle]-${storeSlug}.jpg"
-- Examples: "rose-pendant-necklace-silver-front-${storeSlug}.jpg", "red-gift-box-open-detail-${storeSlug}.jpg"
-- Never use generic names like "view-1.jpg" or the full product title slug
-
-Return ONLY a valid JSON array — no explanation, no markdown fences:
-[{"image_id": <id>, "alt": "<alt text>", "filename": "<filename>.jpg"}, ...]
-
-One entry per image, in the same order as provided.`;
+Return ONLY this JSON object, nothing else:
+{"image_id": ${imageId}, "alt": "<your alt text>", "filename": "<your filename>.jpg"}`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }, ...imageParts] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+        contents: [{
+          role: "user",
+          parts: [
+            { inlineData: { mimeType, data: base64 } },
+            { text: prompt },
+          ],
+        }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 256 },
       }),
     }
   );
 
   if (!response.ok) {
-    throw new Error(`Gemini error ${response.status}`);
+    throw new Error(`Gemini ${response.status}: ${await response.text().then(t => t.slice(0, 100))}`);
   }
 
   const data = await response.json();
-  let raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "[]";
+  let raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
   raw = raw.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
 
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed as ImageAltResult[];
+    if (parsed.image_id && parsed.alt && parsed.filename) {
+      return {
+        image_id: parsed.image_id,
+        alt: String(parsed.alt).slice(0, 125),
+        filename: String(parsed.filename),
+      };
+    }
   } catch { /* fall through */ }
 
-  return [];
+  throw new Error("Gemini returned unparseable response");
 }
 
 serve(async (req) => {
@@ -144,9 +143,9 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
 
-    const { images, productTitle, storeName } = await req.json() as {
+    const { images, storeName } = await req.json() as {
       images: ImageInput[];
-      productTitle: string;
+      productTitle?: string; // accepted but intentionally not used in vision prompt
       storeName: string;
     };
 
@@ -156,37 +155,45 @@ serve(async (req) => {
       });
     }
 
-    // Fetch all images as base64 in parallel
+    const storeSlug = slugify(storeName || "store") || "store";
+
+    // Fetch all images in parallel
     const fetched = await Promise.all(
       images.map(async (img, index) => {
         const result = await fetchImageBase64(img.src);
-        if (!result) return null;
-        return { id: img.id, index, base64: result.data, mimeType: result.mimeType };
+        if (!result) return { id: img.id, index, failed: true as const };
+        return { id: img.id, index, failed: false as const, base64: result.data, mimeType: result.mimeType };
       })
     );
 
-    const validImages = fetched.filter((f): f is NonNullable<typeof f> => f !== null);
-
-    // Process in batches of 8 to stay within Gemini's per-request limits
-    const BATCH_SIZE = 8;
+    // Process each image individually — one Gemini call per image for accuracy
+    // Run in parallel batches of 5 to balance speed vs. rate limits
+    const CONCURRENCY = 5;
     const allResults: ImageAltResult[] = [];
 
-    for (let i = 0; i < validImages.length; i += BATCH_SIZE) {
-      const batch = validImages.slice(i, i + BATCH_SIZE);
-      try {
-        const batchResults = await analyzeBatch(batch, productTitle, storeName, GEMINI_API_KEY);
-        allResults.push(...batchResults);
-      } catch (err) {
-        console.error(`Batch ${i / BATCH_SIZE + 1} failed:`, err);
-        // Push fallback entries for failed batch images
-        for (const img of batch) {
-          allResults.push({
-            image_id: img.id,
-            alt: `${productTitle} - View ${img.index + 1} | ${storeName}`.slice(0, 125),
-            filename: `${slugify(productTitle).slice(0, 40)}-view-${img.index + 1}-${slugify(storeName)}.jpg`,
-          });
-        }
-      }
+    for (let i = 0; i < fetched.length; i += CONCURRENCY) {
+      const chunk = fetched.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (img) => {
+          if (img.failed) {
+            return {
+              image_id: img.id,
+              alt: `Product image ${img.index + 1} | ${storeName}`.slice(0, 125),
+              filename: `product-image-${img.index + 1}-${storeSlug}.jpg`,
+            };
+          }
+          try {
+            return await analyzeOneImage(img.id, img.base64, img.mimeType, storeName, storeSlug, GEMINI_API_KEY);
+          } catch {
+            return {
+              image_id: img.id,
+              alt: `Product image ${img.index + 1} | ${storeName}`.slice(0, 125),
+              filename: `product-image-${img.index + 1}-${storeSlug}.jpg`,
+            };
+          }
+        })
+      );
+      allResults.push(...chunkResults);
     }
 
     return new Response(JSON.stringify({ results: allResults }), {
