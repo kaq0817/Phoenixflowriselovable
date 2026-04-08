@@ -534,14 +534,14 @@ export default function MediaPage() {
                     </div>
 
                     <p className="text-sm text-muted-foreground">
-                      {item.missingImages
-                        ? "No images are attached, so this product needs media before anything else."
-                        : item.thinGallery
-                          ? "This product has some media, but not enough variety to feel complete on Shopify."
-                          : item.missingAlt
-                            ? "Image coverage is present, but the alt text still needs cleanup."
-                            : "This product has enough media coverage to move forward."}
-                    </p>
+                {item.missingImages
+                  ? "Add images first."
+                  : item.thinGallery
+                   ? "Add more image variety."
+                  : item.missingAlt
+                  ? "Fix image alt text."
+                : "Images look complete."}
+              </p>
 
                     {(() => {
                       const product = products.find((p) => p.id === item.id);
