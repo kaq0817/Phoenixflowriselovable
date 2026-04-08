@@ -25,6 +25,7 @@ const APPAREL_KEYWORDS = [
   "shirt", "tee", "t-shirt", "hoodie", "sweatshirt", "sweater", "jacket", "dress", "pants", "leggings",
   "shorts", "top", "tank", "skirt", "apparel", "clothing", "beanie", "hat", "cap", "socks", "sock",
   "onesie", "romper", "jersey", "uniform", "pullover",
+  "lounge", "loungewear", "jogger", "pajama", "pyjama", "jumpsuit", "bodysuit", "set", "tracksuit",
 ];
 
 const COLOR_WORDS = [
@@ -33,7 +34,7 @@ const COLOR_WORDS = [
   "charcoal", "lavender", "mint", "coral", "turquoise", "bronze", "rose gold",
 ];
 
-const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl", "4xl", "5xl"];
+const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "2xl", "xxxl", "3xl", "4xl", "5xl", "6xl"];
 const BANNED_TAGS = ["cjdropshipping", "cj dropshipping", "cj-drop shipping", "cj-drop shipping", "cj dropship", "cjdropship", "dropshipping", "drop shipping"];
 
 export interface EtsyListingLike {
@@ -298,16 +299,8 @@ function buildShopifyFallbackTags(product: ShopifyProductLike): string[] {
     }
   }
 
-  const variantTokens = (product.variants || [])
-    .flatMap((variant) =>
-      [variant.title, variant.option1, variant.option2, variant.option3]
-        .filter(Boolean)
-        .map((value) => String(value)),
-    )
-    .map((value) => sanitizePlainText(value));
-
   return dedupeBySignature(
-    [...sourceItems, ...variantTokens, ...phrases, ...titleWords],
+    [...sourceItems, ...phrases, ...titleWords],
     40,
   );
 }
@@ -497,7 +490,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   if (tags.filter(tagQualifies).length < 10) {
     const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
     tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 30);
-    notes.push("tags padded from product title, type, and variants");
+    notes.push("tags padded from product title and type");
   }
 
   // Guarantee minimum tag count for output

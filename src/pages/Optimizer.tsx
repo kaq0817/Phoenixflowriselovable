@@ -489,35 +489,32 @@ export default function OptimizerPage() {
     );
   };
 
-  const ComparisonRow = ({ label, icon, original, optimized, sectionKey }: {
-    label: string; icon: React.ReactNode; original: string; optimized: string; sectionKey: string;
+  const ComparisonRow = ({ label, icon, original, optimized, onChange, multiline }: {
+    label: string; icon: React.ReactNode; original: string; optimized: string; onChange: (v: string) => void; multiline?: boolean;
   }) => (
     <Card className="bg-card/50 border-border/30 overflow-hidden">
-      <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle(sectionKey)}>
+      <div className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           {icon}
           <span className="text-sm font-medium">{label}</span>
-        </div>
-        <div className="flex items-center gap-2">
           {original !== optimized && <Badge className="bg-primary/10 text-primary text-xs border-0">Changed</Badge>}
-          {expandedSection === sectionKey ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </div>
-      </button>
-      {expandedSection === sectionKey && (
-        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
-          <div className="flex gap-3 items-start">
-            <div className="flex-1 p-3 rounded-lg bg-muted/30 border border-border/20">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Current</p>
-              <p className="text-sm leading-relaxed">{original || <span className="italic text-muted-foreground/50">Empty</span>}</p>
-            </div>
-            <ArrowRight className="h-4 w-4 text-primary mt-8 shrink-0" />
-            <div className="flex-1 p-3 rounded-lg bg-primary/5 border border-primary/20">
-              <p className="text-[10px] uppercase tracking-wider text-primary mb-1.5 font-medium">Optimized</p>
-              <p className="text-sm leading-relaxed">{optimized}</p>
-            </div>
+        {original && (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Current</p>
+            <p className="text-xs text-muted-foreground/60 leading-relaxed">{original}</p>
           </div>
-        </motion.div>
-      )}
+        )}
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-primary mb-1 font-medium">Optimized</p>
+          <textarea
+            className="w-full rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            value={optimized}
+            rows={multiline ? Math.max(3, Math.ceil(optimized.length / 80)) : 2}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </div>
+      </div>
     </Card>
   );
 
@@ -797,24 +794,25 @@ export default function OptimizerPage() {
                       <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
                         <p className="text-sm text-muted-foreground"><Sparkles className="h-4 w-4 inline mr-1 text-primary" />{shopifySuggestions.reasoning}</p>
                       </div>
-                      <ComparisonRow label="Product Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.title} sectionKey="title" />
-                      <ComparisonRow label="SEO Title" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.seo_title} sectionKey="seo_title" />
-                      <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original="" optimized={shopifySuggestions.seo_description} sectionKey="seo_desc" />
-                      <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} sectionKey="type" />
-                      <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} sectionKey="tags" />
+                      <ComparisonRow label="Product Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, title: v })} />
+                      <ComparisonRow label="SEO Title" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.seo_title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_title: v })} />
+                      <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original="" optimized={shopifySuggestions.seo_description} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_description: v })} multiline />
+                      <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, product_type: v })} />
+                      <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, tags: v })} multiline />
                       <ComparisonRow
                         label="Social (OG) Title"
                         icon={<Link className="h-4 w-4 text-primary" />}
                         original="Derived from title"
                         optimized={shopifySuggestions.og_title || shopifySuggestions.seo_title}
-                        sectionKey="og_title"
+                        onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, og_title: v })}
                       />
                       <ComparisonRow
                         label="OG Description"
                         icon={<FileText className="h-4 w-4 text-primary" />}
                         original="Empty"
                         optimized={shopifySuggestions.og_description || shopifySuggestions.seo_description}
-                        sectionKey="og_desc"
+                        onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, og_description: v })}
+                        multiline
                       />
                       <div className="flex gap-3 pt-2">
                         <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">
@@ -911,8 +909,8 @@ export default function OptimizerPage() {
                       <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
                         <Sparkles className="h-4 w-4 inline mr-1 text-primary" />{etsySuggestions.reasoning}
                       </div>
-                      <ComparisonRow label="Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.title} optimized={etsySuggestions.title} sectionKey="title" />
-                      <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.tags?.join(", ") || ""} optimized={etsySuggestions.tags?.join(", ") || ""} sectionKey="tags" />
+                      <ComparisonRow label="Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.title} optimized={etsySuggestions.title} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, title: v })} />
+                      <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.tags?.join(", ") || ""} optimized={etsySuggestions.tags?.join(", ") || ""} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, tags: v.split(",").map(t => t.trim()) })} multiline />
                       <div className="flex gap-3 pt-2">
                         <Button onClick={applyEtsyChanges} disabled={etsyApplying} className="gradient-phoenix text-primary-foreground flex-1">
                           {etsyApplying ? "Applying..." : "Apply to Etsy"}
