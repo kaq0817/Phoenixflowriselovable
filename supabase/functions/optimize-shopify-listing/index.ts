@@ -35,8 +35,8 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
   const cleanBody = stripHtml(product.body_html || "");
   // Twist: add a unique intro and outro, rearrange some words
   const seoDescription = cleanBody.length > 0
-    ? `Discover: ${cleanBody.split(" ").slice(2).join(" ")} — ${title.split(" ").slice(0,2).join(" ")}.`
-    : `${seoTitle} is ready for a quick Shopify SEO pass.`;
+    ? cleanBody.slice(0, 155).trim()
+    : title.slice(0, 155).trim();
 
   const tagParts = [
     product.product_type,
@@ -51,7 +51,7 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
 
   return {
     title,
-    body_html: product.body_html || `<p>${title} is ready for a clearer, buyer-friendly description.</p>`,
+    body_html: product.body_html || `<p>${title}</p>`,
     seo_title: seoTitle,
     seo_description: seoDescription,
     product_type: product.product_type || "",
