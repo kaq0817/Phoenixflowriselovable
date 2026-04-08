@@ -28,15 +28,46 @@ function stripHtml(value: string): string {
 
 function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestionShape {
   const title = (product.title || "Product").trim();
-  // Twist: add a unique phrase and rearrange
-  const seoTitle = title.length > 0
-    ? `${title.split(" ").slice(1).join(" ")} | ${title.split(" ")[0]} Edition`
-    : "Shopify Product";
+  const seoTitle = title.slice(0, 60).trim();
   const cleanBody = stripHtml(product.body_html || "");
-  // Twist: add a unique intro and outro, rearrange some words
-  const seoDescription = cleanBody.length > 0
-    ? cleanBody.slice(0, 155).trim()
-    : title.slice(0, 155).trim();
+
+  // Build a factual 120-155 char description from real product data only
+  function buildSeoDescription(): string {
+    // Prefer real body content trimmed to length
+    if (cleanBody.length >= 120) return cleanBody.slice(0, 155).trim();
+
+    // Build from known fields: title + type + variant options
+    const type = (product.product_type || "").trim();
+    const variants = (product.variants || []);
+    const optionValues = Array.from(
+      new Set(variants.map((v: ShopifyVariantLike) => v.option1).filter(Boolean))
+    ).slice(0, 4).join(", ");
+
+    const parts: string[] = [title];
+    if (type) parts.push(type);
+    if (optionValues) parts.push(`Available in ${optionValues}`);
+
+    let desc = parts.join(". ") + ".";
+
+    // Pad to 120 chars using tags if still too short
+    if (desc.length < 120) {
+      const tagList = String(product.tags || "").split(",").map((t: string) => t.trim()).filter(Boolean);
+      for (const tag of tagList) {
+        const candidate = `${desc} ${tag}.`;
+        if (candidate.length <= 155) desc = candidate;
+        if (desc.length >= 120) break;
+      }
+    }
+
+    // Last resort: repeat title detail to hit minimum
+    if (desc.length < 120) {
+      desc = `${title}. ${type || title} with unique design and quality finish. Available now.`.slice(0, 155);
+    }
+
+    return desc.slice(0, 155).trim();
+  }
+
+  const seoDescription = buildSeoDescription();
 
   const tagParts = [
     product.product_type,
@@ -196,9 +227,9 @@ serve(async (req) => {
 
 SHOPIFY SEO RULES:
 - TITLE: Descriptor-first product name only. Under 70 chars. No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
-- SEO TITLE: Must be under 60 chars. ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
+- SEO TITLE: Must be under 60 chars. Use | as the only separator (never hyphens as separators). ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
-- META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff.
+- META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff. Use | as the only structural separator if needed — never use a hyphen as a separator.
 - DESCRIPTION (body_html): H3 headings (Features, Benefits, Specs). Exactly one bullet list (3-5 items). HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
 - TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.

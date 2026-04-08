@@ -410,8 +410,9 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   function stripInternalBranding(v: string): string {
     if (!v) return "";
 
-    // 1. Remove common "Suffix" patterns (e.g., "Mushroom Coffee | Brand Name" -> "Mushroom Coffee")
-    v = v.replace(/\s*[|\u002D\u2013\u2014]\s*[^|]+$/gi, "");
+    // 1. Remove pipe-appended suffixes only (e.g., "Mushroom Coffee | Brand Name" -> "Mushroom Coffee")
+    // Dashes are preserved — they appear in product names like "3-Piece Set"
+    v = v.replace(/\s*\|\s*[^|]+$/gi, "");
 
     // 2. Remove "The Machine" and Niche Identifiers (Scrubbing for total white-labeling)
     const legacyFragments = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming|ghg|phoenix flow)\b/gi;
@@ -440,8 +441,12 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     60
   ).replace(/"/g, "");
 
+  const BRAND_NAME_PATTERN = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming|ghg|phoenix flow)\b/gi;
   const seo_description = sanitizePlainText(
-    stripInternalBranding(raw.seo_description || product.metafields_global_description_tag || ""),
+    (raw.seo_description || product.metafields_global_description_tag || "")
+      .replace(BRAND_NAME_PATTERN, "")
+      .replace(/\s{2,}/g, " ")
+      .trim(),
     160
   ).replace(/"/g, "");
 
