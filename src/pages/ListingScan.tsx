@@ -85,7 +85,12 @@ const FINDING_ICONS: Record<string, typeof SpellCheck> = {
   keyword_research: Zap,
   short_description: FileText,
 };
-
+const gmcGuard = (text: string, max: number) => {
+  if (!text) return "";
+  if (text.length <= max) return text;
+  const lastSpace = text.lastIndexOf(" ", max);
+  return lastSpace > 0 ? text.substring(0, lastSpace) : text.substring(0, max);
+};
 function getKeywordResearchItems(listing: ListingResult): KeywordResearchItem[] {
   return listing.findings
     .filter((finding) => finding.type === "keyword_research" && finding.data)

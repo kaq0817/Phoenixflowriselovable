@@ -121,7 +121,6 @@ function isApparelProduct(product: ShopifyProduct): boolean {
 export default function OptimizerPage() {
   const { session } = useAuth();
   const { toast } = useToast();
-
   const [platform, setPlatform] = useState<Platform>("shopify");
   const [connections, setConnections] = useState<Record<Platform, boolean>>({ shopify: false, etsy: false });
   const [storeConnections, setStoreConnections] = useState<StoreConnectionOption[]>([]);
@@ -139,7 +138,10 @@ export default function OptimizerPage() {
   const [shopifyNextCursor, setShopifyNextCursor] = useState<string | null>(null);
   const [shopifyHasMore, setShopifyHasMore] = useState(false);
   const [shopifyDoneIds, setShopifyDoneIds] = useState<Set<number>>(new Set());
-
+  const [seoTitleDraft, setSeoTitleDraft] = useState("");
+  const [seoDescDraft, setSeoDescDraft] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
+  
   // Etsy
   const [etsyListings, setEtsyListings] = useState<EtsyListing[]>([]);
   const [etsyLoading, setEtsyLoading] = useState(false);
@@ -187,6 +189,21 @@ export default function OptimizerPage() {
       setLoading(false);
     })();
   }, [session]);
+  // SECTION 3: The "Rose Je" Shield Hook
+useEffect(() => {
+    if (shopifySuggestions) {
+      const gmcGuard = (text: string, max: number) => {
+        if (!text) return "";
+        if (text.length <= max) return text;
+        const lastSpace = text.lastIndexOf(" ", max);
+        return lastSpace > 0 ? text.substring(0, lastSpace) : text.substring(0, max);
+      }; 
+
+      setTitleDraft(gmcGuard(shopifySuggestions.title || "", 70));
+      setSeoTitleDraft(gmcGuard(shopifySuggestions.seo_title || "", 70));
+      setSeoDescDraft(gmcGuard(shopifySuggestions.seo_description || "", 160));
+    }
+  }, [shopifySuggestions]); // Properly closed the hook here
 
   const fetchShopifyProducts = async (cursor: string | null = null, append = false) => {
     if (!selectedShopifyConnectionId) {
