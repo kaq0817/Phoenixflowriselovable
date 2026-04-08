@@ -206,13 +206,13 @@ serve(async (req) => {
       ? `\nImages (${productImages.length}):\n${productImages.map((img, i) => `Image ${i + 1} (id: ${img.id}, position: ${img.position ?? i + 1}): current_alt="${img.alt || "none"}" url="${img.src}"`).join("\n")}`
       : "";
 
-    // Fetch images for multimodal analysis (cap at 5 images)
-    const imageParts: { inlineData: { mimeType: string; data: string } }[] = [];
-    for (const img of productImages.slice(0, 5)) {
-      if (!img.src) continue;
-      const result = await fetchImageBase64(img.src);
-      if (result) imageParts.push({ inlineData: { mimeType: result.mimeType, data: result.data } });
-    }
+    // Fetch images in parallel for multimodal analysis (cap at 5 images)
+    const imageResults = await Promise.all(
+      productImages.slice(0, 5).filter((img) => img.src).map((img) => fetchImageBase64(img.src!))
+    );
+    const imageParts = imageResults
+      .filter((r): r is { data: string; mimeType: string } => r !== null)
+      .map((r) => ({ inlineData: { mimeType: r.mimeType, data: r.data } }));
 
     const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
@@ -257,6 +257,7 @@ ${productContext ? `\nSeller context (use this to inform all fields — the sell
 Return all optimizations using the suggest_shopify_optimizations function.`;
 
     let suggestions: ShopifySuggestionShape | null = null;
+    let geminiError = "";
 
     if (GEMINI_API_KEY) {
       try {
@@ -302,17 +303,24 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
           const functionCall = data.candidates?.[0]?.content?.parts?.find((p: GeminiFunctionCallPart) => p.functionCall)?.functionCall;
           if (functionCall?.args) {
             suggestions = normalizeShopifySuggestions(product, functionCall.args);
+          } else {
+            geminiError = `Gemini returned no function call. Finish reason: ${data.candidates?.[0]?.finishReason || "unknown"}`;
           }
         } else {
-          console.error("Gemini Error:", await response.text());
+          const errText = await response.text();
+          geminiError = `Gemini API error ${response.status}: ${errText.slice(0, 200)}`;
+          console.error("Gemini Error:", errText);
         }
       } catch (err) {
+        geminiError = `Gemini request threw: ${err instanceof Error ? err.message : String(err)}`;
         console.error("Gemini Request Failed:", err);
       }
     }
 
       if (!suggestions) {
-        suggestions = normalizeShopifySuggestions(product, buildFallbackSuggestions(product));
+        const fallback = buildFallbackSuggestions(product);
+        if (geminiError) fallback.reasoning = `AI error: ${geminiError} — ${fallback.reasoning}`;
+        suggestions = normalizeShopifySuggestions(product, fallback);
       }
 
       if ((!suggestions.image_alts || !suggestions.image_alts.trim()) && (product.images || []).length > 0) {
