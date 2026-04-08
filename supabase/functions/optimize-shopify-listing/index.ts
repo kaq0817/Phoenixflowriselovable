@@ -6,6 +6,9 @@ import {
   type ShopifySuggestionShape,
   type ShopifyVariantLike,
 } from "../_shared/listingValidators.ts";
+import { getShopifyApiVersion } from "../_shared/shopify.ts";
+
+const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,9 +158,10 @@ serve(async (req) => {
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const { product, connectionId, productContext } = await req.json() as { product?: ShopifyProductLike; connectionId?: string; productContext?: string };
+    const { product: rawProduct, connectionId, productContext } = await req.json() as { product?: ShopifyProductLike & { id?: number }; connectionId?: string; productContext?: string };
+    let product: ShopifyProductLike & { id?: number } = rawProduct ?? {};
 
-    if (!product) {
+    if (!rawProduct) {
       return new Response(JSON.stringify({ error: "No product provided" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -165,6 +169,8 @@ serve(async (req) => {
 
     // Usage gating (50/month)
     let storeName = "";
+    let shopDomain = "";
+    let shopAccessToken = "";
 
     if (connectionId) {
       const supabaseAdmin = createClient(
@@ -175,7 +181,7 @@ serve(async (req) => {
 
       const { data: conn, error: connErr } = await supabaseAdmin
         .from("store_connections")
-        .select("id, optimizer_runs, optimizer_period_start, shop_name, shop_domain")
+        .select("id, optimizer_runs, optimizer_period_start, shop_name, shop_domain, access_token")
         .eq("id", connectionId)
         .eq("user_id", userData.user.id)
         .single();
@@ -193,6 +199,46 @@ serve(async (req) => {
           await supabaseAdmin.from("store_connections").update({ optimizer_runs: conn.optimizer_runs + 1 }).eq("id", connectionId);
         }
         storeName = conn.shop_name || domainToStoreName(conn.shop_domain) || "";
+        shopDomain = conn.shop_domain || "";
+        shopAccessToken = conn.access_token || "";
+      }
+    }
+
+    // Fetch the full product fresh from Shopify — the list view may have truncated body_html
+    // or be missing metafields. GMC compliance depends on having the real description.
+    if (shopDomain && shopAccessToken && product.id) {
+      try {
+        const [productRes, metafieldRes] = await Promise.all([
+          fetch(
+            `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products/${product.id}.json`,
+            { headers: { "X-Shopify-Access-Token": shopAccessToken } }
+          ),
+          fetch(
+            `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products/${product.id}/metafields.json`,
+            { headers: { "X-Shopify-Access-Token": shopAccessToken } }
+          ),
+        ]);
+
+        if (productRes.ok) {
+          const fullData = await productRes.json();
+          const fresh = fullData.product as ShopifyProductLike;
+          // Merge fresh data — fresh always wins for body_html and core fields
+          product = {
+            ...product,
+            ...fresh,
+          };
+        }
+
+        if (metafieldRes.ok) {
+          const mfData = await metafieldRes.json();
+          const metafields: { namespace: string; key: string; value: string }[] = mfData.metafields || [];
+          const titleTag = metafields.find((m) => m.namespace === "global" && m.key === "title_tag");
+          const descTag = metafields.find((m) => m.namespace === "global" && m.key === "description_tag");
+          if (titleTag) product = { ...product, metafields_global_title_tag: titleTag.value };
+          if (descTag) product = { ...product, metafields_global_description_tag: descTag.value };
+        }
+      } catch (fetchErr) {
+        console.error("Fresh product fetch failed, using client-provided data:", fetchErr);
       }
     }
 
@@ -221,7 +267,7 @@ SHOPIFY SEO RULES:
 - SEO TITLE: Must be under 60 chars. Use | as the only separator (never hyphens as separators). ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff. Use | as the only structural separator if needed — never use a hyphen as a separator.
-- DESCRIPTION (body_html): MINIMUM 600 characters of visible text (GMC uses this field for the product feed — short descriptions get suppressed). Structure: (1) <h3> product name, (2) one punchy hook <p> — who is this for and why will they love owning it, paint the picture, (3) <ul> with 5-7 benefit-driven bullets each answering "why do I want this?" — lead with the benefit, follow with the spec, (4) a second <p> expanding on use case, occasion, or gifting angle with 2-3 sentences. Confident, specific language. No vague filler. No exclamation points. HTML tags: <h3>, <p>, <ul>, <li>, <strong> only. Aim for 600-800 chars of text content.
+- DESCRIPTION (body_html): The existing Body HTML is your PRIMARY SOURCE — it contains the real product specs, materials, dimensions, and details that GMC requires. You MUST carry all of that factual information forward into the new description. Do not invent specs and do not drop any. Then restructure and expand it: (1) <h3> product name, (2) one hook <p> — who this is for and why they'll love it (identity-driven, specific), (3) <ul> with 5-7 bullets — each leads with a benefit then backs it with a spec pulled from the original content, (4) a closing <p> on use case, gifting, or occasion (2-3 sentences). MINIMUM 600 characters of visible text — GMC suppresses listings below this threshold. No exclamation points. HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
 - TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
@@ -242,10 +288,15 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
 - The seo_description meta field must describe WHAT the product IS — not health outcomes.
 - Lifestyle context and identity-driven copy are fine ("the mug you reach for every morning", "the hoodie that makes the fit") — health outcome claims are not (no "cures", "treats", "heals" etc).`;
 
+    const hasExistingBody = (product.body_html || "").replace(/<[^>]*>/g, "").trim().length > 50;
+
     const userPrompt = `Optimize this Shopify product:
 Title: ${product.title || ""}
-Body: ${product.body_html || ""}
-Type: ${product.product_type || ""}
+
+EXISTING PRODUCT DESCRIPTION (this is the source of truth — all specs, materials, and details come from here and MUST be preserved in the new body_html):
+${product.body_html || "No description provided — infer from title, type, and variants."}
+
+Product Type: ${product.product_type || ""}
 Vendor: ${product.vendor || ""}
 Tags: ${product.tags || ""}
 Variants:
@@ -253,7 +304,9 @@ ${variantInfo}${imageInfo}
 
 Current SEO Title: ${product.metafields_global_title_tag || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}
-${productContext ? `\nSeller context (use this to inform all fields — the seller knows what this product actually is): ${productContext}` : ""}
+${productContext ? `\nSeller context: ${productContext}` : ""}
+${hasExistingBody ? "IMPORTANT: The existing description above contains real product data. Your body_html must retain all of it — restructure and expand, never discard specs." : "No existing description — write from scratch using title, type, and variants."}
+
 Return all optimizations using the suggest_shopify_optimizations function.`;
 
     let suggestions: ShopifySuggestionShape | null = null;
