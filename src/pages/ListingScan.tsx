@@ -150,7 +150,11 @@ export default function ListingScanPage() {
       .limit(10);
     if (data) setPastJobs(data as unknown as ScanJob[]);
   }, []);
-
+  const gmcCleanup = (text: string, limit: number) => {
+    if (!text || text.length <= limit) return text;
+    const lastSpace = text.lastIndexOf(" ", limit);
+    return lastSpace > 0 ? text.substring(0, lastSpace) : text.substring(0, limit);
+  };
   const fetchConnections = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -282,13 +286,13 @@ export default function ListingScanPage() {
   const noConnections = storeConnections.length === 0;
 
   useEffect(() => {
-    const validOptions = platform === "shopify" ? shopifyStoreOptions : etsyStoreOptions;
-    if (validOptions.some((connection) => connection.id === selectedConnectionId)) {
-      return;
-    }
+  const validOptions = platform === "shopify" ? shopifyStoreOptions : etsyStoreOptions;
+  
+  // ✅ Wrap the logic in an 'if' instead of using 'return'
+  if (!validOptions.some((connection) => connection.id === selectedConnectionId)) {
     setSelectedConnectionId(validOptions[0]?.id || "");
-  }, [etsyStoreOptions, platform, selectedConnectionId, shopifyStoreOptions]);
-
+  }
+}, [etsyStoreOptions, platform, selectedConnectionId, shopifyStoreOptions]);
   const handlePlatformChange = (newPlatform: string) => {
     const p = newPlatform as Platform;
     setPlatform(p);
