@@ -293,6 +293,22 @@ export default function ListingScanPage() {
   const currentFindings = currentJob?.findings as ListingResult[] | null;
   const tiktokSummary = currentFindings ? getTikTokSummary(currentFindings) : null;
 
+  
+  // 1. First, define the options
+  const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
+  const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
+  const noConnections = storeConnections.length === 0;
+  const validOptions = platform === "shopify" ? shopifyStoreOptions : etsyStoreOptions;
+  
+  // 2. Then, run the hook (No 'if' or 'return' allowed above this line)
+    useEffect(() => {
+    if (!selectedConnectionId || loading) return;
+
+    const hasConnection = validOptions.some((c) => c.id === selectedConnectionId);
+    if (!hasConnection && validOptions.length > 0) {
+      setSelectedConnectionId(validOptions[0].id);
+    }
+  }, [platform, validOptions, selectedConnectionId, loading]);
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -300,23 +316,6 @@ export default function ListingScanPage() {
       </div>
     );
   }
-
-  const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
-  const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
-  const noConnections = storeConnections.length === 0;
-  const validOptions = platform === "shopify" ? shopifyStoreOptions : etsyStoreOptions;
-  
-  // ✅ Move the connection check INSIDE the hook to satisfy the linter
-  useEffect(() => {
-    // ✅ This is the correct way to guard inside a hook
-    if (!selectedConnectionId || loading) return; 
-
-    if (!validOptions.some((connection) => connection.id === selectedConnectionId)) {
-      if (validOptions.length > 0) {
-        setSelectedConnectionId(validOptions[0].id);
-      }
-    }
-  }, [platform, validOptions, selectedConnectionId, loading]);
 
   const handlePlatformChange = (newPlatform: string) => {
     const p = newPlatform as Platform;
