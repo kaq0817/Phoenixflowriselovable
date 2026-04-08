@@ -69,6 +69,12 @@ interface StoreConnectionOption {
   scopes: string | null;
   created_at: string;
 }
+interface ScanListing {
+  title?: string;
+  variant_title?: string;
+  color?: string;
+  size?: string;
+}
 
 const SEVERITY_CONFIG = {
   critical: { icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/30", label: "Critical" },
