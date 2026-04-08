@@ -31,43 +31,8 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
   const seoTitle = title.slice(0, 60).trim();
   const cleanBody = stripHtml(product.body_html || "");
 
-  // Build a factual 120-155 char description from real product data only
-  function buildSeoDescription(): string {
-    // Prefer real body content trimmed to length
-    if (cleanBody.length >= 120) return cleanBody.slice(0, 155).trim();
-
-    // Build from known fields: title + type + variant options
-    const type = (product.product_type || "").trim();
-    const variants = (product.variants || []);
-    const optionValues = Array.from(
-      new Set(variants.map((v: ShopifyVariantLike) => v.option1).filter(Boolean))
-    ).slice(0, 4).join(", ");
-
-    const parts: string[] = [title];
-    if (type) parts.push(type);
-    if (optionValues) parts.push(`Available in ${optionValues}`);
-
-    let desc = parts.join(". ") + ".";
-
-    // Pad to 120 chars using tags if still too short
-    if (desc.length < 120) {
-      const tagList = String(product.tags || "").split(",").map((t: string) => t.trim()).filter(Boolean);
-      for (const tag of tagList) {
-        const candidate = `${desc} ${tag}.`;
-        if (candidate.length <= 155) desc = candidate;
-        if (desc.length >= 120) break;
-      }
-    }
-
-    // Last resort: repeat title detail to hit minimum
-    if (desc.length < 120) {
-      desc = `${title}. ${type || title} with unique design and quality finish. Available now.`.slice(0, 155);
-    }
-
-    return desc.slice(0, 155).trim();
-  }
-
-  const seoDescription = buildSeoDescription();
+  // Only use real content — never invent copy
+  const seoDescription = cleanBody.length >= 50 ? cleanBody.slice(0, 155).trim() : "";
 
   const tagParts = [
     product.product_type,

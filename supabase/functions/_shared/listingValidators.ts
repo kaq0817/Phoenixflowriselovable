@@ -508,11 +508,10 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   }
 
 
-  // Guarantee no empty SEO fields
+  // seo_title falls back to product title if empty; seo_description stays empty rather than invent content
   let cleanSeoTitle = finalHardClean(seo_title);
-  let cleanSeoDescription = finalHardClean(seo_description);
+  const cleanSeoDescription = finalHardClean(seo_description);
   if (!cleanSeoTitle) cleanSeoTitle = title;
-  if (!cleanSeoDescription) cleanSeoDescription = title;
 
   // Final cleanup: trim fragments → strip all quote variants → enforce long-tail + vendor + banned
   tags = tags

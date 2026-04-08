@@ -148,6 +148,8 @@ export default function OptimizerPage() {
   const [etsyOptimizing, setEtsyOptimizing] = useState(false);
   const [etsyApplying, setEtsyApplying] = useState(false);
 
+  const [productTitleEdit, setProductTitleEdit] = useState("");
+  const [productContextNote, setProductContextNote] = useState("");
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [altTextExpanded, setAltTextExpanded] = useState(false);
   const [imageAltEdits, setImageAltEdits] = useState<Record<number, string>>({});
@@ -326,11 +328,14 @@ export default function OptimizerPage() {
     }
   };
 
-  const optimizeShopify = async (product: ShopifyProduct) => {
+  // Step 1: select product and show the pre-optimization form — no API call yet
+  const selectProduct = (product: ShopifyProduct) => {
     setSelectedProduct(product);
     setShopifySuggestions(null);
-    setShopifyOptimizing(true);
+    setShopifyOptimizing(false);
     setExpandedSection(null);
+    setProductTitleEdit(product.title || "");
+    setProductContextNote("");
     const initialAlts: Record<number, string> = {};
     for (const img of product.images || []) {
       initialAlts[img.id] = img.alt || "";
@@ -339,10 +344,30 @@ export default function OptimizerPage() {
     const activeConnection = storeConnections.find((c) => c.id === selectedShopifyConnectionId);
     const storeLabel = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
     setImageFilenameDrafts(buildUniqueFilenameDrafts(product, storeLabel));
-    setAltTextExpanded(true);
+    setAltTextExpanded(false);
     fetchSalesChannels(product.id, selectedShopifyConnectionId);
+  };
+
+  // Step 2: user clicks "Start Optimization" — now call the API with their edits
+  const startOptimization = async () => {
+    if (!selectedProduct) return;
+    setShopifyOptimizing(true);
+    setExpandedSection(null);
+    setAltTextExpanded(true);
+
+    // Merge user edits back into the product before sending
+    const productToSend: ShopifyProduct = {
+      ...selectedProduct,
+      title: productTitleEdit.trim() || selectedProduct.title,
+      body_html: productContextNote.trim()
+        ? `<p>${productContextNote.trim()}</p>`
+        : selectedProduct.body_html,
+    };
+
     try {
-      const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", { body: { product, connectionId: selectedShopifyConnectionId } });
+      const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", {
+        body: { product: productToSend, connectionId: selectedShopifyConnectionId },
+      });
       if (error) {
         const detail = (error as { message?: string }).message || "";
         if (detail.includes("Monthly limit reached") || detail.includes("429")) {
@@ -609,6 +634,52 @@ export default function OptimizerPage() {
                     </CardContent>
                   </Card>
 
+                  {/* Pre-optimization form — only shown before optimization runs */}
+                  {!shopifySuggestions && !shopifyOptimizing && (
+                    <Card className="bg-card/50 border-primary/20">
+                      <CardContent className="p-4 space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Product Title</label>
+                          <input
+                            type="text"
+                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                            value={productTitleEdit}
+                            onChange={(e) => setProductTitleEdit(e.target.value)}
+                            maxLength={70}
+                          />
+                        </div>
+                        {!selectedProduct.body_html?.trim() && (
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-amber-500 uppercase tracking-wider">No description found — what is this product?</label>
+                            <textarea
+                              className="w-full rounded-md border border-amber-500/40 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none"
+                              rows={3}
+                              placeholder="e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."
+                              value={productContextNote}
+                              onChange={(e) => setProductContextNote(e.target.value)}
+                            />
+                          </div>
+                        )}
+                        <Button
+                          className="w-full gradient-phoenix text-primary-foreground"
+                          onClick={() => void startOptimization()}
+                          disabled={!productTitleEdit.trim()}
+                        >
+                          <Sparkles className="h-4 w-4 mr-2" /> Start Optimization
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {shopifyOptimizing && (
+                    <Card className="bg-card/50 border-border/30">
+                      <CardContent className="p-6 flex flex-col items-center gap-3">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <p className="text-sm text-muted-foreground">AI is optimizing your product...</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {selectedProduct.images && selectedProduct.images.length > 0 && (
                     <Card className={`border-border/30 overflow-hidden ${altsAIFilled > 0 ? "bg-primary/5 border-primary/30" : "bg-card/50"}`}>
                       <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setAltTextExpanded((v) => !v)}>
@@ -764,7 +835,7 @@ export default function OptimizerPage() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {shopifyProducts.map((product) => (
-                    <motion.div key={product.id} whileHover={{ scale: 1.01 }} className="cursor-pointer" onClick={() => optimizeShopify(product)}>
+                    <motion.div key={product.id} whileHover={{ scale: 1.01 }} className="cursor-pointer" onClick={() => selectProduct(product)}>
                       <Card className="bg-card/50 border-border/30 hover:border-primary/40">
                         <CardContent className="p-3 flex gap-3">
                           <ProductImage src={product.images?.[0]?.src} alt={product.title} size="md" />
