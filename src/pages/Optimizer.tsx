@@ -359,14 +359,11 @@ export default function OptimizerPage() {
     const productToSend: ShopifyProduct = {
       ...selectedProduct,
       title: productTitleEdit.trim() || selectedProduct.title,
-      body_html: productContextNote.trim()
-        ? `<p>${productContextNote.trim()}</p>`
-        : selectedProduct.body_html,
     };
 
     try {
       const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", {
-        body: { product: productToSend, connectionId: selectedShopifyConnectionId },
+        body: { product: productToSend, connectionId: selectedShopifyConnectionId, productContext: productContextNote.trim() || undefined },
       });
       if (error) {
         const detail = (error as { message?: string }).message || "";

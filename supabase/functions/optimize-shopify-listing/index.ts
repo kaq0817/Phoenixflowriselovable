@@ -22,6 +22,24 @@ interface GeminiFunctionCallPart {
   };
 }
 
+async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const mimeType = contentType.split(";")[0].trim();
+    if (!mimeType.startsWith("image/")) return null;
+    const buffer = await res.arrayBuffer();
+    if (buffer.byteLength > 3 * 1024 * 1024) return null; // skip >3MB images
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return { data: btoa(binary), mimeType };
+  } catch {
+    return null;
+  }
+}
+
 function stripHtml(value: string): string {
   return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -137,7 +155,7 @@ serve(async (req) => {
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const { product, connectionId } = await req.json() as { product?: ShopifyProductLike; connectionId?: string };
+    const { product, connectionId, productContext } = await req.json() as { product?: ShopifyProductLike; connectionId?: string; productContext?: string };
 
     if (!product) {
       return new Response(JSON.stringify({ error: "No product provided" }), {
@@ -185,8 +203,16 @@ serve(async (req) => {
 
     const productImages = product.images || [];
     const imageInfo = productImages.length > 0
-      ? `\nImages (${productImages.length}):\n${productImages.map((img, i) => `Image ${i + 1} (id: ${img.id}, position: ${img.position ?? i + 1}): current_alt="${img.alt || "none"}"`).join("\n")}`
+      ? `\nImages (${productImages.length}):\n${productImages.map((img, i) => `Image ${i + 1} (id: ${img.id}, position: ${img.position ?? i + 1}): current_alt="${img.alt || "none"}" url="${img.src}"`).join("\n")}`
       : "";
+
+    // Fetch images for multimodal analysis (cap at 5 images)
+    const imageParts: { inlineData: { mimeType: string; data: string } }[] = [];
+    for (const img of productImages.slice(0, 5)) {
+      if (!img.src) continue;
+      const result = await fetchImageBase64(img.src);
+      if (result) imageParts.push({ inlineData: { mimeType: result.mimeType, data: result.data } });
+    }
 
     const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
@@ -199,7 +225,7 @@ SHOPIFY SEO RULES:
 - TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
-- IMAGE ALT TEXT: For every image listed in the product data, write descriptive SEO-friendly alt text. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); Image 1 = full clean product name + primary attribute; Images 2+ = angle, detail, or context suffix before the pipe (e.g. "Block World Pixelated Travel Mug - Handle Detail | Phoenix Rise"); NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
+- IMAGE ALT TEXT: The actual product images are included in this request — visually analyze each one. Write descriptive SEO-friendly alt text based on what you see in each image. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); describe the actual visible content (color, angle, key design detail, background context); Images 2+ should describe what makes that photo different from Image 1 (angle, detail, zoom, lifestyle shot, etc.); NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
 - IMAGE FILENAMES: For every image, suggest a clean SEO-rich filename. Rules: all lowercase, hyphen-separated, no special chars, end in .jpg; Format: "[clean-product-name]-[detail]-[store-slug].jpg" where store-slug = "${storeName ? storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "store"}"; Image 1 = full product slug + store slug (e.g. "block-world-pixelated-travel-mug-phoenix-rise.jpg"); Images 2+ = product slug + detail + store slug (e.g. "block-world-pixelated-travel-mug-handle-detail-phoenix-rise.jpg"); NEVER use generic names like "image-1.jpg", vendor names, or LLC suffixes. Return as a JSON-encoded string in image_filenames: [{"image_id": <id>, "filename": "<name>.jpg"}].
 
 GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
@@ -227,7 +253,7 @@ ${variantInfo}${imageInfo}
 
 Current SEO Title: ${product.metafields_global_title_tag || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}
-
+${productContext ? `\nSeller context (use this to inform all fields — the seller knows what this product actually is): ${productContext}` : ""}
 Return all optimizations using the suggest_shopify_optimizations function.`;
 
     let suggestions: ShopifySuggestionShape | null = null;
@@ -240,7 +266,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
+              contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }, ...imageParts] }],
               tools: [{
                 functionDeclarations: [{
                   name: "suggest_shopify_optimizations",
