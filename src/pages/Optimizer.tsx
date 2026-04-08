@@ -680,7 +680,7 @@ export default function OptimizerPage() {
                     </Card>
                   )}
 
-                  {selectedProduct.images && selectedProduct.images.length > 0 && (
+                  {shopifySuggestions && selectedProduct.images && selectedProduct.images.length > 0 && (
                     <Card className={`border-border/30 overflow-hidden ${altsAIFilled > 0 ? "bg-primary/5 border-primary/30" : "bg-card/50"}`}>
                       <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setAltTextExpanded((v) => !v)}>
                         <div className="flex items-center gap-2">
@@ -739,7 +739,7 @@ export default function OptimizerPage() {
                     </Card>
                   )}
 
-                  <Card className="bg-card/50 border-border/30 overflow-hidden">
+                  {shopifySuggestions && (<Card className="bg-card/50 border-border/30 overflow-hidden">
                     <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("sales_channels")}>
                       <div className="flex items-center gap-2">
                         <Radio className="h-4 w-4 text-primary" />
@@ -786,7 +786,9 @@ export default function OptimizerPage() {
                     )}
                   </Card>
 
-                  {shopifyOptimizing ? (
+                   )}
+
+                   {shopifyOptimizing ? (
                     <Card className="bg-card/50 border-border/30">
                       <CardContent className="p-8 flex flex-col items-center gap-3">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -803,7 +805,6 @@ export default function OptimizerPage() {
                       <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original="" optimized={shopifySuggestions.seo_description} sectionKey="seo_desc" />
                       <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} sectionKey="type" />
                       <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} sectionKey="tags" />
-
                       <ComparisonRow
                         label="Social (OG) Title"
                         icon={<Link className="h-4 w-4 text-primary" />}
