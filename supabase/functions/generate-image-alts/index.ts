@@ -62,32 +62,32 @@ async function analyzeBatch(
 
   const imageLabels = images.map((img, i) => `Image ${i + 1} (id: ${img.id})`).join(", ");
 
-  const prompt = `You are an SEO image analyst for a Shopify store. Analyze each product image and generate GMC-compliant alt text and a clean SEO filename for it.
+  const prompt = `You are a visual SEO specialist. I am giving you ${images.length} product image(s) to analyze. The product listing is called "${productTitle}" but that title covers MANY different items — each image may show something completely different (a necklace, a ring, a box, a specific color variant, etc).
 
-Product: "${productTitle}"
-Store: "${storeName}"
-Images provided: ${imageLabels}
+Store name: "${storeName}"
+Image IDs in order: ${imageLabels}
 
-For EACH image, look at what is actually visible — color, angle, detail, background, lifestyle context — and write:
+YOUR JOB: Look at each image with your own eyes. Describe ONLY what you actually see in that specific image — the physical object, its color, material, angle, and any notable design details. DO NOT copy the product title. DO NOT assume every image shows the same thing.
 
-ALT TEXT rules:
-- Under 125 characters
-- Format: "[What you see in the image] | ${storeName}"
-- Describe the actual content: product color, angle (front, side, detail shot, lifestyle), key design elements
-- Use keywords naturally — describe what's actually there, not generic labels
-- No "image of", no "picture of", no vendor name "Iron Phoenix GHG"
-- Image 1 = main/primary view; subsequent images = what makes THIS shot different (angle, detail, zoom, etc.)
+For each image write:
 
-FILENAME rules:
-- All lowercase, hyphen-separated, no special chars, end in .jpg
-- Format: "[product-descriptor]-[what-is-shown]-${storeSlug}.jpg"
-- Describe what's in the shot: e.g. "rotating-soap-flower-rose-pink-main-${storeSlug}.jpg"
-- No generic names like "image-1.jpg"
+ALT TEXT:
+- Describe what is VISUALLY PRESENT: the specific item (necklace, ring, red box, blue bottle, etc.), its color, material, angle
+- If you see jewelry → describe the jewelry. If you see packaging → describe the packaging. If you see a lifestyle shot → describe the scene.
+- Format: "[specific item description] | ${storeName}"
+- Under 125 characters. No "image of", no "picture of", no vendor name "Iron Phoenix GHG"
 
-Return ONLY a JSON array, no explanation, no markdown:
+FILENAME:
+- Based on what you actually see, not the product title
+- All lowercase, hyphen-separated, ends in .jpg
+- Format: "[item-type]-[color-or-detail]-[angle]-${storeSlug}.jpg"
+- Examples: "rose-pendant-necklace-silver-front-${storeSlug}.jpg", "red-gift-box-open-detail-${storeSlug}.jpg"
+- Never use generic names like "view-1.jpg" or the full product title slug
+
+Return ONLY a valid JSON array — no explanation, no markdown fences:
 [{"image_id": <id>, "alt": "<alt text>", "filename": "<filename>.jpg"}, ...]
 
-One entry per image in the same order as provided.`;
+One entry per image, in the same order as provided.`;
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,

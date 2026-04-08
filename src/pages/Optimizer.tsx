@@ -479,6 +479,35 @@ useEffect(() => {
 
   const toggle = (key: string) => setExpandedSection(expandedSection === key ? null : key);
 
+  const [rescanningImageId, setRescanningImageId] = useState<number | null>(null);
+
+  const rescanSingleImage = async (img: { id: number; src: string }) => {
+    if (!selectedProduct) return;
+    setRescanningImageId(img.id);
+    try {
+      const activeConnection = storeConnections.find((c) => c.id === selectedShopifyConnectionId);
+      const storeName = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
+      const { data, error } = await supabase.functions.invoke("generate-image-alts", {
+        body: {
+          images: [{ id: img.id, src: img.src }],
+          productTitle: selectedProduct.title,
+          storeName,
+        },
+      });
+      if (error) throw error;
+      const results: { image_id: number; alt: string; filename: string }[] = data.results || [];
+      if (results[0]) {
+        setImageAltEdits(prev => ({ ...prev, [img.id]: results[0].alt }));
+        setImageFilenameDrafts(prev => ({ ...prev, [img.id]: results[0].filename }));
+      }
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      toast({ title: "Rescan failed", description: errorObj.message, variant: "destructive" });
+    } finally {
+      setRescanningImageId(null);
+    }
+  };
+
   const scanImageAlts = async () => {
     if (!selectedProduct || !selectedProduct.images?.length) return;
     setAltScanLoading(true);
