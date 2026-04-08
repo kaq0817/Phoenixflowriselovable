@@ -46,7 +46,22 @@ interface ShopifySuggestions {
   reasoning: string;
   product_schema_status?: 'valid' | 'missing_fields';
 }
+  const getSafeTitle = (listing: ScanListing): string => {
+  if (!listing.title || listing.title.trim() === "") {
+    const color = listing.color || listing.variant_title || "";
+    const size = listing.size || "";
+    const fallback = `${color} ${size}`.trim();
+    return fallback !== "" ? fallback : "Product Title Missing";
+  }
+  return listing.title;
+};
 
+const gmcGuard = (text: string | undefined | null, max: number): string => {
+  const safeText = text || "";
+  if (safeText.length <= max) return safeText;
+  const lastSpace = safeText.lastIndexOf(" ", max);
+  return lastSpace > 0 ? safeText.substring(0, lastSpace) : safeText.substring(0, max);
+};
 interface EtsyListing {
   listing_id: number;
   title: string;

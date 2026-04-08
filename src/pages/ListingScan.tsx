@@ -85,12 +85,21 @@ const FINDING_ICONS: Record<string, typeof SpellCheck> = {
   keyword_research: Zap,
   short_description: FileText,
 };
-const gmcGuard = (text: string, max: number) => {
-  if (!text) return "";
-  if (text.length <= max) return text;
-  const lastSpace = text.lastIndexOf(" ", max);
-  return lastSpace > 0 ? text.substring(0, lastSpace) : text.substring(0, max);
-};
+const gmcGuard = (text: string | undefined | null, max: number): string => {
+    const safeText = text || "";
+    if (safeText.length <= max) return safeText;
+    const lastSpace = safeText.lastIndexOf(" ", max);
+    return lastSpace > 0 ? safeText.substring(0, lastSpace) : safeText.substring(0, max);
+  };
+
+  const getSafeTitle = (listing: ScanListing): string => {
+    if (!listing.title || listing.title.trim() === "") {
+      const color = listing.color || listing.variant_title || "";
+      const size = listing.size || "";
+      return `${color} ${size}`.trim() || "Product Title Missing";
+    }
+    return listing.title;
+  };
 function getKeywordResearchItems(listing: ListingResult): KeywordResearchItem[] {
   return listing.findings
     .filter((finding) => finding.type === "keyword_research" && finding.data)
@@ -289,15 +298,20 @@ export default function ListingScanPage() {
   const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
   const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
   const noConnections = storeConnections.length === 0;
-
-  useEffect(() => {
   const validOptions = platform === "shopify" ? shopifyStoreOptions : etsyStoreOptions;
   
-  // ✅ Wrap the logic in an 'if' instead of using 'return'
-  if (!validOptions.some((connection) => connection.id === selectedConnectionId)) {
-    setSelectedConnectionId(validOptions[0]?.id || "");
-  }
-}, [etsyStoreOptions, platform, selectedConnectionId, shopifyStoreOptions]);
+  // ✅ Move the connection check INSIDE the hook to satisfy the linter
+  useEffect(() => {
+    // ✅ This is the correct way to guard inside a hook
+    if (!selectedConnectionId || loading) return; 
+
+    if (!validOptions.some((connection) => connection.id === selectedConnectionId)) {
+      if (validOptions.length > 0) {
+        setSelectedConnectionId(validOptions[0].id);
+      }
+    }
+  }, [platform, validOptions, selectedConnectionId, loading]);
+
   const handlePlatformChange = (newPlatform: string) => {
     const p = newPlatform as Platform;
     setPlatform(p);
@@ -644,14 +658,5 @@ export default function ListingScanPage() {
         </Card>
       )}
     </div>
-  );
+ );
 }
-
-
-
-
-
-
-
-
-
