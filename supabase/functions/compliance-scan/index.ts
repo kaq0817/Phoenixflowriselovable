@@ -348,11 +348,10 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
     } else {
       try {
         const aiResponse = await fetchWithTimeout(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
           {
             method: "POST",
             headers: {
-              "x-goog-api-key": GEMINI_API_KEY,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
@@ -678,12 +677,13 @@ function buildFallbackComplianceReport(input: {
 
   // Only flag old-brand signals found on storefront pages (blogs are already excluded upstream)
   if (input.oldBrandSignals.length > 0) {
+    const examples = input.oldBrandSignals.slice(0, 5).join("\n• ");
     findings.push({
       category: "gmc_misrepresentation",
       severity: "critical",
       title: "Old-brand or off-domain links found",
-      description: `The scanner found links pointing to other storefronts or old brand domains on storefront pages: ${input.oldBrandSignals.slice(0, 5).join(", ")}.`,
-      recommendation: "Remove or replace wrong-domain links in navigation, banners, and CTAs so shoppers are not routed to another brand.",
+      description: `Found ${input.oldBrandSignals.length} link(s) pointing to old brand domains or other storefronts in navigation, banners, or CTAs:\n• ${examples}\n\nThese route shoppers away from this store and can cause GMC suspension.`,
+      recommendation: "Search your theme for these URLs and replace them with links to this store's own pages.",
     });
   }
 
@@ -693,12 +693,13 @@ function buildFallbackComplianceReport(input: {
     (link) => !/(facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|paypal\.com|stripe\.com|shopify\.com|google\.com|apple\.com|shopifypay)/i.test(link),
   );
   if (unexplainedExternal.length > 5) {
+    const sample = unexplainedExternal.slice(0, 8).join("\n• ");
     findings.push({
       category: "general_ecommerce",
       severity: "warning",
       title: "External links need manual trust review",
-      description: `The storefront includes ${unexplainedExternal.length} off-domain links on non-blog pages that are not recognized as standard analytics, social, or payment destinations.`,
-      recommendation: "Review non-store links and keep only legitimate analytics, policy, or approved external destinations.",
+      description: `Found ${unexplainedExternal.length} off-domain links on storefront pages (not counting social/payment). First examples:\n• ${sample}`,
+      recommendation: "Review each link. Keep only legitimate analytics, policy hosts, or approved partner destinations. Remove anything that routes shoppers to checkout elsewhere.",
     });
   }
 
@@ -710,25 +711,26 @@ function buildFallbackComplianceReport(input: {
   ].filter((item) => !input.policyPages.some((url) => url.toLowerCase().includes(item.key)));
 
   if (missingPolicies.length > 0) {
+    const missing = missingPolicies.map((item) => item.label).join(", ");
     findings.push({
       category: "gmc_misrepresentation",
       severity: "warning",
       title: "Policy coverage is incomplete",
-      description: `The scan could not confirm these policy routes: ${missingPolicies.map((item) => item.label).join(", ")}.`,
-      recommendation: "Make sure privacy, refund/return, shipping, and terms pages are publicly linked and consistent with checkout messaging.",
+      description: `Could not find public URLs for: ${missing}.\n\nShopify standard routes: /policies/privacy-policy, /policies/refund-policy, /policies/shipping-policy, /policies/terms-of-service`,
+      recommendation: "Go to Shopify Admin → Settings → Policies and make sure each policy is generated and saved. Then add links to your footer.",
     });
   }
 
   // Medical claim check runs ONLY on storefront content (not blog content).
-  // Stories about someone being sick, recovery narratives, or wellness lifestyle language
-  // in blog posts are editorial content and must never trigger this rule.
-  if (/(treats?\s+\w+\s+disease|cures?\s+\w|clinically proven|medical-grade|fda[- ]approved|diagnosed with|treats? (depression|anxiety|ptsd|adhd|cancer))/i.test(combined)) {
+  const medicalPattern = /(treats?\s+\w+\s+disease|cures?\s+\w|clinically proven|medical-grade|fda[- ]approved|diagnosed with|treats? (depression|anxiety|ptsd|adhd|cancer))/i;
+  const medicalMatch = combined.match(medicalPattern);
+  if (medicalMatch) {
     findings.push({
       category: "gmc_misrepresentation",
       severity: "warning",
       title: "Potential medical or treatment-style wording detected",
-      description: "The scanner found language on product or storefront pages that may read like treatment, diagnosis, or clinical outcome claims.",
-      recommendation: "Rewrite claims toward lifestyle support language and remove any wording that suggests treatment, diagnosis, or guaranteed health outcomes.",
+      description: `Found this phrase on a product or storefront page: "${medicalMatch[0]}"\n\nThis type of language can trigger GMC policy violations for health claims.`,
+      recommendation: "Rewrite toward lifestyle language. Replace 'treats X' with 'supports your X routine', 'clinically proven' with 'customer-loved', etc.",
     });
   }
 
