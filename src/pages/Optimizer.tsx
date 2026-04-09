@@ -84,7 +84,10 @@ function slugifyForFilename(value: string): string {
     .trim();
 }
 
-const INTERNAL_BRAND_RE = /Iron Phoenix GHG|Iron Phoenix|Go Hard Gaming|Phoenix Rise/gi;
+// Only strip OLD brand names that should no longer appear in product titles.
+// Current brand (Iron Phoenix GHG, Our Phoenix Rise) is allowed — GMC requires
+// brand name in apparel titles. "Go Hard Gaming" is the old name to remove.
+const INTERNAL_BRAND_RE = /\bGo Hard Gaming\b/gi;
 const PROMO_RE = /FREE SHIPPING|SALE|NEW\b|100%|BEST\b|HOT\b|DEAL|DISCOUNT|OFFER|PROMO|GUARANTEED|CHEAP/gi;
 
 function cleanProductTitle(raw: string): string {
