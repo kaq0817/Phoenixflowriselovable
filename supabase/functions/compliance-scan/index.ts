@@ -129,7 +129,7 @@ serve(async (req) => {
     }
 
     console.log("Scraping store:", formattedUrl);
-    const originHost = new URL(formattedUrl).hostname.toLowerCase().replace(/^www\./, "");
+    const inputHost = new URL(formattedUrl).hostname.toLowerCase().replace(/^www\./, "");
 
     // Scrape main page
     const homepage = FIRECRAWL_API_KEY
@@ -141,6 +141,23 @@ serve(async (req) => {
 
     const pageContent = homepage.markdown || "";
     const pageLinks = homepage.links || [];
+
+    // Detect the real store domain — myshopify.com domains redirect to custom domains.
+    // Find the most-linked hostname in page links that isn't a known external service.
+    // That's the actual storefront domain, regardless of what URL was submitted.
+    const EXTERNAL_HOSTS = /myshopify\.com|shopify\.com|facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|paypal\.com|stripe\.com|google\.com|apple\.com/i;
+    const hostCounts: Record<string, number> = {};
+    for (const link of pageLinks) {
+      try {
+        const h = new URL(link).hostname.toLowerCase().replace(/^www\./, "");
+        if (!EXTERNAL_HOSTS.test(h)) hostCounts[h] = (hostCounts[h] ?? 0) + 1;
+      } catch { /* ignore */ }
+    }
+    const detectedHost = Object.entries(hostCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    // Allow both the submitted domain and the detected custom domain
+    const originHost = detectedHost ?? inputHost;
+    const allowedHosts = new Set([inputHost, originHost]);
+    console.log("Input host:", inputHost, "| Detected store host:", originHost);
 
     console.log("Scraped content length:", pageContent.length, "Links found:", pageLinks.length);
 
@@ -213,7 +230,7 @@ serve(async (req) => {
     const offDomainLinks = extractOffDomainLinks({
       mainPageLinks: pageLinks,
       sitePages: storefrontPageUrls, // blogs excluded — editorial outbound links are expected
-      allowedHost: originHost,
+      allowedHosts,
     });
     // All LLC-owned domains are safe — they will eventually redirect to or serve ads for the Shopify store.
     // LLC: Go Hard Gaming Discord LLC  |  DBA: Iron Phoenix GHG  |  Store: Our Phoenix Rise
@@ -329,7 +346,7 @@ ${sampledPageContent.slice(0, 6000)}
 ${pageLinks.slice(0, 50).join("\n")}
 
 === DIRECT RISK SIGNALS ===
-Origin host: ${originHost}
+Store domain: ${originHost} (submitted as: ${inputHost})
 POLICY PAGES CONFIRMED (do NOT flag policy coverage as missing — these URLs exist and were sampled): ${policyPages.length > 0 ? policyPages.join(", ") : "none sampled but sitemap includes policy routes"}
 Sitemap includes /policies/ routes: ${sitePages.some((p: string) => p.includes("/policies/")) ? "YES — policies are present" : "no"}
 Blog/article pages sampled: ${blogPages.length}
@@ -616,13 +633,14 @@ async function scrapeBasicPage(url: string): Promise<BasicPageResponse> {
 function extractOffDomainLinks(input: {
   mainPageLinks: string[];
   sitePages: string[];
-  allowedHost: string;
+  allowedHosts: Set<string>;
 }): string[] {
   const urls = [...(input.mainPageLinks || []), ...(input.sitePages || [])];
   const offDomain = urls.filter((candidate) => {
     try {
       const parsed = new URL(candidate);
-      return parsed.hostname.toLowerCase().replace(/^www\./, "") !== input.allowedHost;
+      const h = parsed.hostname.toLowerCase().replace(/^www\./, "");
+      return !input.allowedHosts.has(h);
     } catch {
       return false;
     }
