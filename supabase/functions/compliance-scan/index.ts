@@ -348,7 +348,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
     } else {
       try {
         const aiResponse = await fetchWithTimeout(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent`,
           {
             method: "POST",
             headers: {
@@ -663,25 +663,42 @@ function buildFallbackComplianceReport(input: {
   policyPages: string[];
 }): ComplianceReport {
   const findings: ComplianceFinding[] = [];
-  const combined = `${input.pageContent}\n${input.sampledPageContent}`.toLowerCase();
 
+  // Only scan storefront pages (homepage + non-blog samples) for product-level signals.
+  // Blog/article content is excluded from medical claim checks — personal stories,
+  // recovery narratives, and editorial wellness content are never product claims.
+  const storefrontContent = input.pageContent.toLowerCase();
+  const sampledLower = input.sampledPageContent.toLowerCase();
+  // Strip blog sections from sampled content before medical regex check
+  const storefrontSampled = sampledLower
+    .split(/--- page:.*?\/(blogs?|articles?)\/.*?---/i)
+    .filter((_, i) => i % 2 === 0)
+    .join(" ");
+  const combined = `${storefrontContent}\n${storefrontSampled}`;
+
+  // Only flag old-brand signals found on storefront pages (blogs are already excluded upstream)
   if (input.oldBrandSignals.length > 0) {
     findings.push({
       category: "gmc_misrepresentation",
       severity: "critical",
       title: "Old-brand or off-domain links found",
-      description: `The scanner found links pointing to other storefronts or old brand domains: ${input.oldBrandSignals.slice(0, 5).join(", ")}.`,
-      recommendation: "Remove or replace wrong-domain links in blog posts, navigation, banners, and CTAs so the store does not route shoppers to another brand.",
+      description: `The scanner found links pointing to other storefronts or old brand domains on storefront pages: ${input.oldBrandSignals.slice(0, 5).join(", ")}.`,
+      recommendation: "Remove or replace wrong-domain links in navigation, banners, and CTAs so shoppers are not routed to another brand.",
     });
   }
 
-  if (input.offDomainLinks.length > input.oldBrandSignals.length) {
+  // Only flag external links if there are many unexplained ones (footer social links,
+  // payment badges, and policy hosts are normal — flag only if count is high)
+  const unexplainedExternal = input.offDomainLinks.filter(
+    (link) => !/(facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|paypal\.com|stripe\.com|shopify\.com|google\.com|apple\.com|shopifypay)/i.test(link),
+  );
+  if (unexplainedExternal.length > 5) {
     findings.push({
       category: "general_ecommerce",
       severity: "warning",
       title: "External links need manual trust review",
-      description: `The storefront includes ${input.offDomainLinks.length} off-domain links. Some may be valid, but they should be reviewed for trust and routing accuracy.`,
-      recommendation: "Review all non-store links and keep only legitimate analytics, policy, or approved external destinations.",
+      description: `The storefront includes ${unexplainedExternal.length} off-domain links on non-blog pages that are not recognized as standard analytics, social, or payment destinations.`,
+      recommendation: "Review non-store links and keep only legitimate analytics, policy, or approved external destinations.",
     });
   }
 
@@ -702,12 +719,15 @@ function buildFallbackComplianceReport(input: {
     });
   }
 
-  if (/(treats?|cures?|therapy|depression|anxiety relief|ptsd|adhd|clinically proven|medical-grade)/i.test(combined)) {
+  // Medical claim check runs ONLY on storefront content (not blog content).
+  // Stories about someone being sick, recovery narratives, or wellness lifestyle language
+  // in blog posts are editorial content and must never trigger this rule.
+  if (/(treats?\s+\w+\s+disease|cures?\s+\w|clinically proven|medical-grade|fda[- ]approved|diagnosed with|treats? (depression|anxiety|ptsd|adhd|cancer))/i.test(combined)) {
     findings.push({
       category: "gmc_misrepresentation",
       severity: "warning",
       title: "Potential medical or treatment-style wording detected",
-      description: "The scanner found language that may read like treatment, diagnosis, or clinical outcome claims.",
+      description: "The scanner found language on product or storefront pages that may read like treatment, diagnosis, or clinical outcome claims.",
       recommendation: "Rewrite claims toward lifestyle support language and remove any wording that suggests treatment, diagnosis, or guaranteed health outcomes.",
     });
   }
