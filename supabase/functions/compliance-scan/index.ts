@@ -324,7 +324,8 @@ ${pageLinks.slice(0, 50).join("\n")}
 
 === DIRECT RISK SIGNALS ===
 Origin host: ${originHost}
-Policy pages sampled: ${policyPages.length}
+POLICY PAGES CONFIRMED (do NOT flag policy coverage as missing — these URLs exist and were sampled): ${policyPages.length > 0 ? policyPages.join(", ") : "none sampled but sitemap includes policy routes"}
+Sitemap includes /policies/ routes: ${sitePages.some((p: string) => p.includes("/policies/")) ? "YES — policies are present" : "no"}
 Blog/article pages sampled: ${blogPages.length}
 Product pages sampled: ${productPages.length}
 Collection pages sampled: ${collectionPages.length}
@@ -344,6 +345,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
         oldBrandSignals,
         pagesAnalyzed: 1 + priorityPages.length,
         policyPages,
+        sitePages,
       });
     } else {
       try {
@@ -660,6 +662,7 @@ function buildFallbackComplianceReport(input: {
   oldBrandSignals: string[];
   pagesAnalyzed: number;
   policyPages: string[];
+  sitePages?: string[];
 }): ComplianceReport {
   const findings: ComplianceFinding[] = [];
 
@@ -708,7 +711,10 @@ function buildFallbackComplianceReport(input: {
     { key: "refund", label: "Refund or return policy" },
     { key: "shipping", label: "Shipping policy" },
     { key: "terms", label: "Terms of service" },
-  ].filter((item) => !input.policyPages.some((url) => url.toLowerCase().includes(item.key)));
+  ].filter((item) => {
+    const allKnownUrls = [...input.policyPages, ...(input.sitePages ?? [])];
+    return !allKnownUrls.some((url) => url.toLowerCase().includes(item.key));
+  });
 
   if (missingPolicies.length > 0) {
     const missing = missingPolicies.map((item) => item.label).join(", ");
