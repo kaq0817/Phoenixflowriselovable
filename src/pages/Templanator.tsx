@@ -26,6 +26,7 @@ import {
   Send,
   Shield,
   Store,
+  TrendingUp,
   Upload,
   Workflow,
   Zap,
