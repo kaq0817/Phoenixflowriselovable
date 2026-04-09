@@ -215,8 +215,13 @@ serve(async (req) => {
       sitePages: storefrontPageUrls, // blogs excluded — editorial outbound links are expected
       allowedHost: originHost,
     });
+    // Flag links that route shoppers to a competing checkout or a completely different brand storefront.
+    // gohardgaming.com / gohardgaming.store are the LLC's own domains (Go Hard Gaming Discord LLC
+    // dba Iron Phoenix GHG) — do NOT flag those as old-brand risks.
+    // ironphoenix.store is a legacy domain that should have been migrated away from.
+    // etsy.com would mean the store is sending buyers to a third-party marketplace checkout.
     const oldBrandSignals = offDomainLinks.filter((link) =>
-      /(ironphoenix\.store|gohardgaming\.store|gohardgaming\.com|etsy\.com)/i.test(link),
+      /(ironphoenix\.store|etsy\.com\/shop\/)/i.test(link),
     );
 
     // Step 4: AI Analysis

@@ -84,10 +84,11 @@ function slugifyForFilename(value: string): string {
     .trim();
 }
 
-// Only strip OLD brand names that should no longer appear in product titles.
-// Current brand (Iron Phoenix GHG, Our Phoenix Rise) is allowed — GMC requires
-// brand name in apparel titles. "Go Hard Gaming" is the old name to remove.
-const INTERNAL_BRAND_RE = /\bGo Hard Gaming\b/gi;
+// Strip the legal entity name from product titles — it belongs in policy/legal pages,
+// not in GMC product titles. The DBA brand "Iron Phoenix GHG" and store "Our Phoenix Rise"
+// are kept because GMC requires brand name in apparel titles.
+// Legal entity: Go Hard Gaming Discord LLC  |  DBA: Iron Phoenix GHG  |  Store: Our Phoenix Rise
+const INTERNAL_BRAND_RE = /\bGo Hard Gaming Discord LLC\b|\bGo Hard Gaming Discord\b/gi;
 const PROMO_RE = /FREE SHIPPING|SALE|NEW\b|100%|BEST\b|HOT\b|DEAL|DISCOUNT|OFFER|PROMO|GUARANTEED|CHEAP/gi;
 
 function cleanProductTitle(raw: string): string {
