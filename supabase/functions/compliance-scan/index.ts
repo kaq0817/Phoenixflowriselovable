@@ -217,9 +217,10 @@ serve(async (req) => {
     });
     // All LLC-owned domains are safe — they will eventually redirect to or serve ads for the Shopify store.
     // LLC: Go Hard Gaming Discord LLC  |  DBA: Iron Phoenix GHG  |  Store: Our Phoenix Rise
-    // Owned domains: ourphoenixrise.com, gohardgaming.com, gohardgaming.store, ironphoenix.store, ironphoenixghg.com
+    // Owned domains: ourphoenixrise.com, gohardgaming.store, ironphoenix.store, ironphoenixghg.com
+    // NOTE: gohardgaming.com is NOT owned — it is for sale and should be flagged if found.
     // Only flag links that route shoppers to a genuinely external checkout (etsy, amazon, competitor storefronts).
-    const LLC_DOMAINS = /ourphoenixrise\.com|gohardgaming\.(com|store)|ironphoenix\.(store|ghg\.com)|ironphoenixghg\.com/i;
+    const LLC_DOMAINS = /ourphoenixrise\.com|gohardgaming\.store|ironphoenix\.(store|ghg\.com)|ironphoenixghg\.com/i;
     const oldBrandSignals = offDomainLinks.filter((link) =>
       !LLC_DOMAINS.test(link) && /(etsy\.com\/shop\/|amazon\.com\/dp\/)/i.test(link),
     );
@@ -698,7 +699,7 @@ function buildFallbackComplianceReport(input: {
   // Only flag external links if there are many unexplained ones (footer social links,
   // payment badges, and policy hosts are normal — flag only if count is high)
   const unexplainedExternal = input.offDomainLinks.filter(
-    (link) => !/(facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|paypal\.com|stripe\.com|shopify\.com|google\.com|apple\.com|shopifypay|ourphoenixrise\.com|gohardgaming\.(com|store)|ironphoenix\.(store|ghg\.com)|ironphoenixghg\.com)/i.test(link),
+    (link) => !/(facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|paypal\.com|stripe\.com|shopify\.com|google\.com|apple\.com|shopifypay|ourphoenixrise\.com|gohardgaming\.store|ironphoenix\.(store|ghg\.com)|ironphoenixghg\.com)/i.test(link),
   );
   if (unexplainedExternal.length > 5) {
     const sample = unexplainedExternal.slice(0, 8).join("\n• ");
