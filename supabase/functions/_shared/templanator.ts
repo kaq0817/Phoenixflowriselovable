@@ -43,6 +43,15 @@ export interface ContentRisk {
   recommendation: string;
 }
 
+export interface ContentOpportunity {
+  title: string;
+  handle: string;
+  blogTitle: string;
+  type: "thin_content" | "missing_tags" | "no_product_link" | "topic_gap" | "no_cta";
+  label: string;
+  suggestion: string;
+}
+
 export interface CollectionPillar {
   title: string;
   handle: string;
@@ -72,6 +81,7 @@ export interface ThemeAnalysis {
   collectionPillars: CollectionPillar[];
   crossStoreLinks: ThemeLeak[];
   contentRisks: ContentRisk[];
+  contentOpportunities: ContentOpportunity[];
   supportSiloStatus: {
     expectedStoreMarker: string | null;
     matchesLocation: boolean;
@@ -253,6 +263,7 @@ export function analyzeThemeAssets(input: {
   const hasRefundLink = policyLinks.find((link) => link.label === "Refund Policy")?.status === "ok";
   const crossStoreLinks = detectCrossStoreLinks(assets, input.shopDomain || null);
   const contentRisks = detectContentRisks(input.articles || [], input.shopDomain || null, input.shopName || "");
+  const contentOpportunities = detectContentOpportunities(input.articles || [], input.shopDomain || null);
   const detectedBusinessInfo = detectBusinessInfo(footerLiquid, input.shopName || "");
   const supportSiloStatus = evaluateSupportSilo({
     storeLabel: `${input.shopName || ""} ${input.shopDomain || ""}`.trim(),
@@ -328,6 +339,7 @@ export function analyzeThemeAssets(input: {
     collectionPillars: input.collectionPillars || [],
     crossStoreLinks,
     contentRisks,
+    contentOpportunities,
     supportSiloStatus,
   };
 }
@@ -653,6 +665,73 @@ function detectContentRisks(
   }
 
   return risks.slice(0, 50);
+}
+
+function detectContentOpportunities(
+  articles: ArticleInput[],
+  shopDomain: string | null,
+): ContentOpportunity[] {
+  const opportunities: ContentOpportunity[] = [];
+  const currentDomain = normalizeDomain(shopDomain || "");
+
+  for (const article of articles) {
+    const title = (article.title || "").trim();
+    const handle = (article.handle || "").trim();
+    const blogTitle = (article.blog_title || "").trim();
+    const bodyText = stripHtml(article.body_html || "");
+    const wordCount = bodyText.split(/\s+/).filter(Boolean).length;
+    const tags = (article.tags || "").trim();
+    const hasProductLink = currentDomain
+      ? (article.body_html || "").includes(`${currentDomain}/products/`)
+      : /\/products\//i.test(article.body_html || "");
+    const hasCta = /(shop now|get yours|buy now|order today|check it out|grab yours|find it here|shop the|see our|browse our)/i.test(article.body_html || "");
+
+    if (wordCount > 0 && wordCount < 250) {
+      opportunities.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        type: "thin_content",
+        label: "Thin content — expand for SEO",
+        suggestion: `This post is only ~${wordCount} words. Google favors articles over 600 words for ranking. Expand with more detail, examples, or related tips to compete for search traffic.`,
+      });
+    }
+
+    if (!tags || tags.split(",").filter(Boolean).length < 3) {
+      opportunities.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        type: "missing_tags",
+        label: "Add keyword tags to help this post rank",
+        suggestion: "This article has few or no tags. Tags act as topic signals — add 5-10 keyword phrases that real shoppers would search to find content like this.",
+      });
+    }
+
+    if (wordCount >= 250 && !hasProductLink) {
+      opportunities.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        type: "no_product_link",
+        label: "Link to a product — turn readers into shoppers",
+        suggestion: "This article doesn't link to any products in your store. Every blog post is a chance to guide a reader to a purchase. Add a natural product mention with a link.",
+      });
+    }
+
+    if (wordCount >= 250 && !hasCta) {
+      opportunities.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        type: "no_cta",
+        label: "Add a call to action",
+        suggestion: "No call to action detected. End with a clear next step — 'Shop now', 'See our collection', or a direct product link — so readers know where to go after reading.",
+      });
+    }
+  }
+
+  return opportunities.slice(0, 50);
 }
 
 function detectBusinessInfo(footerLiquid: string, _shopName: string) {

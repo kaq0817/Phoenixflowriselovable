@@ -207,9 +207,12 @@ serve(async (req) => {
       .map((result) => result.value)
       .join("");
 
+    const blogPageUrls = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link));
+    const storefrontPageUrls = sitePages.filter((link: string) => !/\/(blogs|blog|articles?)\//i.test(link));
+
     const offDomainLinks = extractOffDomainLinks({
       mainPageLinks: pageLinks,
-      sitePages,
+      sitePages: storefrontPageUrls, // blogs excluded — editorial outbound links are expected
       allowedHost: originHost,
     });
     const oldBrandSignals = offDomainLinks.filter((link) =>
@@ -238,12 +241,14 @@ Focus on these areas only:
 - Contact details suggest the store may be hiding who operates it
 - Claims of being official, authorized, certified, or affiliated without visible support
 
-2. PRODUCT CLAIM RISK
+2. PRODUCT CLAIM RISK (applies to product pages, product descriptions, and product-level CTAs ONLY — never to blog posts, articles, or editorial story content)
 - Product claims appear exaggerated, absolute, or unsupported
-- Health, performance, safety, or outcome claims lack visible substantiation
-- Lifestyle, wellness, children, safety, or recovery wording crosses into implied treatment, certification, or regulated-claim territory
+- Health, performance, safety, or outcome claims on PRODUCT PAGES lack visible substantiation
+- Lifestyle, wellness, children, safety, or recovery wording ON A PRODUCT PAGE crosses into implied treatment, certification, or regulated-claim territory
 - Product condition, availability, pricing, or key attributes appear misleading
 - Reviews, badges, or trust signals appear misleading or mismatched
+
+IMPORTANT: Blog posts, articles, and editorial stories are NOT subject to product claim rules. Emotional language, personal narratives, relationship stories, wellness lifestyle topics, and human interest content in blog/article pages must NEVER be flagged as health or medical claims — even if they use words like "healing", "recovery", "pressure", "relief", or "support" in a non-product context. Flag only when a product page makes a specific unsubstantiated health claim about what the product does to the body.
 
 3. SHIPPING / RETURN / REFUND RISK
 - Shipping promises conflict with policy language
@@ -259,8 +264,13 @@ Focus on these areas only:
 5. SITE TRUST RISK
 - Trust badges, guarantees, scarcity claims, or social proof appear misleading
 - Important shopper-facing information is obscured, contradictory, or framed deceptively
-- Blog posts, article pages, and old landing pages that link to another store, old brand, or off-domain checkout path are meaningful trust risks
-- Blog/article content that uses an outdated brand identity or wrong domain is a misrepresentation signal, not just a content-quality issue
+- Navigation, banners, product pages, or CTAs that route shoppers to a different brand's storefront or checkout are meaningful trust risks
+- Blog/article content that uses an outdated brand identity in the store identity or contact info is a misrepresentation signal
+
+IMPORTANT — editorial blog outbound links are NOT a trust risk:
+- Blog and article pages routinely link to external sources, venues, brands, or reference sites as part of editorial content (e.g. "Best skydiving in New England" linking to skydiving venues, a recipe post linking to a supplier)
+- Outbound links in blog/article content are standard SEO practice and should NOT be flagged as critical or warning
+- Only flag off-domain links as a risk if they appear in: navigation menus, product pages, checkout flow, or CTAs that tell the shopper to buy/visit elsewhere
 
 Do NOT treat these alone as critical failures unless there is clear deceptive context:
 - no phone number
@@ -318,9 +328,10 @@ Policy pages sampled: ${policyPages.length}
 Blog/article pages sampled: ${blogPages.length}
 Product pages sampled: ${productPages.length}
 Collection pages sampled: ${collectionPages.length}
-Off-domain links found: ${offDomainLinks.length}
-Known old-brand/off-domain links found: ${oldBrandSignals.length}
-Off-domain examples:
+Off-domain links on storefront pages (navigation, products, collections — NOT blogs): ${offDomainLinks.length}
+Known old-brand/off-domain links on storefront pages: ${oldBrandSignals.length}
+Blog/article pages detected (outbound links on these are editorial and expected — do NOT flag): ${blogPageUrls.length}
+Off-domain storefront examples:
 ${offDomainLinks.slice(0, 25).join("\n")}`;
 
     let report: ComplianceReport;

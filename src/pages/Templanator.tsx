@@ -98,6 +98,15 @@ interface ContentRisk {
   recommendation: string;
 }
 
+interface ContentOpportunity {
+  title: string;
+  handle: string;
+  blogTitle: string;
+  type: "thin_content" | "missing_tags" | "no_product_link" | "topic_gap" | "no_cta";
+  label: string;
+  suggestion: string;
+}
+
 interface ContentRiskArticle {
   articleId: number;
   blogId: number;
@@ -139,6 +148,7 @@ interface ScanResult {
   collectionPillar: CollectionPillar[];
   crossStoreLinks: CrossStoreLink[];
   contentRisks?: ContentRisk[];
+  contentOpportunities?: ContentOpportunity[];
   riskArticles?: ContentRiskArticle[];
   shopifyDomains?: string[];
   supportSiloStatus?: {
@@ -242,6 +252,16 @@ const NICHE_PALETTES = [
   { label: "Romance / Valentine", value: "valentine", desc: "Deep rose, blush pink, pure white, subtle gold (Feb)", colors: [], tags: ["warm"] },
 ];
 
+function stripEditorNoise(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/\s*data-start="[^"]*"/g, "")
+    .replace(/\s*data-end="[^"]*"/g, "")
+    .replace(/\s*data-sourcepos="[^"]*"/g, "")
+    .replace(/<([a-z][a-z0-9]*)\s*>/gi, "<$1>")
+    .trim();
+}
+
 const STEPS = [
   { num: 1, label: "Theme Handshake", summary: "Import the live Shopify theme into the workflow." },
   { num: 2, label: "Policy & Compliance", summary: "Check policy links and run the live compliance audit before rewrites." },
@@ -284,6 +304,7 @@ export default function Templanator() {
   const [paletteColorOverrides, setPaletteColorOverrides] = useState<Record<string, string[]>>({});
   const [pillarPaletteOverrides, setPillarPaletteOverrides] = useState<Record<string, string>>({});
   const [routeVerification, setRouteVerification] = useState<Record<string, RouteVerificationState>>({});
+  const [articlePreviewIds, setArticlePreviewIds] = useState<Set<number>>(new Set());
   const [departmentMappings, setDepartmentMappings] = useState<DepartmentMapping[]>([]);
   const [generatingTrack, setGeneratingTrack] = useState<FixTrack | null>(null);
   const [previewTrack, setPreviewTrack] = useState<FixTrack | null>(null);
@@ -297,6 +318,8 @@ export default function Templanator() {
   const [articleEdits, setArticleEdits] = useState<Record<number, ContentRiskArticle>>({});
   const [expandedArticleId, setExpandedArticleId] = useState<number | null>(null);
   const [savingArticleId, setSavingArticleId] = useState<number | null>(null);
+  const [improvingArticleId, setImprovingArticleId] = useState<number | null>(null);
+  const [improvingFocus, setImprovingFocus] = useState<Record<number, string>>({});
   const [scannedProducts, setScannedProducts] = useState<ScannedProduct[]>([]);
   const [productScanLoading, setProductScanLoading] = useState(false);
   const identityReady = Boolean(
@@ -606,7 +629,11 @@ export default function Templanator() {
       setFileApprovals([]);
       setScanResult(result);
       const importedArticles = ((result as ScanResult).riskArticles ?? []).reduce<Record<number, ContentRiskArticle>>((acc, article) => {
-        acc[article.articleId] = article;
+        acc[article.articleId] = {
+          ...article,
+          bodyHtml: stripEditorNoise(article.bodyHtml),
+          summaryHtml: stripEditorNoise(article.summaryHtml),
+        };
         return acc;
       }, {});
       setArticleEdits(importedArticles);
@@ -971,6 +998,67 @@ export default function Templanator() {
       });
     } finally {
       setSavingArticleId(null);
+    }
+  };
+
+  const improveArticleWithAI = async (article: ContentRiskArticle) => {
+    if (!selectedConn || improvingArticleId) return;
+
+    const conn = connections.find((c) => c.id === selectedConn);
+    const storeDomain = conn?.shop_domain ?? undefined;
+
+    // Gather known opportunities for this article
+    const articleOpps = (scanResult?.contentOpportunities ?? [])
+      .filter((o) => o.handle === article.handle)
+      .map((o) => o.type);
+
+    const focus = improvingFocus[article.articleId] ?? "";
+
+    setImprovingArticleId(article.articleId);
+    try {
+      const { data, error } = await supabase.functions.invoke("improve-blog-post", {
+        body: {
+          bodyHtml: article.bodyHtml,
+          summaryHtml: article.summaryHtml,
+          title: article.title,
+          tags: article.tags,
+          storeDomain,
+          opportunities: articleOpps,
+          focus: focus || undefined,
+        },
+      });
+
+      if (error) throw error;
+
+      const { improvedBodyHtml, improvedSummaryHtml, improvedTags, reasoning } = data as {
+        improvedBodyHtml: string;
+        improvedSummaryHtml: string;
+        improvedTags: string;
+        reasoning: string;
+      };
+
+      setArticleEdits((prev) => ({
+        ...prev,
+        [article.articleId]: {
+          ...(prev[article.articleId] ?? article),
+          bodyHtml: stripEditorNoise(improvedBodyHtml),
+          summaryHtml: stripEditorNoise(improvedSummaryHtml),
+          tags: improvedTags,
+        },
+      }));
+
+      toast({
+        title: "AI improvement applied",
+        description: reasoning || "Review changes and save when ready.",
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "AI improvement failed",
+        description: getErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setImprovingArticleId(null);
     }
   };
 
@@ -1542,6 +1630,34 @@ export default function Templanator() {
 
           {renderPreviewCard("lcp")}
 
+          {(scanResult.contentOpportunities?.length ?? 0) > 0 && (
+            <Card className="bg-card/50 border-emerald-500/20 border">
+              <CardContent className="p-6 space-y-3">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="h-5 w-5 text-emerald-400" />
+                  <div>
+                    <h3 className="font-semibold">Blog Growth Opportunities</h3>
+                    <p className="text-xs text-muted-foreground">{scanResult.contentOpportunities!.length} ways to get more traffic from your existing content.</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {scanResult.contentOpportunities!.map((opp, i) => (
+                    <div key={i} className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1">
+                      <div className="flex items-start gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mt-0.5">
+                          {opp.blogTitle || "Blog"}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium">{opp.title}</p>
+                      <p className="text-xs font-semibold text-emerald-400">{opp.label}</p>
+                      <p className="text-xs text-muted-foreground">{opp.suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {contentRiskCount > 0 ? (
             <Card className="bg-card/50 border-border/30">
               <CardContent className="p-6 space-y-3">
@@ -1622,13 +1738,61 @@ export default function Templanator() {
                               </div>
 
                               <div className="space-y-1">
-                                <p className="text-xs font-medium text-muted-foreground">Blog Post Content</p>
-                                <Textarea
-                                  className="min-h-[280px] font-sans text-base"
-                                  value={article.bodyHtml}
-                                  placeholder="Write your blog post here... (no HTML required)"
-                                  onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", event.target.value)}
-                                />
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-medium text-muted-foreground">Blog Post Content</p>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-primary hover:underline"
+                                    onClick={() => setArticlePreviewIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(article.articleId)) { next.delete(article.articleId); } else { next.add(article.articleId); }
+                                      return next;
+                                    })}
+                                  >
+                                    {articlePreviewIds.has(article.articleId) ? "Edit HTML" : "Preview"}
+                                  </button>
+                                </div>
+                                {articlePreviewIds.has(article.articleId) ? (
+                                  <div
+                                    className="min-h-[280px] rounded-md border border-input bg-background px-4 py-3 text-sm prose prose-invert max-w-none overflow-auto"
+                                    dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
+                                  />
+                                ) : (
+                                  <Textarea
+                                    className="min-h-[280px] font-mono text-sm"
+                                    value={article.bodyHtml}
+                                    placeholder="Write your blog post here..."
+                                    onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", event.target.value)}
+                                  />
+                                )}
+                              </div>
+
+                              <div className="rounded-md border border-border/30 bg-muted/20 p-3 space-y-2">
+                                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                                  <Bot className="h-3.5 w-3.5" /> AI Blog Assist
+                                </p>
+                                <div className="flex gap-2">
+                                  <Input
+                                    className="h-8 text-xs"
+                                    placeholder='Optional: "add more product links" or "make it warmer" or "expand the story"'
+                                    value={improvingFocus[article.articleId] ?? ""}
+                                    onChange={(e) => setImprovingFocus((prev) => ({ ...prev, [article.articleId]: e.target.value }))}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    disabled={Boolean(improvingArticleId) || Boolean(savingArticleId)}
+                                    onClick={() => improveArticleWithAI(article)}
+                                  >
+                                    {improvingArticleId === article.articleId
+                                      ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Improving...</>
+                                      : <><Bot className="h-3.5 w-3.5 mr-1.5" /> Improve with AI</>}
+                                  </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Gemini will expand thin content, add product links, and fix compliance issues while keeping your story intact.
+                                </p>
                               </div>
 
                               <div className="flex items-center justify-between gap-3">
