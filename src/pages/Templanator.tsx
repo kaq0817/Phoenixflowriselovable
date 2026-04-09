@@ -906,12 +906,13 @@ export default function Templanator() {
 
     setComplianceLoading(true);
     try {
-      // Pass both the myshopify domain and the known custom domain (if available from the theme scan).
-      // The scanner uses customDomain as the authoritative allowed host so it doesn't
-      // treat the store's own pages as off-domain links.
+      // Scan the public custom domain (e.g. ironphoenixghg.store) if known from the theme scan.
+      // Scanning the myshopify.com URL causes Firecrawl to map pages under that domain,
+      // making ironphoenixghg.store links look off-domain. Always scan the real public URL.
       const customDomain = scanResult?.shopifyDomains?.[0] ?? null;
+      const scanUrl = customDomain ?? selectedStore.shop_domain;
       const invokePromise = supabase.functions.invoke("compliance-scan", {
-        body: { url: selectedStore.shop_domain, customDomain },
+        body: { url: scanUrl, customDomain },
       });
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Compliance scan timed out. The storefront may be slow to respond — please try again.")), 95000)
