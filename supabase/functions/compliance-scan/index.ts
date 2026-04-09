@@ -97,7 +97,7 @@ serve(async (req) => {
       });
     }
 
-    const { url: storeUrl } = await req.json();
+    const { url: storeUrl, customDomain } = await req.json() as { url: string; customDomain?: string | null };
     if (!storeUrl) {
       return new Response(JSON.stringify({ error: "Store URL is required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -142,9 +142,14 @@ serve(async (req) => {
     const pageContent = homepage.markdown || "";
     const pageLinks = homepage.links || [];
 
-    // Detect the real store domain — myshopify.com domains redirect to custom domains.
-    // Find the most-linked hostname in page links that isn't a known external service.
-    // That's the actual storefront domain, regardless of what URL was submitted.
+    // Build the set of allowed hosts for this specific store.
+    // customDomain is the Shopify custom domain from the store connection (e.g. ironphoenixghg.store).
+    // We allow both the myshopify domain and the custom domain so neither is treated as off-domain.
+    const allowedHosts = new Set<string>([inputHost]);
+    if (customDomain) {
+      allowedHosts.add(customDomain.toLowerCase().replace(/^www\./, "").replace(/^https?:\/\//, ""));
+    }
+    // Also detect from page links as a fallback for stores where customDomain wasn't passed
     const EXTERNAL_HOSTS = /myshopify\.com|shopify\.com|facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|paypal\.com|stripe\.com|google\.com|apple\.com/i;
     const hostCounts: Record<string, number> = {};
     for (const link of pageLinks) {
@@ -154,10 +159,11 @@ serve(async (req) => {
       } catch { /* ignore */ }
     }
     const detectedHost = Object.entries(hostCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    // Allow both the submitted domain and the detected custom domain
-    const originHost = detectedHost ?? inputHost;
-    const allowedHosts = new Set([inputHost, originHost]);
-    console.log("Input host:", inputHost, "| Detected store host:", originHost);
+    if (detectedHost) allowedHosts.add(detectedHost);
+    const originHost = customDomain
+      ? customDomain.toLowerCase().replace(/^www\./, "").replace(/^https?:\/\//, "")
+      : (detectedHost ?? inputHost);
+    console.log("Allowed hosts:", [...allowedHosts], "| Origin:", originHost);
 
     console.log("Scraped content length:", pageContent.length, "Links found:", pageLinks.length);
 

@@ -906,8 +906,12 @@ export default function Templanator() {
 
     setComplianceLoading(true);
     try {
+      // Pass both the myshopify domain and the known custom domain (if available from the theme scan).
+      // The scanner uses customDomain as the authoritative allowed host so it doesn't
+      // treat the store's own pages as off-domain links.
+      const customDomain = scanResult?.shopifyDomains?.[0] ?? null;
       const invokePromise = supabase.functions.invoke("compliance-scan", {
-        body: { url: selectedStore.shop_domain },
+        body: { url: selectedStore.shop_domain, customDomain },
       });
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Compliance scan timed out. The storefront may be slow to respond — please try again.")), 95000)
