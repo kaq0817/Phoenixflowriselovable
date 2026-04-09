@@ -129,7 +129,7 @@ serve(async (req) => {
     }
 
     console.log("Scraping store:", formattedUrl);
-    const originHost = new URL(formattedUrl).hostname.toLowerCase();
+    const originHost = new URL(formattedUrl).hostname.toLowerCase().replace(/^www\./, "");
 
     // Scrape main page
     const homepage = FIRECRAWL_API_KEY
@@ -614,7 +614,7 @@ function extractOffDomainLinks(input: {
   const offDomain = urls.filter((candidate) => {
     try {
       const parsed = new URL(candidate);
-      return parsed.hostname.toLowerCase() !== input.allowedHost;
+      return parsed.hostname.toLowerCase().replace(/^www\./, "") !== input.allowedHost;
     } catch {
       return false;
     }
