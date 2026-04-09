@@ -215,13 +215,13 @@ serve(async (req) => {
       sitePages: storefrontPageUrls, // blogs excluded — editorial outbound links are expected
       allowedHost: originHost,
     });
-    // Flag links that route shoppers to a competing checkout or a completely different brand storefront.
-    // gohardgaming.com / gohardgaming.store are the LLC's own domains (Go Hard Gaming Discord LLC
-    // dba Iron Phoenix GHG) — do NOT flag those as old-brand risks.
-    // ironphoenix.store is a legacy domain that should have been migrated away from.
-    // etsy.com would mean the store is sending buyers to a third-party marketplace checkout.
+    // All LLC-owned domains are safe — they will eventually redirect to or serve ads for the Shopify store.
+    // LLC: Go Hard Gaming Discord LLC  |  DBA: Iron Phoenix GHG  |  Store: Our Phoenix Rise
+    // Owned domains: ourphoenixrise.com, gohardgaming.com, gohardgaming.store, ironphoenix.store, ironphoenixghg.com
+    // Only flag links that route shoppers to a genuinely external checkout (etsy, amazon, competitor storefronts).
+    const LLC_DOMAINS = /ourphoenixrise\.com|gohardgaming\.(com|store)|ironphoenix\.(store|ghg\.com)|ironphoenixghg\.com/i;
     const oldBrandSignals = offDomainLinks.filter((link) =>
-      /(ironphoenix\.store|etsy\.com\/shop\/)/i.test(link),
+      !LLC_DOMAINS.test(link) && /(etsy\.com\/shop\/|amazon\.com\/dp\/)/i.test(link),
     );
 
     // Step 4: AI Analysis
@@ -698,7 +698,7 @@ function buildFallbackComplianceReport(input: {
   // Only flag external links if there are many unexplained ones (footer social links,
   // payment badges, and policy hosts are normal — flag only if count is high)
   const unexplainedExternal = input.offDomainLinks.filter(
-    (link) => !/(facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|paypal\.com|stripe\.com|shopify\.com|google\.com|apple\.com|shopifypay)/i.test(link),
+    (link) => !/(facebook\.com|instagram\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|paypal\.com|stripe\.com|shopify\.com|google\.com|apple\.com|shopifypay|ourphoenixrise\.com|gohardgaming\.(com|store)|ironphoenix\.(store|ghg\.com)|ironphoenixghg\.com)/i.test(link),
   );
   if (unexplainedExternal.length > 5) {
     const sample = unexplainedExternal.slice(0, 8).join("\n• ");
