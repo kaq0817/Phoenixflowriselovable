@@ -742,21 +742,21 @@ useEffect(() => {
                             className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                             value={productTitleEdit}
                             onChange={(e) => setProductTitleEdit(e.target.value)}
-                            maxLength={70}
+                          />
+                          <p className="text-[10px] text-muted-foreground text-right">{productTitleEdit.length} chars — AI will optimize to GMC limits</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-medium uppercase tracking-wider ${selectedProduct.body_html?.trim() ? "text-muted-foreground" : "text-amber-500"}`}>
+                            {selectedProduct.body_html?.trim() ? "Additional context for AI (optional)" : "No description found — what is this product?"}
+                          </label>
+                          <textarea
+                            className={`w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 resize-none ${selectedProduct.body_html?.trim() ? "border-input focus:ring-primary" : "border-amber-500/40 focus:ring-amber-500"}`}
+                            rows={3}
+                            placeholder={selectedProduct.body_html?.trim() ? "e.g. This blanket is personalizable — add a name or monogram. Available in 3 sizes." : "e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."}
+                            value={productContextNote}
+                            onChange={(e) => setProductContextNote(e.target.value)}
                           />
                         </div>
-                        {!selectedProduct.body_html?.trim() && (
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-amber-500 uppercase tracking-wider">No description found — what is this product?</label>
-                            <textarea
-                              className="w-full rounded-md border border-amber-500/40 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none"
-                              rows={3}
-                              placeholder="e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."
-                              value={productContextNote}
-                              onChange={(e) => setProductContextNote(e.target.value)}
-                            />
-                          </div>
-                        )}
                         <Button
                           className="w-full gradient-phoenix text-primary-foreground"
                           onClick={() => void startOptimization()}

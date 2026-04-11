@@ -264,6 +264,8 @@ serve(async (req) => {
 
 SHOPIFY SEO RULES:
 - TITLE: Descriptor-first product name only. Under 70 chars. No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
+- PERSONALIZATION ATTRIBUTES (NEVER REMOVE): "Personalized", "Custom", "Custom Name", "Customizable" are PRODUCT ATTRIBUTES that buyers search for — they are NOT promotional words. If the product accepts a custom name, text, or design, the word "Personalized" or "Custom Name" MUST appear in the title. Removing these words from a personalizable product's title is an error. Research shows these terms increase click-through and conversion significantly.
+- SPAM TITLE DETECTION: If the existing title is stuffed with promotional phrases ("Made in the USA", "Free Shipping", "Shipped in US", "Best", "Sale", etc.) rather than describing the actual product, IGNORE the title entirely. Instead derive the real product name from: (1) the product images — visually identify the item, its design/theme, and any personalization (e.g. a custom name printed on it); (2) the product description body; (3) variant names. A personalized item should say "Personalized" or "Custom Name" in the title. Example: a blanket with a custom astronaut design and a name on it → "Personalized Astronaut Flannel Blanket" not "Made in USA Blanket Free Shipping".
 - SEO TITLE: Must be under 60 chars. Use | as the only separator (never hyphens as separators). ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff. Use | as the only structural separator if needed — never use a hyphen as a separator.
@@ -290,8 +292,10 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
 
     const hasExistingBody = (product.body_html || "").replace(/<[^>]*>/g, "").trim().length > 50;
 
+    const titleIsSpam = /made in (the )?usa|free shipping|shipped in (us|usa)|best seller|on sale|discount|cheap|wholesale/i.test(product.title || "");
+
     const userPrompt = `Optimize this Shopify product:
-Title: ${product.title || ""}
+Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Use the product images and description to determine what this product actually is, then write a real descriptive title." : ""}
 
 EXISTING PRODUCT DESCRIPTION (this is the source of truth — all specs, materials, and details come from here and MUST be preserved in the new body_html):
 ${product.body_html || "No description provided — infer from title, type, and variants."}
