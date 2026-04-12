@@ -896,9 +896,15 @@ useEffect(() => {
                     </Card>
                   ) : shopifySuggestions ? (
                     <>
-                      <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                        <p className="text-sm text-muted-foreground"><Sparkles className="h-4 w-4 inline mr-1 text-primary" />{shopifySuggestions.reasoning}</p>
-                      </div>
+                      {shopifySuggestions.reasoning?.includes("AI QUOTA EXCEEDED") ? (
+                        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/40">
+                          <p className="text-sm text-amber-500 font-medium">AI quota exceeded — basic cleanup only. Wait a few minutes and re-run for full optimization.</p>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                          <p className="text-sm text-muted-foreground"><Sparkles className="h-4 w-4 inline mr-1 text-primary" />{shopifySuggestions.reasoning}</p>
+                        </div>
+                      )}
                       <ComparisonRow label="Product Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, title: v })} />
                       <ComparisonRow label="Product Description" icon={<FileText className="h-4 w-4 text-primary" />} original={(selectedProduct.body_html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || "No description"} optimized={shopifySuggestions.body_html} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, body_html: v })} multiline />
                       <ComparisonRow label="SEO Title" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.seo_title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_title: v })} />

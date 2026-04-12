@@ -195,6 +195,7 @@ serve(async (req) => {
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OpenAi_API_KEY");
     const { product: rawProduct, connectionId, productContext } = await req.json() as { product?: ShopifyProductLike & { id?: number }; connectionId?: string; productContext?: string };
     let product: ShopifyProductLike & { id?: number } = rawProduct ?? {};
 
@@ -464,11 +465,87 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
       }
     }
 
-      if (!suggestions) {
-        const fallback = buildFallbackSuggestions(product);
-        if (geminiError) fallback.reasoning = `AI error: ${geminiError} — ${fallback.reasoning}`;
-        suggestions = normalizeShopifySuggestions(product, fallback);
+    // OpenAI gpt-4o-mini — lowest cost model, only runs if all Gemini models failed
+    if (!suggestions && OPENAI_API_KEY) {
+      try {
+        const openAiMessages: Record<string, unknown>[] = [];
+
+        // Images first (same principle — visual identification before text)
+        if (imageParts.length > 0) {
+          openAiMessages.push({
+            role: "user",
+            content: [
+              ...imageParts.map((p) => ({
+                type: "image_url",
+                image_url: { url: `data:${(p as {inlineData:{mimeType:string;data:string}}).inlineData.mimeType};base64,${(p as {inlineData:{mimeType:string;data:string}}).inlineData.data}`, detail: "low" },
+              })),
+              { type: "text", text: "Examine the product images above. Now optimize based on the instructions below." },
+            ],
+          });
+        }
+        openAiMessages.push({ role: "user", content: systemPrompt + "\n\n" + userPrompt });
+
+        const oaRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: openAiMessages,
+            tools: [{
+              type: "function",
+              function: {
+                name: "suggest_shopify_optimizations",
+                description: "Return optimized Shopify product fields",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    body_html: { type: "string" },
+                    seo_title: { type: "string" },
+                    seo_description: { type: "string" },
+                    product_type: { type: "string" },
+                    tags: { type: "string" },
+                    variant_suggestions: { type: "string" },
+                    url_handle: { type: "string" },
+                    faq_json: { type: "string" },
+                    collections_suggestion: { type: "string" },
+                    image_alts: { type: "string" },
+                    image_filenames: { type: "string" },
+                    reasoning: { type: "string" },
+                  },
+                  required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "url_handle", "faq_json", "reasoning"],
+                },
+              },
+            }],
+            tool_choice: { type: "function", function: { name: "suggest_shopify_optimizations" } },
+          }),
+        });
+
+        if (oaRes.ok) {
+          const oaData = await oaRes.json();
+          const toolCall = oaData.choices?.[0]?.message?.tool_calls?.[0];
+          if (toolCall?.function?.arguments) {
+            const args = JSON.parse(toolCall.function.arguments) as ShopifySuggestionShape;
+            suggestions = normalizeShopifySuggestions(product, args);
+            geminiError = "";
+          } else {
+            geminiError += ` | OpenAI returned no tool call`;
+          }
+        } else {
+          const errText = await oaRes.text();
+          geminiError += ` | OpenAI error ${oaRes.status}: ${errText.slice(0, 200)}`;
+          console.error("OpenAI error:", errText);
+        }
+      } catch (err) {
+        geminiError += ` | OpenAI threw: ${err instanceof Error ? err.message : String(err)}`;
       }
+    }
+
+    if (!suggestions) {
+      const fallback = buildFallbackSuggestions(product);
+      if (geminiError) fallback.reasoning = `AI error: ${geminiError} — ${fallback.reasoning}`;
+      suggestions = normalizeShopifySuggestions(product, fallback);
+    }
 
       // Hard-guarantee: collection name keywords must appear in the final tag list.
       // The AI may miss them — this ensures the product surfaces within its collection.
