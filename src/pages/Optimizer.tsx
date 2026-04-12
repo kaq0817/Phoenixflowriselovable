@@ -752,7 +752,7 @@ useEffect(() => {
                           <textarea
                             className={`w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 resize-none ${selectedProduct.body_html?.trim() ? "border-input focus:ring-primary" : "border-amber-500/40 focus:ring-amber-500"}`}
                             rows={3}
-                            placeholder={selectedProduct.body_html?.trim() ? "e.g. This blanket is personalizable — add a name or monogram. Available in 3 sizes." : "e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."}
+                            placeholder={selectedProduct.body_html?.trim() ? "e.g. Christmas tablecloth, 60\" round, fixed design — not customizable. Or: metal wall art, generic specs only, do not name a specific design." : "e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."}
                             value={productContextNote}
                             onChange={(e) => setProductContextNote(e.target.value)}
                           />
