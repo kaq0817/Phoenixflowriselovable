@@ -144,6 +144,21 @@ function sanitizePlainText(value: string, maxLength?: number): string {
   return (boundary > Math.floor(maxLength * 0.6) ? sliced.slice(0, boundary) : sliced).trim();
 }
 
+// Trim SEO description to maxLength, preferring a sentence boundary over a word boundary.
+// Google shows ~155-160 chars — we target 158 so it fills the preview without getting cut.
+function trimSeoDescription(value: string, maxLength = 158): string {
+  if (value.length <= maxLength) return value;
+  const sliced = value.slice(0, maxLength);
+  // Prefer ending at a sentence boundary (., !, ?) in the last 30% of the string
+  const sentenceEnd = sliced.search(/[.!?][^.!?]*$/);
+  if (sentenceEnd > Math.floor(maxLength * 0.7)) {
+    return sliced.slice(0, sentenceEnd + 1).trim();
+  }
+  // Fall back to word boundary
+  const wordBoundary = sliced.lastIndexOf(" ");
+  return (wordBoundary > Math.floor(maxLength * 0.6) ? sliced.slice(0, wordBoundary) : sliced).trim();
+}
+
 function trimBrokenTail(value: string): string {
   return value.replace(/\b[A-Z][a-z]*\s*$/, "").trim();
 }
@@ -448,13 +463,15 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   ).replace(/"/g, "");
 
   const BRAND_NAME_PATTERN = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming|ghg|phoenix flow)\b/gi;
-  const seo_description = sanitizePlainText(
-    (raw.seo_description || product.metafields_global_description_tag || "")
-      .replace(BRAND_NAME_PATTERN, "")
-      .replace(/\s{2,}/g, " ")
-      .trim(),
-    160
-  ).replace(/"/g, "");
+  const seo_description = trimSeoDescription(
+    sanitizePlainText(
+      (raw.seo_description || product.metafields_global_description_tag || "")
+        .replace(BRAND_NAME_PATTERN, "")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    ).replace(/"/g, ""),
+    158
+  );
 
   const body_html = sanitizeHtml(raw.body_html || product.body_html || "");
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 255);
