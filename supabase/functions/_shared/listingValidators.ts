@@ -163,8 +163,14 @@ function trimBrokenTail(value: string): string {
   return value.replace(/\b[A-Z][a-z]*\s*$/, "").trim();
 }
 
+const SUPPLIER_HOST_RE = /\b(?:cjdropshipping\.com|alicdn\.com|aliexpress\.com|ae\d+\.alicdn|dhgate\.com|ebayimg\.com)\b/i;
+
 function sanitizeHtml(value: string): string {
-  return collapseWhitespace(replaceAscii(value || ""));
+  // Strip any <img> tags pointing to third-party supplier domains
+  const stripped = (value || "").replace(/<img[^>]+>/gi, (tag) =>
+    SUPPLIER_HOST_RE.test(tag) ? "" : tag
+  );
+  return collapseWhitespace(replaceAscii(stripped));
 }
 
 function normalizeKeywordPhrase(value: string): string {
@@ -473,6 +479,8 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     158
   );
 
+  // Prefer AI-generated body. Only fall back to product.body_html if AI returned nothing,
+  // and even then sanitizeHtml will strip any supplier-hosted images.
   const body_html = sanitizeHtml(raw.body_html || product.body_html || "");
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 255);
 

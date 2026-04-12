@@ -87,7 +87,7 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
 
   return {
     title,
-    body_html: product.body_html || `<p>${title}</p>`,
+    body_html: stripSupplierImages(product.body_html || "") || `<p>${title}</p>`,
     seo_title: seoTitle,
     seo_description: seoDescription,
     product_type: product.product_type || "",
