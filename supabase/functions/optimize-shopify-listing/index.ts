@@ -47,6 +47,25 @@ function stripHtml(value: string): string {
   return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// Remove <img> tags hosted on third-party supplier domains (CJDropshipping, AliExpress, etc.)
+// These URLs break after the supplier relationship ends and expose the sourcing origin.
+const SUPPLIER_IMG_RE = /<img[^>]+src=["'][^"']*(?:cjdropshipping\.com|alicdn\.com|aliexpress\.com|ae\d+\.alicdn|dhgate\.com|ebayimg\.com)[^"']*["'][^>]*>/gi;
+
+function stripSupplierImages(html: string): string {
+  return html.replace(SUPPLIER_IMG_RE, "").replace(/\s{2,}/g, " ").trim();
+}
+
+// Detect machine-translated/dropship boilerplate: title-cased every word, broken sentences
+function isDropshipContent(html: string): boolean {
+  const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text || text.length < 50) return false;
+  const words = text.split(/\s+/).filter((w) => w.length > 3);
+  if (words.length < 5) return false;
+  const titleCasedCount = words.filter((w) => /^[A-Z][a-z]/.test(w)).length;
+  // If >60% of words are Title Cased, it's machine-translated dropship copy
+  return titleCasedCount / words.length > 0.6;
+}
+
 function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestionShape {
   const title = (product.title || "Product").trim();
   const seoTitle = title.slice(0, 60).trim();
@@ -311,7 +330,10 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
 - The seo_description meta field must describe WHAT the product IS — not health outcomes.
 - Lifestyle context and identity-driven copy are fine ("the mug you reach for every morning", "the hoodie that makes the fit") — health outcome claims are not (no "cures", "treats", "heals" etc).`;
 
-    const hasExistingBody = (product.body_html || "").replace(/<[^>]*>/g, "").trim().length > 50;
+    // Strip supplier-hosted images from body before sending — those URLs break and expose sourcing
+    const cleanedBodyHtml = stripSupplierImages(product.body_html || "");
+    const hasExistingBody = cleanedBodyHtml.replace(/<[^>]*>/g, "").trim().length > 50;
+    const bodyIsDropship = isDropshipContent(cleanedBodyHtml);
 
     const titleIsSpam = /made in (the )?usa|free shipping|shipped in (us|usa)|best seller|on sale|discount|cheap|wholesale/i.test(product.title || "");
 
@@ -319,11 +341,17 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
       ? `\nCollections this product belongs to: ${collectionNames.join(", ")} — your tags MUST include keywords matching these collection names.`
       : "";
 
+    const descriptionInstruction = !hasExistingBody
+      ? "No existing description — write from scratch using title, type, images, and variants."
+      : bodyIsDropship
+      ? "⚠️ DROPSHIP CONTENT DETECTED: The existing description is machine-translated supplier copy (Title Cased, broken sentences, supplier SKU codes). Extract only the factual specs (material, colors, dimensions, applicable holidays) and REWRITE the description entirely in natural English. Do not carry forward any of the broken phrasing."
+      : "IMPORTANT: The existing description above contains real product data. Your body_html must retain all of it — restructure and expand, never discard specs.";
+
     const userPrompt = `Optimize this Shopify product:
 Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Use the product images and description to determine what this product actually is, then write a real descriptive title." : ""}${collectionLine}
 
-EXISTING PRODUCT DESCRIPTION (this is the source of truth — all specs, materials, and details come from here and MUST be preserved in the new body_html):
-${product.body_html || "No description provided — infer from title, type, and variants."}
+EXISTING PRODUCT DESCRIPTION (supplier images have been removed — do NOT add any <img> tags to body_html):
+${cleanedBodyHtml || "No description provided — infer from title, type, and variants."}
 
 Product Type: ${product.product_type || ""}
 Vendor: ${product.vendor || ""}
@@ -334,68 +362,82 @@ ${variantInfo}${imageInfo}
 Current SEO Title: ${product.metafields_global_title_tag || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}
 ${productContext ? `\nSeller context: ${productContext}` : ""}
-${hasExistingBody ? "IMPORTANT: The existing description above contains real product data. Your body_html must retain all of it — restructure and expand, never discard specs." : "No existing description — write from scratch using title, type, and variants."}
+${descriptionInstruction}
 
 Return all optimizations using the suggest_shopify_optimizations function.`;
 
     let suggestions: ShopifySuggestionShape | null = null;
     let geminiError = "";
 
-    if (GEMINI_API_KEY) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }, ...imageParts] }],
-              tools: [{
-                functionDeclarations: [{
-                  name: "suggest_shopify_optimizations",
-                  description: "Return optimized Shopify product fields",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      title: { type: "string" },
-                      body_html: { type: "string" },
-                      seo_title: { type: "string" },
-                      seo_description: { type: "string" },
-                      product_type: { type: "string" },
-                      tags: { type: "string" },
-                      variant_suggestions: { type: "string" },
-                      url_handle: { type: "string" },
-                      faq_json: { type: "string" },
-                      collections_suggestion: { type: "string" },
-                      image_alts: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"alt\": \"<text>\"}] — one entry per product image, max 125 chars per alt" },
-                      image_filenames: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"filename\": \"<slug>.jpg\"}] — one clean SEO filename per image, lowercase hyphenated, store-branded" },
-                      reasoning: { type: "string" },
-                    },
-                    required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "url_handle", "faq_json", "reasoning"],
-                  }
-                }]
-              }],
-              toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] } }
-            })
-          }
-        );
+    // Model cascade: try the best available model first, fall back on 429 rate limit
+    const GEMINI_MODELS = [
+      "gemini-2.5-flash-preview-04-17",  // best quality, lower quota
+      "gemini-2.0-flash",                 // stable, higher quota — reliable fallback
+    ];
 
-        if (response.ok) {
-          const data = await response.json();
-          const functionCall = data.candidates?.[0]?.content?.parts?.find((p: GeminiFunctionCallPart) => p.functionCall)?.functionCall;
-          if (functionCall?.args) {
-            suggestions = normalizeShopifySuggestions(product, functionCall.args);
-          } else {
-            geminiError = `Gemini returned no function call. Finish reason: ${data.candidates?.[0]?.finishReason || "unknown"}`;
+    const geminiRequestBody = {
+      contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }, ...imageParts] }],
+      tools: [{
+        functionDeclarations: [{
+          name: "suggest_shopify_optimizations",
+          description: "Return optimized Shopify product fields",
+          parameters: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              body_html: { type: "string" },
+              seo_title: { type: "string" },
+              seo_description: { type: "string" },
+              product_type: { type: "string" },
+              tags: { type: "string" },
+              variant_suggestions: { type: "string" },
+              url_handle: { type: "string" },
+              faq_json: { type: "string" },
+              collections_suggestion: { type: "string" },
+              image_alts: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"alt\": \"<text>\"}] — one entry per product image, max 125 chars per alt" },
+              image_filenames: { type: "string", description: "JSON array: [{\"image_id\": <id>, \"filename\": \"<slug>.jpg\"}] — one clean SEO filename per image, lowercase hyphenated, store-branded" },
+              reasoning: { type: "string" },
+            },
+            required: ["title", "body_html", "seo_title", "seo_description", "product_type", "tags", "url_handle", "faq_json", "reasoning"],
           }
-        } else {
-          const errText = await response.text();
-          geminiError = `Gemini API error ${response.status}: ${errText.slice(0, 200)}`;
-          console.error("Gemini Error:", errText);
+        }]
+      }],
+      toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] } }
+    };
+
+    if (GEMINI_API_KEY) {
+      for (const model of GEMINI_MODELS) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiRequestBody) }
+          );
+
+          if (response.status === 429) {
+            geminiError = `Model ${model} quota exceeded, trying fallback...`;
+            console.warn(geminiError);
+            continue; // try next model in cascade
+          }
+
+          if (response.ok) {
+            const data = await response.json();
+            const functionCall = data.candidates?.[0]?.content?.parts?.find((p: GeminiFunctionCallPart) => p.functionCall)?.functionCall;
+            if (functionCall?.args) {
+              suggestions = normalizeShopifySuggestions(product, functionCall.args);
+              geminiError = ""; // clear any previous model errors
+              break; // success — stop trying models
+            } else {
+              geminiError = `Gemini (${model}) returned no function call. Finish reason: ${data.candidates?.[0]?.finishReason || "unknown"}`;
+            }
+          } else {
+            const errText = await response.text();
+            geminiError = `Gemini API error ${response.status}: ${errText.slice(0, 200)}`;
+            console.error("Gemini Error:", errText);
+          }
+        } catch (err) {
+          geminiError = `Gemini request threw: ${err instanceof Error ? err.message : String(err)}`;
+          console.error("Gemini Request Failed:", err);
         }
-      } catch (err) {
-        geminiError = `Gemini request threw: ${err instanceof Error ? err.message : String(err)}`;
-        console.error("Gemini Request Failed:", err);
       }
     }
 
