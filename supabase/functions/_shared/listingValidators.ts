@@ -35,7 +35,20 @@ const COLOR_WORDS = [
 ];
 
 const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "2xl", "xxxl", "3xl", "4xl", "5xl", "6xl"];
-const BANNED_TAGS = ["cjdropshipping", "cj dropshipping", "cj-drop shipping", "cj-drop shipping", "cj dropship", "cjdropship", "dropshipping", "drop shipping"];
+const BANNED_TAGS = [
+  // Dropshipping platforms
+  "cjdropshipping", "cj dropshipping", "cj-drop shipping", "cj dropship", "cjdropship", "dropshipping", "drop shipping",
+  // Competitor brand names (never tag with rival brands)
+  "boo hoo", "boohoo", "shein", "temu", "aliexpress", "asos", "h&m", "zara", "forever 21", "forever21",
+  // Marketplace references
+  "ebay", "amazon", "etsy", "walmart", "target", "womens ebay store", "ebay store",
+  // Single-word articles / prepositions that sneak in as tag fragments
+  "the", "and", "for", "with", "from", "this", "that", "its",
+  // Promo / spam
+  "sale dresses", "cheap chic", "new dress", "on demand production", "on-demand production",
+  // Nonsense/negative
+  "frumpy business dress", "mental calm dress", "magic dress", "gaming stream style",
+];
 
 export interface EtsyListingLike {
   title?: string;
@@ -472,8 +485,13 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
 
 
 
+  // Merge AI-generated tags WITH existing product tags — AI is instructed to generate
+  // only NEW tags, but we combine both so nothing is lost. Filter out single-char
+  // fragments (hyphen-split artifacts like "the", "off") before dedup.
+  const aiTagList = String(raw.tags || "").split(",").map((t) => t.trim()).filter((t) => t.length > 2);
+  const existingTagList = String(product.tags || "").split(",").map((t) => t.trim()).filter((t) => t.length > 2);
   let tags = dedupeBySignature(
-    String(raw.tags || product.tags || "").split(",").map((t) => t.trim()),
+    [...aiTagList, ...existingTagList],
     255
   ).filter((tag) => !isBannedTag(tag, product.vendor));
 
@@ -485,19 +503,18 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     }
   }
 
-  // Pad with fallback tags — count only qualifying tags toward threshold so
-  // single-word or vendor-named fallback tags don't inflate the count
-  if (tags.filter(tagQualifies).length < 10) {
+  // Pad with fallback tags if AI didn't produce enough qualifying ones
+  if (tags.filter(tagQualifies).length < 20) {
     const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
-    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 30);
+    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 250);
     notes.push("tags padded from product title and type");
   }
 
-  // Guarantee minimum tag count for output
-  if (tags.length < 10) {
+  // Guarantee minimum 20 tags — Shopify long-tail tags drive organic discovery
+  if (tags.length < 20) {
     const fallbackTags = buildShopifyFallbackTags(product).filter(tagQualifies);
-    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 10);
-    notes.push("guaranteed at least 10 tags");
+    tags = dedupeBySignature([...tags, ...fallbackTags], 255).slice(0, 20);
+    notes.push("guaranteed at least 20 tags");
   }
 
 

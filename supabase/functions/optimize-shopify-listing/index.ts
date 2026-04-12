@@ -210,11 +210,11 @@ serve(async (req) => {
       }
     }
 
-    // Fetch the full product fresh from Shopify — the list view may have truncated body_html
-    // or be missing metafields. GMC compliance depends on having the real description.
+    // Fetch the full product, metafields, and collections in parallel
+    const collectionNames: string[] = [];
     if (shopDomain && shopAccessToken && product.id) {
       try {
-        const [productRes, metafieldRes] = await Promise.all([
+        const [productRes, metafieldRes, customColRes, smartColRes] = await Promise.all([
           fetch(
             `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products/${product.id}.json`,
             { headers: { "X-Shopify-Access-Token": shopAccessToken } }
@@ -223,16 +223,20 @@ serve(async (req) => {
             `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products/${product.id}/metafields.json`,
             { headers: { "X-Shopify-Access-Token": shopAccessToken } }
           ),
+          fetch(
+            `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/custom_collections.json?product_id=${product.id}`,
+            { headers: { "X-Shopify-Access-Token": shopAccessToken } }
+          ),
+          fetch(
+            `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/smart_collections.json?product_id=${product.id}`,
+            { headers: { "X-Shopify-Access-Token": shopAccessToken } }
+          ),
         ]);
 
         if (productRes.ok) {
           const fullData = await productRes.json();
           const fresh = fullData.product as ShopifyProductLike;
-          // Merge fresh data — fresh always wins for body_html and core fields
-          product = {
-            ...product,
-            ...fresh,
-          };
+          product = { ...product, ...fresh };
         }
 
         if (metafieldRes.ok) {
@@ -242,6 +246,17 @@ serve(async (req) => {
           const descTag = metafields.find((m) => m.namespace === "global" && m.key === "description_tag");
           if (titleTag) product = { ...product, metafields_global_title_tag: titleTag.value };
           if (descTag) product = { ...product, metafields_global_description_tag: descTag.value };
+        }
+
+        if (customColRes.ok) {
+          const ccData = await customColRes.json();
+          const names: string[] = (ccData.custom_collections || []).map((c: { title: string }) => c.title);
+          collectionNames.push(...names);
+        }
+        if (smartColRes.ok) {
+          const scData = await smartColRes.json();
+          const names: string[] = (scData.smart_collections || []).map((c: { title: string }) => c.title);
+          collectionNames.push(...names);
         }
       } catch (fetchErr) {
         console.error("Fresh product fetch failed, using client-provided data:", fetchErr);
@@ -276,7 +291,7 @@ SHOPIFY SEO RULES:
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff. Use | as the only structural separator if needed — never use a hyphen as a separator.
 - DESCRIPTION (body_html): The existing Body HTML is your PRIMARY SOURCE — it contains the real product specs, materials, dimensions, and details that GMC requires. You MUST carry all of that factual information forward into the new description. Do not invent specs and do not drop any. Then restructure and expand it: (1) <h3> product name, (2) one hook <p> — who this is for and why they'll love it (identity-driven, specific), (3) <ul> with 5-7 bullets — each leads with a benefit then backs it with a spec pulled from the original content, (4) a closing <p> on use case, gifting, or occasion (2-3 sentences). MINIMUM 600 characters of visible text — GMC suppresses listings below this threshold. No exclamation points. HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
-- TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
+- TAGS: Generate 20-25 NEW buyer-intent tags only — do NOT re-list the existing product tags (we merge them automatically). This is Shopify (not Etsy), but long-tail keyword tags are still strongly recommended for organic discovery and Google Shopping. Prioritize tags by real search likelihood — ask "would an actual shopper type this exact phrase?" Mix tag lengths: 40% should be 3-5 word long-tail phrases (highest conversion), 40% should be 2-3 word mid-tail phrases, 20% can be single specific niche words. COLLECTION GUARANTEE: If the product belongs to collections (listed in the prompt), you MUST include at least 1-2 tags that directly match the collection name or its core keyword — this ensures the product surfaces within that collection in search. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, boho wrap dress, personalized gift) — write real buyer-intent phrases for that niche (e.g. "personalized name blanket gift", "boho off shoulder wrap dress", "custom astronaut throw blanket"). CRITICAL: Never split hyphenated terms — "off-the-shoulder" is ONE tag, not three. Never use competitor brand names (boo hoo, shein, asos, temu). Never use "sale", "cheap", "new", "ebay", or junk/nonsense terms. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
 - IMAGE ALT TEXT: Write alt text for EVERY image listed in the image list — not just the ones attached as photos. For images you can see visually, describe what you actually see. For images beyond the attached photos, write descriptive alt text based on the product name, type, and design theme. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); CRITICAL: NEVER use "image of", "picture of", generic text like "product image 1", or the vendor/brand name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. NEVER include the store name BOTH in the descriptive part AND after the pipe — it appears exactly once, after the pipe only. NEVER use curly/smart quotes (" " ' ') — only plain straight quotes (" '). Your image_alts JSON array MUST have one entry per image id listed above. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
@@ -300,8 +315,12 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
 
     const titleIsSpam = /made in (the )?usa|free shipping|shipped in (us|usa)|best seller|on sale|discount|cheap|wholesale/i.test(product.title || "");
 
+    const collectionLine = collectionNames.length > 0
+      ? `\nCollections this product belongs to: ${collectionNames.join(", ")} — your tags MUST include keywords matching these collection names.`
+      : "";
+
     const userPrompt = `Optimize this Shopify product:
-Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Use the product images and description to determine what this product actually is, then write a real descriptive title." : ""}
+Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Use the product images and description to determine what this product actually is, then write a real descriptive title." : ""}${collectionLine}
 
 EXISTING PRODUCT DESCRIPTION (this is the source of truth — all specs, materials, and details come from here and MUST be preserved in the new body_html):
 ${product.body_html || "No description provided — infer from title, type, and variants."}
@@ -384,6 +403,22 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
         const fallback = buildFallbackSuggestions(product);
         if (geminiError) fallback.reasoning = `AI error: ${geminiError} — ${fallback.reasoning}`;
         suggestions = normalizeShopifySuggestions(product, fallback);
+      }
+
+      // Hard-guarantee: collection name keywords must appear in the final tag list.
+      // The AI may miss them — this ensures the product surfaces within its collection.
+      if (collectionNames.length > 0 && suggestions.tags) {
+        const existingTagsLower = suggestions.tags.toLowerCase();
+        const missingCollectionTags: string[] = [];
+        for (const col of collectionNames) {
+          const colKey = col.toLowerCase().trim();
+          if (colKey && !existingTagsLower.includes(colKey)) {
+            missingCollectionTags.push(col.toLowerCase());
+          }
+        }
+        if (missingCollectionTags.length > 0) {
+          suggestions.tags = [suggestions.tags, ...missingCollectionTags].filter(Boolean).join(", ");
+        }
       }
 
       if ((!suggestions.image_alts || !suggestions.image_alts.trim()) && (product.images || []).length > 0) {
