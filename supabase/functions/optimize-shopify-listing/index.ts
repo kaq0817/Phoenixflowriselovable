@@ -124,13 +124,14 @@ function buildFallbackImageAlts(product: ShopifyProductLike, storeName: string):
 
 function domainToStoreName(domain: string | null | undefined): string {
   if (!domain) return "";
-  // If it's a raw myshopify slug (e.g. x65102-jb.myshopify.com), the slug is a
-  // machine-generated ID — not a real store name. Return "" so we don't pollute
-  // alt text and filenames with garbage like "X65102 Jb".
+  // myshopify slugs are machine-generated IDs — useless as store names
   if (/\.myshopify\.com$/i.test(domain)) return "";
-  // Real custom domain (e.g. ironphoenixghg.store, ourphoenixrise.com)
+  // Known store domains mapped to their correct public-facing store names
+  if (/ourphoenixrise/i.test(domain)) return "Our Phoenix Rise";
+  if (/ironphoenixghg/i.test(domain)) return "Iron Phoenix GHG";
+  // Generic fallback for any other custom domain
   return domain
-    .replace(/\.[a-z]{2,}(\.[a-z]{2,})?$/i, "") // strip TLD (and ccTLD)
+    .replace(/\.[a-z]{2,}(\.[a-z]{2,})?$/i, "")
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
@@ -201,7 +202,9 @@ serve(async (req) => {
         } else {
           await supabaseAdmin.from("store_connections").update({ optimizer_runs: conn.optimizer_runs + 1 }).eq("id", connectionId);
         }
-        storeName = conn.shop_name || domainToStoreName(conn.shop_domain) || "";
+        // Domain-first: custom domain tells us which store this actually is.
+        // shop_name is often the DBA ("Iron Phoenix GHG") for both stores — unreliable.
+        storeName = domainToStoreName(conn.shop_domain) || conn.shop_name || "";
         shopDomain = conn.shop_domain || "";
         shopAccessToken = conn.access_token || "";
       }
