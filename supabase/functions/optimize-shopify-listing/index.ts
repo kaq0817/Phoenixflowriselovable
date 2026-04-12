@@ -66,21 +66,35 @@ function isDropshipContent(html: string): boolean {
   return titleCasedCount / words.length > 0.6;
 }
 
-function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestionShape {
-  const title = (product.title || "Product").trim();
-  const seoTitle = title.slice(0, 60).trim();
-  const cleanBody = stripHtml(product.body_html || "");
+const FALLBACK_SPAM_RE = /\b(free shipping|shipped in (us|usa)|made in (the )?usa|best seller|on sale|discount|cheap|wholesale|sunflower|inspirational quotes|wall decor for bedroom|!\s*$)/gi;
+const FALLBACK_BRAND_RE = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming|ghg|phoenix flow)\b/gi;
 
-  // Only use real content — never invent copy
+function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestionShape {
+  // At minimum clean the title — strip spam keywords, brand names, promo noise, and truncate
+  let title = (product.title || "Product")
+    .replace(FALLBACK_SPAM_RE, "")
+    .replace(FALLBACK_BRAND_RE, "")
+    .replace(/[!?]+$/, "")           // trailing punctuation
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Truncate at word boundary to 70 chars
+  if (title.length > 70) {
+    title = title.slice(0, 70).replace(/\s+\S*$/, "").trim();
+  }
+  if (!title || title.length < 3) title = product.product_type || "Product";
+
+  const seoTitle = title.slice(0, 60).trim();
+  const cleanBody = stripHtml(stripSupplierImages(product.body_html || ""));
   const seoDescription = cleanBody.length >= 50 ? cleanBody.slice(0, 155).trim() : "";
 
   const tagParts = [
     product.product_type,
     ...String(product.title || "")
-      .split(/[-,|/]/)
+      .replace(FALLBACK_SPAM_RE, "")
+      .split(/[,|/]/)
       .map((part) => part.trim()),
   ]
-    .filter(Boolean)
+    .filter((p) => p && String(p).length > 2)
     .map((part) => String(part));
 
   const tags = Array.from(new Set(tagParts)).slice(0, 12).join(", ");
@@ -95,7 +109,7 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
     variant_suggestions: "",
     url_handle: product.handle || "",
     faq_json: "[]",
-    reasoning: "Fallback: AI unavailable. Generated compliance-safe, non-duplicate SEO fields.",
+    reasoning: "⚠️ AI QUOTA EXCEEDED — this is a basic cleanup only, not a full AI optimization. Try again in a few minutes when quota resets.",
   };
 }
 
