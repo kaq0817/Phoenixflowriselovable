@@ -390,6 +390,24 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
         suggestions.image_alts = buildFallbackImageAlts(product, storeName);
       }
 
+      // Re-append the correct store name suffix to every alt entry.
+      // The AI often writes the wrong brand/DBA name — the validator strips it,
+      // so we reliably re-add the correct one here.
+      if (storeName && suggestions.image_alts) {
+        try {
+          const alts: { image_id: number; alt: string }[] = JSON.parse(suggestions.image_alts);
+          if (Array.isArray(alts)) {
+            suggestions.image_alts = JSON.stringify(
+              alts.map((entry) => {
+                // Strip any existing pipe suffix, then re-append the correct store name
+                const desc = entry.alt.replace(/\s*\|.*$/, "").trim();
+                return { ...entry, alt: `${desc} | ${storeName}`.slice(0, 125) };
+              })
+            );
+          }
+        } catch { /* leave as-is if JSON is malformed */ }
+      }
+
     return new Response(JSON.stringify({ suggestions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

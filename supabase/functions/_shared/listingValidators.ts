@@ -533,26 +533,27 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
 
   // Clean a single image alt string:
   // - Replace curly/smart quotes with straight equivalents (GMC bans them)
-  // - Strip internal brand names from the descriptive part (before the pipe)
-  //   so "Gamer King T-Shirt | Iron Phoenix GHG - Iron Phoenix GHG" never happens
-  // - Collapse any duplicate store-name suffix left by the AI
+  // - Strip internal brand/DBA names from EVERYWHERE (the AI often writes the wrong store name)
+  // - Collapse duplicates like "Iron Phoenix GHG - Iron Phoenix GHG"
+  // - Remove a trailing "| " with nothing useful after it
   function cleanAltText(alt: string): string {
     const BRAND_ALT_RE = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming discord llc|go hard gaming discord|go hard gaming|ghg|phoenix flow)\b/gi;
-    // Replace smart quotes with straight equivalents
+    // Replace smart/curly quotes with straight equivalents
     let cleaned = alt
       .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
       .replace(/[\u2018\u2019\u201A\u201B]/g, "'");
-    // Split on pipe — [descriptive part] | [store suffix]
-    const pipeIdx = cleaned.lastIndexOf("|");
-    if (pipeIdx !== -1) {
-      const desc = cleaned.slice(0, pipeIdx).replace(BRAND_ALT_RE, "").replace(/\s{2,}/g, " ").replace(/[-\s]+$/, "").trim();
-      const suffix = cleaned.slice(pipeIdx + 1).trim();
-      cleaned = suffix ? `${desc} | ${suffix}` : desc;
-    } else {
-      cleaned = cleaned.replace(BRAND_ALT_RE, "").replace(/\s{2,}/g, " ").trim();
-    }
-    // Remove any duplicate consecutive words/phrases (catches "Iron Phoenix GHG - Iron Phoenix GHG" if the pipe split didn't catch it)
-    cleaned = cleaned.replace(/\b(\w[\w\s]{2,}?)\s*[-|]\s*\1\b/gi, "$1");
+    // Strip brand names from the ENTIRE string (both before and after the pipe)
+    cleaned = cleaned.replace(BRAND_ALT_RE, "");
+    // Collapse any "X - X" or "X | X" duplicates left behind
+    cleaned = cleaned.replace(/([A-Za-z][\w\s]{2,}?)\s*[-]\s*\1/gi, "$1");
+    // Clean up orphaned pipes, dashes, and excess whitespace
+    cleaned = cleaned
+      .replace(/\|\s*\|/g, "|")          // double pipes
+      .replace(/[-–]\s*\|/g, "|")         // "- |"
+      .replace(/\|\s*[-–]?\s*$/g, "")     // trailing "| " with nothing after
+      .replace(/\s{2,}/g, " ")
+      .replace(/[-\s]+$/, "")
+      .trim();
     return cleaned.slice(0, 125).trim();
   }
 
