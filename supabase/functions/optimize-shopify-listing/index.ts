@@ -305,6 +305,7 @@ serve(async (req) => {
 SHOPIFY SEO RULES:
 - TITLE: Descriptor-first product name only. Under 70 chars. No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
 - PERSONALIZATION ATTRIBUTES (NEVER REMOVE): "Personalized", "Custom", "Custom Name", "Customizable" are PRODUCT ATTRIBUTES that buyers search for — they are NOT promotional words. If the product accepts a custom name, text, or design, the word "Personalized" or "Custom Name" MUST appear in the title. Removing these words from a personalizable product's title is an error. Research shows these terms increase click-through and conversion significantly.
+- SELLER DIRECTION OVERRIDES: If a seller direction is provided in the prompt, the occasion/season/use case it specifies MUST appear in the title. Example: seller says "Christmas tablecloth" → title must say "Christmas" not "birthday" or "thanksgiving". Multi-occasion products should lead with the seller-specified primary use; other occasions belong in the description body only.
 - SPAM TITLE DETECTION: If the existing title is stuffed with promotional phrases ("Made in the USA", "Free Shipping", "Shipped in US", "Best", "Sale", etc.) rather than describing the actual product, IGNORE the title entirely. Instead derive the real product name from: (1) the product images — visually identify the item, its design/theme, and any personalization (e.g. a custom name printed on it); (2) the product description body; (3) variant names. A personalized item should say "Personalized" or "Custom Name" in the title. Example: a blanket with a custom astronaut design and a name on it → "Personalized Astronaut Flannel Blanket" not "Made in USA Blanket Free Shipping".
 - SEO TITLE: Must be under 60 chars. Use | as the only separator (never hyphens as separators). ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
@@ -348,7 +349,7 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
       : "IMPORTANT: The existing description above contains real product data. Your body_html must retain all of it — restructure and expand, never discard specs.";
 
     const userPrompt = `Optimize this Shopify product:
-Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Use the product images and description to determine what this product actually is, then write a real descriptive title." : ""}${collectionLine}
+${productContext ? `🎯 SELLER DIRECTION — this is the PRIMARY brief and overrides the existing description's multi-occasion language:\n"${productContext}"\nThe title MUST lead with this occasion/use case. Other occasions from the existing description may appear as secondary uses in the body only — never in the title or SEO fields.\n` : ""}Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Derive the real product name from the seller direction above, images, and description." : ""}${collectionLine}
 
 EXISTING PRODUCT DESCRIPTION (supplier images have been removed — do NOT add any <img> tags to body_html):
 ${cleanedBodyHtml || "No description provided — infer from title, type, and variants."}
@@ -361,7 +362,6 @@ ${variantInfo}${imageInfo}
 
 Current SEO Title: ${product.metafields_global_title_tag || ""}
 Current SEO Description: ${product.metafields_global_description_tag || ""}
-${productContext ? `\nSeller context: ${productContext}` : ""}
 ${descriptionInstruction}
 
 Return all optimizations using the suggest_shopify_optimizations function.`;
