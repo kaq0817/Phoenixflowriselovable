@@ -279,7 +279,7 @@ SHOPIFY SEO RULES:
 - TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
-- IMAGE ALT TEXT: The actual product images are included in this request — visually analyze each one. Write descriptive SEO-friendly alt text based on what you see in each image. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); describe the actual visible content (color, angle, key design detail, background context); Images 2+ should describe what makes that photo different from Image 1 (angle, detail, zoom, lifestyle shot, etc.); CRITICAL: NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. NEVER include the store name BOTH in the descriptive part AND after the pipe — it appears exactly once, after the pipe only. NEVER use curly/smart quotes (" " ' ') — only plain straight quotes (" '). Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
+- IMAGE ALT TEXT: Write alt text for EVERY image listed in the image list — not just the ones attached as photos. For images you can see visually, describe what you actually see. For images beyond the attached photos, write descriptive alt text based on the product name, type, and design theme. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); CRITICAL: NEVER use "image of", "picture of", generic text like "product image 1", or the vendor/brand name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. NEVER include the store name BOTH in the descriptive part AND after the pipe — it appears exactly once, after the pipe only. NEVER use curly/smart quotes (" " ' ') — only plain straight quotes (" '). Your image_alts JSON array MUST have one entry per image id listed above. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
 - IMAGE FILENAMES: For every image, suggest a clean SEO-rich filename. Rules: all lowercase, hyphen-separated, no special chars, end in .jpg; Format: "[clean-product-name]-[detail]-[store-slug].jpg" where store-slug = "${storeName ? storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "store"}"; Image 1 = full product slug + store slug (e.g. "block-world-pixelated-travel-mug-phoenix-rise.jpg"); Images 2+ = product slug + detail + store slug (e.g. "block-world-pixelated-travel-mug-handle-detail-phoenix-rise.jpg"); NEVER use generic names like "image-1.jpg", vendor names, or LLC suffixes. Return as a JSON-encoded string in image_filenames: [{"image_id": <id>, "filename": "<name>.jpg"}].
 
 GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
@@ -390,21 +390,37 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
         suggestions.image_alts = buildFallbackImageAlts(product, storeName);
       }
 
-      // Re-append the correct store name suffix to every alt entry.
-      // The AI often writes the wrong brand/DBA name — the validator strips it,
-      // so we reliably re-add the correct one here.
-      if (storeName && suggestions.image_alts) {
+      // Fill in any images the AI skipped (Gemini only sees 5 visually — images 6+ may be missing)
+      // and re-stamp every entry with the correct store name suffix.
+      if ((product.images || []).length > 0 && suggestions.image_alts) {
         try {
+          const BRAND_RE = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming discord llc|go hard gaming discord|go hard gaming|ghg|phoenix flow)\b/gi;
           const alts: { image_id: number; alt: string }[] = JSON.parse(suggestions.image_alts);
-          if (Array.isArray(alts)) {
-            suggestions.image_alts = JSON.stringify(
-              alts.map((entry) => {
-                // Strip any existing pipe suffix, then re-append the correct store name
-                const desc = entry.alt.replace(/\s*\|.*$/, "").trim();
-                return { ...entry, alt: `${desc} | ${storeName}`.slice(0, 125) };
-              })
-            );
+          const covered = new Set(alts.map((e) => e.image_id));
+          // Build a clean product name for fallback entries (strip brand names)
+          const cleanTitle = (product.title || "Product")
+            .replace(BRAND_RE, "")
+            .replace(/\s{2,}/g, " ")
+            .trim() || "Product";
+          // Add entries for any images the AI missed
+          for (const img of product.images || []) {
+            if (!covered.has(img.id)) {
+              const detail = `View ${(product.images || []).indexOf(img) + 1}`;
+              alts.push({ image_id: img.id, alt: `${cleanTitle} ${detail}` });
+            }
           }
+          // Strip brand names and re-stamp correct store suffix on every entry
+          suggestions.image_alts = JSON.stringify(
+            alts.map((entry) => {
+              const desc = entry.alt
+                .replace(/\s*\|.*$/, "")   // drop any existing suffix
+                .replace(BRAND_RE, "")      // strip brand names from descriptor
+                .replace(/\s{2,}/g, " ")
+                .trim();
+              const withSuffix = storeName ? `${desc} | ${storeName}` : desc;
+              return { ...entry, alt: withSuffix.slice(0, 125) };
+            })
+          );
         } catch { /* leave as-is if JSON is malformed */ }
       }
 

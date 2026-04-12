@@ -375,7 +375,7 @@ useEffect(() => {
     setShopifySuggestions(null);
     setShopifyOptimizing(false);
     setExpandedSection(null);
-    setProductTitleEdit(product.title || "");
+    setProductTitleEdit(cleanProductTitle(product.title || ""));
     setProductContextNote("");
     const initialAlts: Record<number, string> = {};
     for (const img of product.images || []) {
