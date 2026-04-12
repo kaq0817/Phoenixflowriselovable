@@ -306,6 +306,8 @@ SHOPIFY SEO RULES:
 - TITLE: Descriptor-first product name only. Under 70 chars. No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
 - PERSONALIZATION ATTRIBUTES (NEVER REMOVE): "Personalized", "Custom", "Custom Name", "Customizable" are PRODUCT ATTRIBUTES that buyers search for — they are NOT promotional words. If the product accepts a custom name, text, or design, the word "Personalized" or "Custom Name" MUST appear in the title. Removing these words from a personalizable product's title is an error. Research shows these terms increase click-through and conversion significantly.
 - SELLER DIRECTION OVERRIDES: If a seller direction is provided in the prompt, the occasion/season/use case it specifies MUST appear in the title. Example: seller says "Christmas tablecloth" → title must say "Christmas" not "birthday" or "thanksgiving". Multi-occasion products should lead with the seller-specified primary use; other occasions belong in the description body only.
+- TABLE LINEN IDENTIFICATION (GMC rejects mismatched product types): A table runner is a long narrow strip down the center of a table. A tablecloth covers the entire table surface. ALWAYS check dimensions and shape: if the product is described as round (e.g. 60" round, 152.5cm round) it is a ROUND TABLECLOTH — never call it a "runner". If it is rectangular and narrow (e.g. 12"x72") it is a table runner. If it covers a full rectangular table it is a tablecloth. Use the correct term in the title, description, and product_type.
+- BLANK SUBLIMATION CLAIMS (CRITICAL — always remove): This store NEVER sells blank sublimation stock for customers to print themselves. ALWAYS remove phrases like "upload your own image", "customize with any picture", "blank for sublimation", "DIY sublimation", "enter your text/logo to print yourself". These are supplier template copy that do not apply. Products may be sold as personalized (the store prints a design or name FOR the customer) — that is fine to describe. The distinction: "we print it for you" = valid. "buy this blank and print it yourself" = remove always.
 - SPAM TITLE DETECTION: If the existing title is stuffed with promotional phrases ("Made in the USA", "Free Shipping", "Shipped in US", "Best", "Sale", etc.) rather than describing the actual product, IGNORE the title entirely. Instead derive the real product name from: (1) the product images — visually identify the item, its design/theme, and any personalization (e.g. a custom name printed on it); (2) the product description body; (3) variant names. A personalized item should say "Personalized" or "Custom Name" in the title. Example: a blanket with a custom astronaut design and a name on it → "Personalized Astronaut Flannel Blanket" not "Made in USA Blanket Free Shipping".
 - SEO TITLE: Must be under 60 chars. Use | as the only separator (never hyphens as separators). ${storeName ? `Append "| ${storeName}" only if the result stays at or under 60 chars.` : "Do not append any store name suffix."} Never use "Iron Phoenix GHG" anywhere.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
@@ -375,8 +377,14 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
       "gemini-2.0-flash",                 // stable, higher quota — reliable fallback
     ];
 
+    // Images come FIRST so Gemini visually identifies the product before reading
+    // any potentially incorrect supplier/template description text.
+    const imageLeadParts = imageParts.length > 0
+      ? [...imageParts, { text: "Examine the images above carefully — they are the authoritative source for product type, shape, design, and features. Now optimize based on the instructions and product data below:\n\n" + systemPrompt + "\n\n" + userPrompt }]
+      : [{ text: systemPrompt + "\n\n" + userPrompt }];
+
     const geminiRequestBody = {
-      contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }, ...imageParts] }],
+      contents: [{ role: "user", parts: imageLeadParts }],
       tools: [{
         functionDeclarations: [{
           name: "suggest_shopify_optimizations",
