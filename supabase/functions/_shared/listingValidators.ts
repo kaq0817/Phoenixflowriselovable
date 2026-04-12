@@ -531,11 +531,48 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   tagsString = finalHardClean(tagsString);
   const cleanHandle = finalHardClean(url_handle);
 
-  const normalizedImageAlts = typeof raw.image_alts === "string"
+  // Clean a single image alt string:
+  // - Replace curly/smart quotes with straight equivalents (GMC bans them)
+  // - Strip internal brand names from the descriptive part (before the pipe)
+  //   so "Gamer King T-Shirt | Iron Phoenix GHG - Iron Phoenix GHG" never happens
+  // - Collapse any duplicate store-name suffix left by the AI
+  function cleanAltText(alt: string): string {
+    const BRAND_ALT_RE = /\b(iron phoenix ghg|iron phoenix|our phoenix rise|go hard gaming discord llc|go hard gaming discord|go hard gaming|ghg|phoenix flow)\b/gi;
+    // Replace smart quotes with straight equivalents
+    let cleaned = alt
+      .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+      .replace(/[\u2018\u2019\u201A\u201B]/g, "'");
+    // Split on pipe — [descriptive part] | [store suffix]
+    const pipeIdx = cleaned.lastIndexOf("|");
+    if (pipeIdx !== -1) {
+      const desc = cleaned.slice(0, pipeIdx).replace(BRAND_ALT_RE, "").replace(/\s{2,}/g, " ").replace(/[-\s]+$/, "").trim();
+      const suffix = cleaned.slice(pipeIdx + 1).trim();
+      cleaned = suffix ? `${desc} | ${suffix}` : desc;
+    } else {
+      cleaned = cleaned.replace(BRAND_ALT_RE, "").replace(/\s{2,}/g, " ").trim();
+    }
+    // Remove any duplicate consecutive words/phrases (catches "Iron Phoenix GHG - Iron Phoenix GHG" if the pipe split didn't catch it)
+    cleaned = cleaned.replace(/\b(\w[\w\s]{2,}?)\s*[-|]\s*\1\b/gi, "$1");
+    return cleaned.slice(0, 125).trim();
+  }
+
+  function cleanImageAltsJson(raw_alts: string): string {
+    try {
+      const parsed: { image_id: number; alt: string }[] = JSON.parse(raw_alts);
+      if (!Array.isArray(parsed)) return raw_alts;
+      return JSON.stringify(parsed.map((entry) => ({ ...entry, alt: cleanAltText(entry.alt || "") })));
+    } catch {
+      return raw_alts;
+    }
+  }
+
+  const rawImageAlts = typeof raw.image_alts === "string"
     ? raw.image_alts
     : Array.isArray(raw.image_alts)
       ? JSON.stringify(raw.image_alts)
       : "";
+
+  const normalizedImageAlts = rawImageAlts ? cleanImageAltsJson(rawImageAlts) : "";
 
   const normalizedImageFilenames = typeof raw.image_filenames === "string"
     ? raw.image_filenames

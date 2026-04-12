@@ -124,10 +124,13 @@ function buildFallbackImageAlts(product: ShopifyProductLike, storeName: string):
 
 function domainToStoreName(domain: string | null | undefined): string {
   if (!domain) return "";
-  // Strip .myshopify.com or any TLD, then title-case the slug
+  // If it's a raw myshopify slug (e.g. x65102-jb.myshopify.com), the slug is a
+  // machine-generated ID — not a real store name. Return "" so we don't pollute
+  // alt text and filenames with garbage like "X65102 Jb".
+  if (/\.myshopify\.com$/i.test(domain)) return "";
+  // Real custom domain (e.g. ironphoenixghg.store, ourphoenixrise.com)
   return domain
-    .replace(/\.myshopify\.com$/i, "")
-    .replace(/\.[a-z]{2,}$/i, "")
+    .replace(/\.[a-z]{2,}(\.[a-z]{2,})?$/i, "") // strip TLD (and ccTLD)
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
@@ -273,7 +276,7 @@ SHOPIFY SEO RULES:
 - TAGS: Think like a real shopper typing into a search bar. Generate 20-30 tags total. First identify the product's niche/theme (e.g. Minecraft-inspired, pixel art, gaming, zombie, patriotic, fitness) — then write real buyer-intent search phrases for that niche (e.g. "minecraft inspired mug", "pixel art gamer gift", "gaming coffee mug", "gift for minecraft fan"). PRESERVE all existing specific tags from the product. Upgrade generic-only tags with themed niche terms alongside them. Single-word niche tags (e.g. "Tumbler", "Gaming", "Zombie") are valid when theme-specific. No vendor names ("Iron Phoenix", "Iron Phoenix GHG", "ghg"). Each individual tag max 255 chars — no combined string length limit.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
-- IMAGE ALT TEXT: The actual product images are included in this request — visually analyze each one. Write descriptive SEO-friendly alt text based on what you see in each image. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); describe the actual visible content (color, angle, key design detail, background context); Images 2+ should describe what makes that photo different from Image 1 (angle, detail, zoom, lifestyle shot, etc.); NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
+- IMAGE ALT TEXT: The actual product images are included in this request — visually analyze each one. Write descriptive SEO-friendly alt text based on what you see in each image. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); describe the actual visible content (color, angle, key design detail, background context); Images 2+ should describe what makes that photo different from Image 1 (angle, detail, zoom, lifestyle shot, etc.); CRITICAL: NEVER use "image of", "picture of", generic text like "product image 1", or the vendor name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. NEVER include the store name BOTH in the descriptive part AND after the pipe — it appears exactly once, after the pipe only. NEVER use curly/smart quotes (" " ' ') — only plain straight quotes (" '). Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
 - IMAGE FILENAMES: For every image, suggest a clean SEO-rich filename. Rules: all lowercase, hyphen-separated, no special chars, end in .jpg; Format: "[clean-product-name]-[detail]-[store-slug].jpg" where store-slug = "${storeName ? storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "store"}"; Image 1 = full product slug + store slug (e.g. "block-world-pixelated-travel-mug-phoenix-rise.jpg"); Images 2+ = product slug + detail + store slug (e.g. "block-world-pixelated-travel-mug-handle-detail-phoenix-rise.jpg"); NEVER use generic names like "image-1.jpg", vendor names, or LLC suffixes. Return as a JSON-encoded string in image_filenames: [{"image_id": <id>, "filename": "<name>.jpg"}].
 
 GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
