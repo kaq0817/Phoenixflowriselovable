@@ -522,6 +522,8 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   const brandFragments = ["iron phoenix ghg", "iron phoenix", "ghg", "our phoenix rise"].map(normalizeKeywordPhrase);
   const tagQualifies = (t: string) => {
     if (!t.trim()) return false;
+    // Tags longer than 6 words have no realistic search volume — drop them
+    if (t.trim().split(/\s+/).length > 6) return false;
     const normalized = normalizeKeywordPhrase(t);
     // Filter out your retail brands from the public tool's output
     if (brandFragments.some((frag) => normalized.includes(frag))) return false;
