@@ -55,15 +55,60 @@ function stripSupplierImages(html: string): string {
   return html.replace(SUPPLIER_IMG_RE, "").replace(/\s{2,}/g, " ").trim();
 }
 
-// Detect machine-translated/dropship boilerplate: title-cased every word, broken sentences
+// Known supplier/POD boilerplate phrases — any match = supplier template copy
+const SUPPLIER_BOILERPLATE_RE = [
+  /bring(?:ing)? you a new sense of atmosphere/i,
+  /ideal creative gift/i,
+  /professionally designed patterns? prints?/i,
+  /attract the attention of guests/i,
+  /leave a deep impression/i,
+  /enhance your personal taste/i,
+  /vivid and interesting colors and patterns/i,
+  /use glue or hook install/i,
+  /upload your (?:own )?images?/i,
+  /enter the text\s*\/logos?/i,
+  /customize with any picture/i,
+  /eye-catching decor/i,
+  /exquisite canvas wall art/i,
+  /your design/i,
+];
+
+// Detect machine-translated/dropship/POD boilerplate
 function isDropshipContent(html: string): boolean {
   const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   if (!text || text.length < 50) return false;
+
+  // Asterisk-bullet format: "* Material :" — distinctive supplier/POD template
+  if (/\*\s+\w[\w\s]*\s*:/.test(text)) return true;
+
+  // Known supplier boilerplate phrases
+  if (SUPPLIER_BOILERPLATE_RE.some((re) => re.test(text))) return true;
+
+  // >60% Title Cased words = machine-translated
   const words = text.split(/\s+/).filter((w) => w.length > 3);
   if (words.length < 5) return false;
   const titleCasedCount = words.filter((w) => /^[A-Z][a-z]/.test(w)).length;
-  // If >60% of words are Title Cased, it's machine-translated dropship copy
   return titleCasedCount / words.length > 0.6;
+}
+
+// Extract only factual specs from supplier HTML so the AI can't echo back boilerplate.
+// Returns a clean plain-text spec list (dimensions, material, care instructions only).
+function extractSpecsFromSupplierHtml(html: string): string {
+  const text = html.replace(/<[^>]*>/g, " ").replace(/\s{2,}/g, " ").trim();
+  const specLines: string[] = [];
+  // Split on asterisk bullets or sentence boundaries
+  const segments = text.split(/\*\s+|\.\s+(?=[A-Z])/);
+  for (const seg of segments) {
+    const clean = seg.trim().replace(/\s+/g, " ");
+    // Keep only lines that look like factual specs (contain a measurement, material word, or spec label)
+    if (/\b(material|size|dimension|inch|cm|color|weight|hang|mount|wash|care|clean|wipe)\b/i.test(clean) && clean.length > 5 && clean.length < 200) {
+      // Strip the label prefix "Material :" → keep "Material: ..."
+      specLines.push(clean.replace(/^[\w\s]+\s*:\s*/, (m) => m.trim()));
+    }
+  }
+  return specLines.length > 0
+    ? "EXTRACTED SPECS (boilerplate removed — use these facts only, write everything else from images):\n" + specLines.map((l) => `- ${l}`).join("\n")
+    : "";
 }
 
 const FALLBACK_SPAM_RE = /\b(free shipping|shipped in (us|usa)|made in (the )?usa|best seller|on sale|discount|cheap|wholesale|sunflower|inspirational quotes|wall decor for bedroom|!\s*$)/gi;
@@ -360,17 +405,21 @@ FACEBOOK / META COMMERCE COMPLIANCE (CRITICAL — products must pass Facebook ca
       ? `\nCollections this product belongs to: ${collectionNames.join(", ")} — your tags MUST include keywords matching these collection names.`
       : "";
 
-    const descriptionInstruction = !hasExistingBody
-      ? "No existing description — write from scratch using title, type, images, and variants."
-      : bodyIsDropship
-      ? "⚠️ DROPSHIP CONTENT DETECTED: The existing description is machine-translated supplier copy (Title Cased, broken sentences, supplier SKU codes). Extract only the factual specs (material, colors, dimensions, applicable holidays) and REWRITE the description entirely in natural English. Do not carry forward any of the broken phrasing."
+    // When supplier/POD boilerplate is detected, replace the full HTML with specs-only
+    // so the AI cannot echo back template phrases. The AI writes fresh from images + specs.
+    const bodyForPrompt = bodyIsDropship
+      ? (extractSpecsFromSupplierHtml(cleanedBodyHtml) || "No usable description — write from scratch using images, title, and variants.")
+      : (cleanedBodyHtml || "No description provided — infer from title, type, and variants.");
+
+    const descriptionInstruction = !hasExistingBody || bodyIsDropship
+      ? "⚠️ SUPPLIER/POD TEMPLATE DETECTED: The description field above contains only extracted specs. Write the full body_html ENTIRELY from scratch — use the product images as your primary source for design, style, and identity. The spec facts (material, size) may appear in the description but all copy must be original."
       : "IMPORTANT: The existing description above contains real product data. Your body_html must retain all of it — restructure and expand, never discard specs.";
 
     const userPrompt = `Optimize this Shopify product:
 ${productContext ? `🎯 SELLER DIRECTION — this is the PRIMARY brief and overrides the existing description's multi-occasion language:\n"${productContext}"\nThe title MUST lead with this occasion/use case. Other occasions from the existing description may appear as secondary uses in the body only — never in the title or SEO fields.\n` : ""}Title: ${product.title || ""}${titleIsSpam ? "\n⚠️ WARNING: The title above is spam/SEO-stuffed with promotional text — it does NOT describe the product. IGNORE it. Derive the real product name from the seller direction above, images, and description." : ""}${collectionLine}
 
 EXISTING PRODUCT DESCRIPTION (supplier images have been removed — do NOT add any <img> tags to body_html):
-${cleanedBodyHtml || "No description provided — infer from title, type, and variants."}
+${bodyForPrompt}
 
 Product Type: ${product.product_type || ""}
 Vendor: ${product.vendor || ""}
