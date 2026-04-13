@@ -475,9 +475,10 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
           openAiMessages.push({
             role: "user",
             content: [
-              ...imageParts.map((p) => ({
+              ...imageParts.map((p, idx) => ({
                 type: "image_url",
-                image_url: { url: `data:${(p as {inlineData:{mimeType:string;data:string}}).inlineData.mimeType};base64,${(p as {inlineData:{mimeType:string;data:string}}).inlineData.data}`, detail: "low" },
+                // First image: "high" to read design details. Rest: "low" to save cost.
+                image_url: { url: `data:${(p as {inlineData:{mimeType:string;data:string}}).inlineData.mimeType};base64,${(p as {inlineData:{mimeType:string;data:string}}).inlineData.data}`, detail: idx === 0 ? "high" : "low" },
               })),
               { type: "text", text: "Examine the product images above. Now optimize based on the instructions below." },
             ],

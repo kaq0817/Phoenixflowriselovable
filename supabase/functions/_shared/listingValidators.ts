@@ -165,12 +165,33 @@ function trimBrokenTail(value: string): string {
 
 const SUPPLIER_HOST_RE = /\b(?:cjdropshipping\.com|alicdn\.com|aliexpress\.com|ae\d+\.alicdn|dhgate\.com|ebayimg\.com)\b/i;
 
+// Phrases that indicate the AI returned supplier template copy without rewriting
+const SUPPLIER_BODY_PHRASES = [
+  /\bYour Design\b/gi,
+  /\bExquisite canvas wall art\b/gi,
+  /\bbring you a new sense of atmosphere\b/gi,
+  /\bEYE-CATCHING DECOR\b/gi,
+  /Use Glue or Hook install/gi,
+  /upload your (own )?images?\b/gi,
+  /enter the text\s*\/logos/gi,
+  /customize with any picture/gi,
+];
+
 function sanitizeHtml(value: string): string {
-  // Strip any <img> tags pointing to third-party supplier domains
-  const stripped = (value || "").replace(/<img[^>]+>/gi, (tag) =>
-    SUPPLIER_HOST_RE.test(tag) ? "" : tag
-  );
-  return collapseWhitespace(replaceAscii(stripped));
+  let html = value || "";
+  // Strip supplier-hosted images
+  html = html.replace(/<img[^>]+>/gi, (tag) => SUPPLIER_HOST_RE.test(tag) ? "" : tag);
+  // Convert <b>/<i> to semantic equivalents (AI should use <strong> per our rules)
+  html = html.replace(/<b(\s[^>]*)?>/gi, "<strong>").replace(/<\/b>/gi, "</strong>");
+  html = html.replace(/<i(\s[^>]*)?>/gi, "<em>").replace(/<\/i>/gi, "</em>");
+  // Strip empty divs and lone <br> blocks left by suppliers
+  html = html.replace(/<div>\s*<br\s*\/?>\s*<\/div>/gi, "");
+  html = html.replace(/(<br\s*\/?>\s*){2,}/gi, "<br>");
+  // Strip supplier catch-phrases that signal unrewritten content
+  for (const phrase of SUPPLIER_BODY_PHRASES) {
+    html = html.replace(phrase, "");
+  }
+  return collapseWhitespace(replaceAscii(html));
 }
 
 function normalizeKeywordPhrase(value: string): string {
