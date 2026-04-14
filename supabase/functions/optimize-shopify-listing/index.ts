@@ -240,7 +240,7 @@ serve(async (req) => {
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const OPENAI_API_KEY = Deno.env.get("OpenAi_API_KEY");
+    const OPENAI_API_KEY: string | undefined = undefined; // disabled until OpenAI billing is active
     const { product: rawProduct, connectionId, productContext } = await req.json() as { product?: ShopifyProductLike & { id?: number }; connectionId?: string; productContext?: string };
     let product: ShopifyProductLike & { id?: number } = rawProduct ?? {};
 
@@ -439,7 +439,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
     // Model cascade: try the best available model first, fall back on 429 rate limit
     const GEMINI_MODELS = [
       "gemini-2.5-flash-preview-04-17",  // best quality, lower quota
-      "gemini-2.0-flash",                 // stable, higher quota — reliable fallback
+      "gemini-2.5-flash",                 // stable, higher quota — reliable fallback
     ];
 
     // Images come FIRST so Gemini visually identifies the product before reading
