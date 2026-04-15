@@ -286,6 +286,8 @@ function sanitizeHandle(value: string): string {
     .slice(0, 100);
 }
 
+const STOP_WORDS = new Set(["the", "and", "for", "with", "from", "this", "that", "its", "a", "an", "of", "in", "to", "on", "at", "by"]);
+
 function isBannedTag(value: string, vendor?: string): boolean {
   const normalized = normalizeKeywordPhrase(value);
   if (!normalized) return true;
@@ -294,6 +296,9 @@ function isBannedTag(value: string, vendor?: string): boolean {
     const normalizedVendor = normalizeKeywordPhrase(vendor);
     if (normalizedVendor && normalized === normalizedVendor) return true;
   }
+  // Reject fragments that end with a stop word (n-gram artifacts like "wall art for", "gifts with")
+  const words = normalized.split(/\s+/);
+  if (words.length > 1 && STOP_WORDS.has(words[words.length - 1])) return true;
   return false;
 }
 
