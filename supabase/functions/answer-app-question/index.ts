@@ -119,7 +119,7 @@ Behavior requirements:
     const userPrompt = `App identity config:\n${identityBlock}\n\nApp support config:\n${supportBlock}\n\nUser question:\n${question}`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
       {
         method: "POST",
         headers: {

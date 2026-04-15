@@ -163,7 +163,7 @@ ${pageContent.slice(0, 6000)}
 ${links.slice(0, 40).join("\n")}`;
 
     const aiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent`,
       {
         method: "POST",
         headers: {
