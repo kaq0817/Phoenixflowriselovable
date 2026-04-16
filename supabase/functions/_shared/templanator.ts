@@ -576,6 +576,9 @@ function detectCrossStoreLinks(assets: Record<string, string | null>, shopDomain
     const urls = content.match(/https?:\/\/[^\s"'<>]+/gi) || [];
 
     for (const url of urls) {
+      // Skip URLs containing Liquid template syntax ({{ }}, {% %}) — these are
+      // unrendered theme variables like {{ request.path }} and are not real URLs.
+      if (/\{\{|\}\}|\{%|%\}/.test(url)) continue;
       try {
         const domain = normalizeDomain(new URL(url).hostname);
         if (!domain) continue;
@@ -611,6 +614,8 @@ function detectContentRisks(
     const urls = content.match(/https?:\/\/[^\s"'<>]+/gi) || [];
 
     const wrongDomainLinks = urls.filter((url) => {
+      // Ignore Liquid template variables embedded in URLs ({{ }}, {% %})
+      if (/\{\{|\}\}|\{%|%\}/.test(url)) return false;
       try {
         const domain = normalizeDomain(new URL(url).hostname);
         if (!domain) return false;
