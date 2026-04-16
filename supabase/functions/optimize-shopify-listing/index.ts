@@ -33,10 +33,14 @@ async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: 
     const mimeType = contentType.split(";")[0].trim();
     if (!mimeType.startsWith("image/")) return null;
     const buffer = await res.arrayBuffer();
-    if (buffer.byteLength > 3 * 1024 * 1024) return null; // skip >3MB images
+    if (buffer.byteLength > 800 * 1024) return null; // skip >800KB images — keeps memory well under limit
     const bytes = new Uint8Array(buffer);
+    // Chunked conversion — avoids building one massive string in memory
+    const CHUNK = 8192;
     let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
     return { data: btoa(binary), mimeType };
   } catch {
     return null;
@@ -354,7 +358,7 @@ serve(async (req) => {
 
     // Fetch images in parallel for multimodal analysis (cap at 5 images)
     const imageResults = await Promise.all(
-      productImages.slice(0, 5).filter((img) => img.src).map((img) => fetchImageBase64(img.src!))
+      productImages.slice(0, 3).filter((img) => img.src).map((img) => fetchImageBase64(img.src!))
     );
     const imageParts = imageResults
       .filter((r): r is { data: string; mimeType: string } => r !== null)
