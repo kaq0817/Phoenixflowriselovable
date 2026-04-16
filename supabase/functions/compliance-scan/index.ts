@@ -335,8 +335,23 @@ Prioritize these Google Merchant Center risks when present:
 Calculate an overall score based on misrepresentation risk only.
 Use the report_compliance tool to return your analysis.`;
 
-    const userPrompt = `Analyze this e-commerce store for compliance:
+    // Inject brand context when scanning any LLC-owned store so Gemini doesn't flag
+    // cross-brand emails/domains as identity conflicts — all are the same legal entity.
+    const isOwnedStore = LLC_DOMAINS.test(formattedUrl);
+    const brandContext = isOwnedStore ? `
+KNOWN BUSINESS CONTEXT (do NOT flag any of the following as identity conflicts):
+- Legal entity: Go Hard Gaming Discord LLC
+- DBA / brand: Iron Phoenix GHG
+- Storefront brand: Our Phoenix Rise
+- All owned domains: ourphoenixrise.com, ironphoenixrise.com, gohardgaming.store, ironphoenix.store, ironphoenixghg.com
+- Email domains @ironphoenix.store, @ourphoenixrise.com, @gohardgaming.store, @ironphoenixghg.com all belong to the same LLC
+- A supplier or contact email using @ironphoenix.store on an ourphoenixrise.com page is NOT a business identity conflict — same LLC, different brand layer
+- gohardgaming.com is NOT owned and should be flagged if found in navigation or checkout CTAs
 
+` : "";
+
+    const userPrompt = `Analyze this e-commerce store for compliance:
+${brandContext}
 URL: ${formattedUrl}
 
 === MAIN PAGE CONTENT ===
