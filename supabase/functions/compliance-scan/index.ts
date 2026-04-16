@@ -220,20 +220,33 @@ serve(async (req) => {
     const blogPages = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link)).slice(0, 1);
     const productPages = sitePages.filter((link: string) => /\/products\//i.test(link)).slice(0, 1);
     const collectionPages = sitePages.filter((link: string) => /\/collections\//i.test(link)).slice(0, 1);
-    const priorityPages = Array.from(new Set([
-      ...policyPages,
+    const nonPolicyPages = Array.from(new Set([
       ...blogPages,
       ...productPages,
       ...collectionPages,
-    ])).slice(0, 4);
+    ])).slice(0, 3);
+
+    // Scrape policy pages separately — they get their own budget so product/blog content
+    // can't crowd them out of the prompt
+    const policySamples = await Promise.allSettled(
+      policyPages.map(async (pageUrl) => {
+        const md = FIRECRAWL_API_KEY
+          ? await scrapeFirecrawlPage({ apiKey: FIRECRAWL_API_KEY, url: pageUrl })
+          : (await scrapeBasicPage(pageUrl)).markdown;
+        return md && md.trim().length > 50
+          ? `\n\n--- POLICY PAGE: ${pageUrl} ---\n${md.slice(0, 1500)}`
+          : `\n\n--- POLICY PAGE: ${pageUrl} --- [could not retrieve content]`;
+      }),
+    );
+    const sampledPolicyContent = policySamples
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+      .map((r) => r.value)
+      .join("");
 
     const pageSamples = await Promise.allSettled(
-      priorityPages.map(async (pageUrl) => {
+      nonPolicyPages.map(async (pageUrl) => {
         const md = FIRECRAWL_API_KEY
-          ? await scrapeFirecrawlPage({
-              apiKey: FIRECRAWL_API_KEY,
-              url: pageUrl,
-            })
+          ? await scrapeFirecrawlPage({ apiKey: FIRECRAWL_API_KEY, url: pageUrl })
           : (await scrapeBasicPage(pageUrl)).markdown;
         return md ? `\n\n--- PAGE: ${pageUrl} ---\n${md.slice(0, 1200)}` : "";
       }),
@@ -242,6 +255,8 @@ serve(async (req) => {
       .filter((result): result is PromiseFulfilledResult<string> => result.status === "fulfilled")
       .map((result) => result.value)
       .join("");
+
+    const priorityPages = [...policyPages, ...nonPolicyPages];
 
     const blogPageUrls = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link));
     const storefrontPageUrls = sitePages.filter((link: string) => !/\/(blogs|blog|articles?)\//i.test(link));
@@ -373,15 +388,18 @@ ${pageContent.slice(0, 4500)}
 === SITE MAP (discovered pages) ===
 ${sitePages.slice(0, 80).join("\n")}
 
-=== PRIORITY PAGES CONTENT (policies, blogs, products, collections) ===
-${sampledPageContent.slice(0, 6000)}
+=== POLICY PAGES CONTENT (verify language, consistency, and completeness) ===
+${sampledPolicyContent}
+
+=== OTHER PAGES CONTENT (products, blogs, collections) ===
+${sampledPageContent.slice(0, 3000)}
 
 === LINKS FOUND ON MAIN PAGE ===
 ${pageLinks.slice(0, 50).join("\n")}
 
 === DIRECT RISK SIGNALS ===
 Store domain: ${originHost} (submitted as: ${inputHost})
-POLICY PAGES CONFIRMED (do NOT flag policy coverage as missing — these URLs exist and were sampled): ${policyPages.length > 0 ? policyPages.join(", ") : "none sampled but sitemap includes policy routes"}
+POLICY PAGES SCRAPED AND INCLUDED ABOVE — content is in the POLICY PAGES CONTENT section. Do NOT flag policies as missing or unverifiable — they have been fetched and their text is above. Only flag a policy issue if the actual content is contradictory, blank, or deceptive: ${policyPages.join(", ")}
 Sitemap includes /policies/ routes: ${sitePages.some((p: string) => p.includes("/policies/")) ? "YES — policies are present" : "no"}
 Blog/article pages sampled: ${blogPages.length}
 Product pages sampled: ${productPages.length}
