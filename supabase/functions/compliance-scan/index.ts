@@ -200,10 +200,23 @@ serve(async (req) => {
     }
 
     // Step 3: Scrape key pages across the storefront, not just policies
+    // Shopify standard policy URLs — check these directly first
+    const shopifyPolicyPaths = [
+      "/policies/privacy-policy",
+      "/policies/refund-policy",
+      "/policies/shipping-policy",
+      "/policies/terms-of-service",
+    ];
+    const baseUrl = `https://${originHost}`;
+    const confirmedPolicyUrls = shopifyPolicyPaths.map(p => `${baseUrl}${p}`);
+
     const policyKeywords = ["privacy", "refund", "return", "shipping", "terms", "contact", "about", "faq"];
-    const policyPages = sitePages.filter((link: string) =>
-      policyKeywords.some(kw => link.toLowerCase().includes(kw))
-    ).slice(0, 2);
+    const policyPages = Array.from(new Set([
+      ...confirmedPolicyUrls,
+      ...sitePages.filter((link: string) =>
+        policyKeywords.some(kw => link.toLowerCase().includes(kw))
+      ),
+    ])).slice(0, 6);
     const blogPages = sitePages.filter((link: string) => /\/(blogs|blog|articles?)\//i.test(link)).slice(0, 1);
     const productPages = sitePages.filter((link: string) => /\/products\//i.test(link)).slice(0, 1);
     const collectionPages = sitePages.filter((link: string) => /\/collections\//i.test(link)).slice(0, 1);
