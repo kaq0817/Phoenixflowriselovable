@@ -95,62 +95,164 @@ export function exportComplianceCsv(report: ComplianceReport, storeUrl: string) 
 
 export function exportCompliancePdf(report: ComplianceReport, storeUrl: string) {
   const doc = new jsPDF();
-  const now = new Date().toLocaleString();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
-  // Header
+  const criticals = report.findings.filter((f) => f.severity === "critical");
+  const warnings = report.findings.filter((f) => f.severity === "warning");
+  const passed = report.findings.filter((f) => f.severity === "pass");
+  const infos = report.findings.filter((f) => f.severity === "info");
+
+  const scoreColor: [number, number, number] =
+    report.score >= 80 ? [34, 197, 94] : report.score >= 60 ? [234, 179, 8] : [239, 68, 68];
+
+  const addPageFooter = (pageNum: number, totalPages: number) => {
+    doc.setFontSize(8);
+    doc.setTextColor(160, 160, 160);
+    doc.text("Phoenix Flow — Compliance Report", 14, pageH - 8);
+    doc.text(`Page ${pageNum} of ${totalPages}`, pageW - 14, pageH - 8, { align: "right" });
+    doc.text("Confidential — Prepared for authorized use only", pageW / 2, pageH - 8, { align: "center" });
+  };
+
+  // ── COVER PAGE ────────────────────────────────────────────────────────────
+  // Dark header band
+  doc.setFillColor(20, 10, 40);
+  doc.rect(0, 0, pageW, 60, "F");
+
+  // Accent bar
+  doc.setFillColor(139, 92, 246);
+  doc.rect(0, 57, pageW, 3, "F");
+
+  // Report title
+  doc.setFontSize(26);
+  doc.setTextColor(255, 255, 255);
+  doc.text("E-COMMERCE COMPLIANCE", pageW / 2, 28, { align: "center" });
+  doc.setFontSize(18);
+  doc.setTextColor(192, 160, 255);
+  doc.text("AUDIT REPORT", pageW / 2, 40, { align: "center" });
+  doc.setFontSize(9);
+  doc.setTextColor(180, 180, 200);
+  doc.text("Powered by Phoenix Flow", pageW / 2, 52, { align: "center" });
+
+  // Score circle (drawn as filled circle + text)
+  const cx = pageW / 2;
+  const cy = 100;
+  doc.setFillColor(...scoreColor);
+  doc.circle(cx, cy, 22, "F");
+  doc.setFillColor(20, 10, 40);
+  doc.circle(cx, cy, 18, "F");
   doc.setFontSize(20);
-  doc.setTextColor(40, 40, 40);
-  doc.text("Phoenix Flow - Compliance Report", 14, 22);
-  doc.setFontSize(10);
-  doc.setTextColor(120, 120, 120);
-  doc.text(`Store: ${storeUrl}`, 14, 30);
-  doc.text(`Generated: ${now}`, 14, 36);
-  doc.text(`Pages Analyzed: ${report.pages_analyzed}`, 14, 42);
-
-  // Score
-  doc.setFontSize(14);
-  doc.setTextColor(40, 40, 40);
-  doc.text(`Compliance Score: ${report.score}/100`, 14, 54);
-  doc.setFontSize(10);
+  doc.setTextColor(...scoreColor);
+  doc.text(String(report.score), cx, cy + 3, { align: "center" });
+  doc.setFontSize(8);
+  doc.setTextColor(160, 160, 160);
+  doc.text("/ 100", cx, cy + 10, { align: "center" });
+  doc.setFontSize(11);
   doc.setTextColor(80, 80, 80);
-  const summaryLines = doc.splitTextToSize(report.summary, 180);
-  doc.text(summaryLines, 14, 62);
+  doc.text("COMPLIANCE SCORE", cx, cy + 30, { align: "center" });
 
-  const criticals = report.findings.filter((f) => f.severity === "critical").length;
-  const warnings = report.findings.filter((f) => f.severity === "warning").length;
-  const passed = report.findings.filter((f) => f.severity === "pass").length;
-  doc.text(`Critical: ${criticals} | Warnings: ${warnings} | Passed: ${passed}`, 14, 62 + summaryLines.length * 5 + 4);
+  // Store + date block
+  doc.setFillColor(248, 246, 255);
+  doc.roundedRect(20, 140, pageW - 40, 40, 3, 3, "F");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 80, 140);
+  doc.text("STORE AUDITED", 30, 153);
+  doc.setFontSize(11);
+  doc.setTextColor(30, 20, 50);
+  doc.text(storeUrl, 30, 162);
+  doc.setFontSize(9);
+  doc.setTextColor(100, 80, 140);
+  doc.text("REPORT DATE", pageW / 2 + 10, 153);
+  doc.setFontSize(11);
+  doc.setTextColor(30, 20, 50);
+  doc.text(`${dateStr} at ${timeStr}`, pageW / 2 + 10, 162);
 
-  // Findings table
-  const startY = 62 + summaryLines.length * 5 + 14;
-  doc.autoTable({
-    startY,
-    head: [["Severity", "Category", "Finding", "Recommendation"]],
-    body: report.findings.map((f) => [
-      f.severity.toUpperCase(),
-      f.category.replace(/_/g, " "),
-      `${f.title}\n${f.description}`,
-      f.recommendation,
-    ]),
-    styles: { fontSize: 8, cellPadding: 3 },
-    headStyles: { fillColor: [80, 50, 120], textColor: 255 },
-    columnStyles: {
-      0: { cellWidth: 22 },
-      1: { cellWidth: 35 },
-      2: { cellWidth: 70 },
-      3: { cellWidth: 60 },
-    },
-    didParseCell: (data: AutoTableCellContext) => {
-      if (data.column.index === 0 && data.section === "body") {
-        const val = String(data.cell.raw).toLowerCase();
-        if (val === "critical") data.cell.styles.textColor = [220, 50, 50];
-        else if (val === "warning") data.cell.styles.textColor = [200, 150, 0];
-        else if (val === "pass") data.cell.styles.textColor = [50, 180, 50];
-      }
-    },
+  // Stat boxes
+  const boxY = 198;
+  const boxW = (pageW - 40) / 4;
+  const boxes = [
+    { label: "CRITICAL", count: criticals.length, color: [239, 68, 68] as [number, number, number] },
+    { label: "WARNINGS", count: warnings.length, color: [234, 179, 8] as [number, number, number] },
+    { label: "INFO", count: infos.length, color: [99, 102, 241] as [number, number, number] },
+    { label: "PASSED", count: passed.length, color: [34, 197, 94] as [number, number, number] },
+  ];
+  boxes.forEach((box, i) => {
+    const bx = 20 + i * (boxW + 2);
+    doc.setFillColor(248, 246, 255);
+    doc.roundedRect(bx, boxY, boxW, 28, 2, 2, "F");
+    doc.setFontSize(18);
+    doc.setTextColor(...box.color);
+    doc.text(String(box.count), bx + boxW / 2, boxY + 13, { align: "center" });
+    doc.setFontSize(7);
+    doc.setTextColor(120, 100, 160);
+    doc.text(box.label, bx + boxW / 2, boxY + 22, { align: "center" });
   });
 
-  downloadBlob(doc.output("blob"), `compliance-report-${storeUrl.replace(/[^a-zA-Z0-9]/g, "-")}.pdf`);
+  // Executive summary
+  doc.setFontSize(12);
+  doc.setTextColor(40, 30, 60);
+  doc.text("Executive Summary", 20, 244);
+  doc.setDrawColor(139, 92, 246);
+  doc.setLineWidth(0.5);
+  doc.line(20, 246, pageW - 20, 246);
+  doc.setFontSize(9);
+  doc.setTextColor(80, 70, 100);
+  const summaryLines = doc.splitTextToSize(report.summary, pageW - 40);
+  doc.text(summaryLines, 20, 253);
+
+  doc.setFontSize(9);
+  doc.setTextColor(120, 120, 120);
+  doc.text(`Pages Analyzed: ${report.pages_analyzed}`, 20, pageH - 18);
+
+  // ── FINDINGS PAGES ────────────────────────────────────────────────────────
+  const severityGroups = [
+    { label: "Critical Issues", color: [239, 68, 68] as [number, number, number], items: criticals },
+    { label: "Warnings", color: [234, 179, 8] as [number, number, number], items: warnings },
+    { label: "Informational", color: [99, 102, 241] as [number, number, number], items: infos },
+    { label: "Passed Checks", color: [34, 197, 94] as [number, number, number], items: passed },
+  ].filter((g) => g.items.length > 0);
+
+  severityGroups.forEach((group) => {
+    doc.addPage();
+
+    // Section header band
+    doc.setFillColor(20, 10, 40);
+    doc.rect(0, 0, pageW, 20, "F");
+    doc.setFillColor(...group.color);
+    doc.rect(0, 18, pageW, 2, "F");
+    doc.setFontSize(13);
+    doc.setTextColor(255, 255, 255);
+    doc.text(group.label.toUpperCase(), pageW / 2, 13, { align: "center" });
+
+    doc.autoTable({
+      startY: 26,
+      head: [["Category", "Finding", "Recommendation"]],
+      body: group.items.map((f) => [
+        f.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        `${f.title}\n${f.description}`,
+        f.recommendation + (f.reference ? `\nRef: ${f.reference}` : ""),
+      ]),
+      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+      headStyles: { fillColor: group.color, textColor: 255, fontSize: 8, fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 38 },
+        1: { cellWidth: 82 },
+        2: { cellWidth: 62 },
+      },
+    });
+  });
+
+  // Add footers to all pages
+  const totalPages = (doc.internal as unknown as { pages: unknown[] }).pages.length - 1;
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addPageFooter(i, totalPages);
+  }
+
+  downloadBlob(doc.output("blob"), `compliance-report-${storeUrl.replace(/[^a-zA-Z0-9]/g, "-")}-${now.toISOString().slice(0, 10)}.pdf`);
 }
 
 // ============================================================================
