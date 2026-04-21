@@ -306,10 +306,20 @@ export function analyzeThemeAssets(input: {
     scanIssues.push(`Support location does not match the active ${supportSiloStatus.expectedStoreMarker} store`);
   }
   if (crossStoreLinks.length > 0) {
-    scanIssues.push(`${crossStoreLinks.length} hard-coded external domain references detected in theme assets`);
+    const byAsset = crossStoreLinks.reduce<Record<string, string[]>>((acc, l) => {
+      if (!acc[l.assetKey]) acc[l.assetKey] = [];
+      acc[l.assetKey].push(l.domain);
+      return acc;
+    }, {});
+    for (const [assetKey, domains] of Object.entries(byAsset)) {
+      scanIssues.push(`External domain reference in ${assetKey}: ${[...new Set(domains)].join(", ")}`);
+    }
   }
   if (contentRisks.length > 0) {
-    scanIssues.push(`${contentRisks.length} blog/content trust or misrepresentation risks detected`);
+    for (const risk of contentRisks) {
+      const loc = risk.handle ? `/${risk.blogTitle ? risk.blogTitle + "/" : ""}${risk.handle}` : risk.title;
+      scanIssues.push(`[${risk.severity.toUpperCase()}] ${risk.title} — ${risk.reason} (${loc})`);
+    }
   }
   if ((input.collectionPillars || []).length === 0) {
     scanIssues.push("No weighted collections found for pillar and subdomain suggestions");
