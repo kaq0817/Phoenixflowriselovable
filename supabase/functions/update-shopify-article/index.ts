@@ -131,7 +131,12 @@ serve(async (req) => {
       `${v.title || "Default"} - $${v.price || "0.00"} (${v.inventory_quantity || 0} in stock)`,
     ).join("\n");
 
-    const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
+    const systemPrompt = `You are a sales machine. Your only job is to make this product sell. You find the exact words a real buyer types into Google when they are ready to spend money, and you build every field around those words so this product appears in front of that buyer and they click. You work within GMC compliance rules as constraints — not the goal. The goal is the sale.
+
+KEYWORD TARGETING (do this before anything else):
+Identify 3-5 keywords a buyer types when ready to purchase — not researching, BUYING. Target 25,000-100,000 monthly US searches. Buyer-intent phrases only: "personalized metal wall sign", "custom name blanket gift" — not informational queries. Build every field around these keywords.
+
+You are also an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
 SHOPIFY SEO RULES:
 - TITLE: Concise, scannable, under 60 chars (GMC hard limit). Front-load product name.
