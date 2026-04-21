@@ -126,9 +126,9 @@ function buildFallbackSuggestions(product: ShopifyProductLike): ShopifySuggestio
     .replace(/[!?]+$/, "")           // trailing punctuation
     .replace(/\s{2,}/g, " ")
     .trim();
-  // Truncate at word boundary to 70 chars
-  if (title.length > 70) {
-    title = title.slice(0, 70).replace(/\s+\S*$/, "").trim();
+  // Truncate at word boundary to 60 chars (GMC limit)
+  if (title.length > 60) {
+    title = title.slice(0, 60).replace(/\s+\S*$/, "").trim();
   }
   if (!title || title.length < 3) title = product.product_type || "Product";
 
@@ -371,7 +371,7 @@ serve(async (req) => {
     const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
 SHOPIFY SEO RULES:
-- TITLE: Descriptor-first product name only. Under 70 chars. No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
+- TITLE: Descriptor-first product name only. Under 60 chars (GMC hard limit). No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
 - PERSONALIZATION ATTRIBUTES (NEVER REMOVE): "Personalized", "Custom", "Custom Name", "Customizable" are PRODUCT ATTRIBUTES that buyers search for — they are NOT promotional words. If the product accepts a custom name, text, or design, the word "Personalized" or "Custom Name" MUST appear in the title. Removing these words from a personalizable product's title is an error. Research shows these terms increase click-through and conversion significantly.
 - SELLER DIRECTION OVERRIDES: If a seller direction is provided in the prompt, the occasion/season/use case it specifies MUST appear in the title. Example: seller says "Christmas tablecloth" → title must say "Christmas" not "birthday" or "thanksgiving". Multi-occasion products should lead with the seller-specified primary use; other occasions belong in the description body only.
 - TABLE LINEN IDENTIFICATION (GMC rejects mismatched product types): A table runner is a long narrow strip down the center of a table. A tablecloth covers the entire table surface. ALWAYS check dimensions and shape: if the product is described as round (e.g. 60" round, 152.5cm round) it is a ROUND TABLECLOTH — never call it a "runner". If it is rectangular and narrow (e.g. 12"x72") it is a table runner. If it covers a full rectangular table it is a tablecloth. Use the correct term in the title, description, and product_type.

@@ -46,6 +46,8 @@ const BANNED_TAGS = [
   "the", "and", "for", "with", "from", "this", "that", "its",
   // Promo / spam
   "sale dresses", "cheap chic", "new dress", "on demand production", "on-demand production",
+  // Manufacturing / print technique terms (not buyer search terms)
+  "all over print", "all-over print", "aop", "sublimation print", "sublimation", "dtg print", "dtg", "screen print", "screen printing", "print on demand", "print-on-demand", "pod",
   // Nonsense/negative
   "frumpy business dress", "mental calm dress", "magic dress", "gaming stream style",
 ];
@@ -487,7 +489,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   // --- TITLE & SEO NORMALIZATION ---
   
   // Use the public scrubber for both Title and SEO Title
-  let title = sanitizePlainText(stripInternalBranding(raw.title || product.title || ""), 70).replace(/"/g, "");
+  let title = sanitizePlainText(stripInternalBranding(raw.title || product.title || ""), 60).replace(/"/g, "");
   
   const seo_title = sanitizePlainText(
     stripInternalBranding(raw.seo_title || title || product.metafields_global_title_tag || product.title || ""), 
@@ -516,7 +518,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     const normalizedSuffix = normalizeKeywordPhrase(requiredSuffix);
     if (!normalizedTitle.includes(normalizedSuffix)) {
       const core = stripInternalBranding(title.replace(new RegExp(requiredSuffix, "ig"), "").trim());
-      title = sanitizePlainText(`${core} ${requiredSuffix}`.trim(), 70);
+      title = sanitizePlainText(`${core} ${requiredSuffix}`.trim(), 60);
       notes.push("apparel title normalized to include required color/size details");
     }
   }

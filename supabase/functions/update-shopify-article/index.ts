@@ -134,7 +134,7 @@ serve(async (req) => {
     const systemPrompt = `You are an expert Shopify SEO optimizer and Google Merchant Center compliance specialist.
 
 SHOPIFY SEO RULES:
-- TITLE: Concise, scannable, under 70 chars. Front-load product name.
+- TITLE: Concise, scannable, under 60 chars (GMC hard limit). Front-load product name.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff.
 - DESCRIPTION (body_html): H3 headings (Features, Benefits, Specs). Exactly one bullet list (3-5 items). HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
@@ -183,7 +183,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
                   parameters: {
                     type: "object",
                     properties: {
-                      title: { type: "string", description: "Optimized product title (max 70 chars, no keyword stuffing)" },
+                      title: { type: "string", description: "Optimized product title (max 60 chars, GMC hard limit, no keyword stuffing)" },
                       body_html: { type: "string", description: "Optimized HTML body. Only <h3><p><ul><li><strong> tags." },
                       seo_title: { type: "string", description: "SEO meta title (max 60 chars, keyword-first)" },
                       seo_description: { type: "string", description: "SEO meta description (120-155 chars EXACTLY)" },
