@@ -128,7 +128,10 @@ serve(async (req) => {
       formattedUrl = `https://${formattedUrl}`;
     }
 
-    console.log("Scraping store:", formattedUrl);
+    // If the user submitted a .myshopify.com URL, note it but treat it as the backend host.
+    // The public-facing domain will be detected from the page content after scraping.
+    const isMyshopifyUrl = /\.myshopify\.com$/i.test(new URL(formattedUrl).hostname);
+    console.log("Scraping store:", formattedUrl, isMyshopifyUrl ? "(myshopify backend URL)" : "");
     const inputHost = new URL(formattedUrl).hostname.toLowerCase().replace(/^www\./, "");
 
     // Scrape main page
@@ -367,14 +370,20 @@ Use the report_compliance tool to return your analysis.`;
     // cross-brand emails/domains as identity conflicts — all are the same legal entity.
     const isOwnedStore = LLC_DOMAINS.test(formattedUrl);
     const brandContext = isOwnedStore ? `
-KNOWN BUSINESS CONTEXT (do NOT flag any of the following as identity conflicts):
+VERIFIED BUSINESS CONTEXT — OVERRIDE ANY IDENTITY FINDINGS BELOW:
+This store has been pre-verified. The following are FACTS, not risks. Do NOT generate any finding about inconsistent domains, multiple brand identities, subdomain presentation, or brand name mismatches for this store. These are not violations — they are the verified legal structure of this business.
+
+FACTS:
 - Legal entity: Go Hard Gaming Discord LLC
 - DBA / brand: Iron Phoenix GHG
-- Storefront brand: Our Phoenix Rise
+- Active storefront brand: Our Phoenix Rise
+- All of these are the SAME business operating under one LLC with multiple brand layers — this is standard and legal
 - All owned domains: ourphoenixrise.com, ironphoenixrise.com, gohardgaming.store, ironphoenix.store, ironphoenixghg.com
-- Email domains @ironphoenix.store, @ourphoenixrise.com, @gohardgaming.store, @ironphoenixghg.com all belong to the same LLC
-- A supplier or contact email using @ironphoenix.store on an ourphoenixrise.com page is NOT a business identity conflict — same LLC, different brand layer
-- gohardgaming.com is NOT owned and should be flagged if found in navigation or checkout CTAs
+- All email domains @ironphoenix.store, @ourphoenixrise.com, @gohardgaming.store, @ironphoenixghg.com belong to the same LLC
+- Multiple domains and brand names appearing on this store are EXPECTED and EXPLAINED — do NOT flag as inconsistent, confusing, or misrepresentation
+- gohardgaming.com is the ONE domain NOT owned — flag only if found in navigation or checkout
+
+INSTRUCTION: Skip all findings about domain consistency, brand identity conflicts, multiple operating names, or Shopify subdomain presentation for this store. Score only on actual deceptive content, false claims, or policy contradictions.
 
 ` : "";
 
@@ -398,7 +407,8 @@ ${sampledPageContent.slice(0, 3000)}
 ${pageLinks.slice(0, 50).join("\n")}
 
 === DIRECT RISK SIGNALS ===
-Store domain: ${originHost} (submitted as: ${inputHost})
+Store domain: ${originHost} (submitted as: ${inputHost})${isMyshopifyUrl ? `
+IMPORTANT: The URL submitted was a .myshopify.com backend URL. This is Shopify's internal hosting domain — every Shopify store has one. It is NOT the public storefront domain. Do NOT flag .myshopify.com as an inconsistency, misrepresentation, or domain mismatch. The public domain is the custom domain found in the page content. This is standard Shopify infrastructure.` : ""}
 POLICY PAGES SCRAPED AND INCLUDED ABOVE — content is in the POLICY PAGES CONTENT section. Do NOT flag policies as missing or unverifiable — they have been fetched and their text is above. Only flag a policy issue if the actual content is contradictory, blank, or deceptive: ${policyPages.join(", ")}
 Sitemap includes /policies/ routes: ${sitePages.some((p: string) => p.includes("/policies/")) ? "YES — policies are present" : "no"}
 Blog/article pages sampled: ${blogPages.length}
