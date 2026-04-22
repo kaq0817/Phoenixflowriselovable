@@ -142,7 +142,7 @@ SHOPIFY SEO RULES:
 - TITLE: Concise, scannable, under 60 chars (GMC hard limit). Front-load product name.
 - META TITLE (seo_title): Max 60 chars. Keyword-focused.
 - META DESCRIPTION (seo_description): 120-155 characters EXACTLY. No promo fluff.
-- DESCRIPTION (body_html): H3 headings (Features, Benefits, Specs). Exactly one bullet list (3-5 items). HTML tags: <h3>, <p>, <ul>, <li>, <strong> only.
+- DESCRIPTION (body_html): Write for a real human deciding whether to buy this. ~700 characters. Natural flow, no section labels. Opening paragraph with primary keyword. Bullet list of 3-5 real specs. Closing sentence that feels like a natural CTA without being labeled one. Clean, human, no fluff, no exclamation points. Plain English only, no HTML tags.
 - TAGS: Long-tail phrases. Combined total string must be 250 chars or fewer. No vendor names.
 - URL HANDLE: Hyphenated, lowercase, keyword-based, max 60 chars.
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
