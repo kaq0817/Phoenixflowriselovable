@@ -346,7 +346,16 @@ This store sells made-to-order / print-on-demand products. Google Merchant Cente
 - Shipping promises on product pages (e.g. "ships in 24 hours") must not contradict the shipping policy page.
 - Return promises on product pages must not contradict the return policy.
 
+ABSOLUTE RULE — BLOG AND EDITORIAL CONTENT:
+Blog posts, articles, fiction excerpts, personal essays, and editorial stories operate under completely different rules than product pages. The following types of language in blog/article content are NEVER health claims, NEVER medical claims, and must NEVER be flagged under any severity:
+- Emotional or psychological language: "doubt", "anxiety", "spiraled", "felt lighter", "breathe", "vulnerability", "hard days", "healing", "hope", "relief", "pressure"
+- Relationship and narrative language: "guardian", "connection", "love", "enduring", "offered", "needed"
+- Literary and storytelling devices: metaphor, vulnerability arcs, emotional transformation, character inner states
+- Wellness lifestyle language in a personal or narrative context
+If the content is on a blog page, article page, or any editorial URL (contains /blogs/, /articles/, /posts/, /news/), treat ALL emotional, psychological, and relational language as creative writing — not as regulated health claims. Only flag blog content if a product is directly named alongside a specific medical outcome claim (e.g. "buy this supplement — it cured my depression").
+
 IMPORTANT — DO NOT FLAG:
+- Dates of any kind — "last updated" dates, policy dates, blog post dates, copyright years. Do not attempt to determine whether a date is past or future. Date checking is out of scope for this audit.
 - Blog posts, articles, or editorial content for health language (emotional wellness language in blog content is standard)
 - Outbound links in blog/editorial pages (these are normal SEO practice)
 - Missing phone number or physical address alone (not required by GMC)
@@ -377,10 +386,7 @@ INSTRUCTION: Skip all findings about domain consistency, brand identity conflict
 
 ` : "";
 
-    const today = new Date().toISOString().split("T")[0];
-    const userPrompt = `Today's date: ${today}. Any date on or before this date is in the past — do not flag past dates as future dates.
-
-Analyze this e-commerce store for compliance:
+    const userPrompt = `Analyze this e-commerce store for compliance:
 ${brandContext}
 URL: ${formattedUrl}
 
