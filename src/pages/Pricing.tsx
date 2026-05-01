@@ -99,8 +99,8 @@ export default function PricingPage() {
               {TOTAL_STRIPE_PRODUCTS} live packages across subscriptions, compliance, and bundles.
             </p>
           </div>
-          <Link to="/auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
-            Sign in
+          <Link to="/auth">
+            <Button variant="outline" size="lg">Sign In</Button>
           </Link>
         </div>
       </motion.div>
