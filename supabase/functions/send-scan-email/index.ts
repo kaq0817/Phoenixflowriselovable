@@ -341,7 +341,7 @@ function renderComplianceReport(
       <!-- CTA -->
       <tr>
         <td style="background:#f9fafb;padding:28px 32px;border-top:1px solid #e5e7eb;text-align:center;">
-          <a href="${appBaseUrl}/audit" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:13px 36px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Open Full Report in Phoenix Flow</a>
+          <a href="${appBaseUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:13px 36px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Open Full Report in Phoenix Flow</a>
           <p style="margin:14px 0 0;font-size:12px;color:#9ca3af;">Log in to view live findings, apply fixes, and rescan at any time.</p>
         </td>
       </tr>
@@ -409,6 +409,7 @@ serve(async (req) => {
     const {
       to,
       reportType = "listing",
+      scanId,
       summary,
       listingsWithIssues,
       totalScanned,
@@ -438,7 +439,7 @@ serve(async (req) => {
         summary || "",
         storeUrl || "",
         pagesAnalyzed ?? 0,
-        APP_BASE_URL
+        scanId ? `${APP_BASE_URL}/audit?scan=${scanId}` : `${APP_BASE_URL}/audit`
       );
     } else {
       html = `<!DOCTYPE html>

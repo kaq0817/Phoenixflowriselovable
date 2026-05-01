@@ -16,7 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { toast } from "sonner";
 import { exportCompliancePdf, exportComplianceCsv } from "@/lib/reportExports";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 interface Finding {
   category: "gmc_misrepresentation" | "etsy_compliance" | "general_ecommerce";
@@ -133,6 +133,7 @@ export default function AuditPage() {
   const { user } = useAuth();
   const isAdmin = useIsAdmin(user?.id);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [storeUrl, setStoreUrl] = useState("");
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -143,6 +144,19 @@ export default function AuditPage() {
   useEffect(() => {
     if (user) fetchPastScans();
   }, [user]);
+
+  useEffect(() => {
+    const scanId = searchParams.get("scan");
+    if (!scanId || !user) return;
+    supabase
+      .from("compliance_scans")
+      .select("*")
+      .eq("id", scanId)
+      .single()
+      .then(({ data }) => {
+        if (data) loadPastScan(data as unknown as ScanRecord);
+      });
+  }, [searchParams, user]);
 
   const fetchPastScans = async () => {
     const { data } = await supabase

@@ -238,7 +238,7 @@ serve(async (req) => {
           : (await scrapeBasicPage(pageUrl)).markdown;
         return md && md.trim().length > 50
           ? `\n\n--- POLICY PAGE: ${pageUrl} ---\n${md.slice(0, 1500)}`
-          : `\n\n--- POLICY PAGE: ${pageUrl} --- [could not retrieve content]`;
+          : `\n\n--- POLICY PAGE: ${pageUrl} --- [PAGE EXISTS — scraper could not read content, do NOT flag this policy as missing]`;
       }),
     );
     const sampledPolicyContent = policySamples
@@ -299,6 +299,15 @@ SCORING (GMC + SEO combined):
 
 WHAT TO AUDIT — CHECK EVERY ONE OF THESE:
 
+0. TECHNICAL SIGNAL PARITY (GMC 2026 — these cause silent suspensions)
+- JSON-LD / SCHEMA PRICE MISMATCH: Google crawls the rendered HTML of every product page and compares the price in the JSON-LD Product schema against the visible price. If any product page shows a "compare at" price or sale price in the schema but a different current price in the HTML, flag as critical. Look for <script type="application/ld+json"> blocks containing "offers" with a "price" field. Even a $0.01 difference triggers suspension.
+- PLACEHOLDER / TEMPLATE TEXT IN POLICIES: Google identifies policies containing unfilled template placeholders as "not yet operational." Scan all policy pages for: bracketed text like [YOUR COMPANY NAME], [INSERT DATE], [COUNTRY], [EMAIL ADDRESS], "Lorem ipsum", or any text surrounded by brackets or angle brackets that is clearly an unfilled template slot. Flag each instance as critical.
+- FOOTER POLICY STACK VISIBILITY: Google's crawler audits as a logged-out mobile user. The global footer MUST contain visible links to: Shipping Policy, Returns/Refund Policy, Privacy Policy, and Terms of Service — not hidden inside a hamburger menu, accordion, or login-only area. If the scraped content shows these links only in a collapsed mobile menu or not at all in the footer HTML, flag as critical.
+- MOBILE DISCLAIMER PARITY: If restocking fees, return shipping costs, minimum order thresholds, or any fee conditions appear on desktop but are hidden or truncated on mobile (e.g., inside a collapsed accordion that doesn't render in the scrape), flag as warning — Google audits as mobile and flags hidden fee conditions as "Omission of Relevant Information."
+- DOMAIN CONSISTENCY: If the store URL is a .myshopify.com subdomain with no custom domain visible in the page content, flag as warning. GMC strongly prefers established custom domains (.com, .org) with WHOIS history. myshopify.com subdomains are flagged as high-risk during manual review.
+- CONTACT DOMAIN PARITY: The contact email displayed on the store must be on the same domain as the storefront (e.g., support@ourphoenixrise.com not a Gmail, Yahoo, or Hotmail address). A contact email on a free email provider with no physical or business address is flagged as "Trust Signal — Omission of Contact Detail." Flag as warning.
+- INVENTORY / OPERATIONAL REALITY: Google checks for evidence of actual shipping activity. For made-to-order stores, products marked "In Stock" without a clear explanation of the made-to-order model create a flag for "Unavailable Offerings." If the store has products marked available but the shipping policy does not explicitly state that items are made to order with a production handling time, flag as critical — Google assumes dropship with no inventory control, which triggers manual review.
+
 1. GMC PRODUCT DATA QUALITY (critical focus)
 - Product titles on product pages: must not contain promotional text ("SALE", "FREE SHIPPING", "Best", "Cheap"). Flag any you find verbatim.
 - Apparel products MUST show color and size on the product page — if a clothing/apparel/shoe product page exists and does not display color or size options, flag as critical.
@@ -355,7 +364,8 @@ Blog posts, articles, fiction excerpts, personal essays, and editorial stories o
 If the content is on a blog page, article page, or any editorial URL (contains /blogs/, /articles/, /posts/, /news/), treat ALL emotional, psychological, and relational language as creative writing — not as regulated health claims. Only flag blog content if a product is directly named alongside a specific medical outcome claim (e.g. "buy this supplement — it cured my depression").
 
 IMPORTANT — DO NOT FLAG:
-- Dates of any kind — "last updated" dates, policy dates, blog post dates, copyright years. Do not attempt to determine whether a date is past or future. Date checking is out of scope for this audit.
+- Dates of any kind. This is an absolute prohibition. Do NOT flag "last updated" dates, policy dates, blog post dates, copyright years, or any other date. Do NOT compare any date to today. Do NOT flag a date as "in the future" or "in the past." Date accuracy is 100% out of scope for this audit. Any finding about a date will be automatically removed before delivery.
+- A policy as "missing" when its page URL is listed above and marked "PAGE EXISTS — scraper could not read content." The page exists on the storefront. Only flag a policy as absent if no URL for it appears anywhere in the scraped data at all.
 - Blog posts, articles, or editorial content for health language (emotional wellness language in blog content is standard)
 - Outbound links in blog/editorial pages (these are normal SEO practice)
 - Missing phone number or physical address alone (not required by GMC)
@@ -462,7 +472,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
                               properties: {
                                 category: {
                                   type: "string",
-                                  enum: ["gmc_product_data", "gmc_policies", "gmc_shipping", "technical_seo", "gmc_misrepresentation", "policy_consistency"],
+                                  enum: ["gmc_technical", "gmc_product_data", "gmc_policies", "gmc_shipping", "technical_seo", "gmc_misrepresentation", "policy_consistency"],
                                 },
                                 severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
                                 title: { type: "string", description: "Short finding title" },
@@ -499,6 +509,15 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
         const functionCall = aiData.candidates?.[0]?.content?.parts?.find((part) => part.functionCall)?.functionCall;
         if (!functionCall) throw new Error("No analysis result returned");
         report = functionCall.args;
+
+        // Hard filter: remove any finding that is about dates regardless of AI behaviour
+        const DATE_KEYWORDS = /last updated|last-updated|policy date|date.*future|future.*date|copyright year|date.*past|past.*date|\bexpir/i;
+        if (report && Array.isArray(report.findings)) {
+          report.findings = report.findings.filter((f) => {
+            const text = `${f.title} ${f.description} ${f.recommendation}`;
+            return !DATE_KEYWORDS.test(text);
+          });
+        }
       } catch (error) {
         console.error("Gemini compliance fallback:", error);
         report = buildFallbackComplianceReport({
@@ -582,6 +601,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
             body: JSON.stringify({
               to: userEmail,
               reportType: "compliance",
+              scanId: scan.id,
               storeUrl: formattedUrl,
               score: report.score,
               criticalCount,

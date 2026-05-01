@@ -817,6 +817,7 @@ export default function Templanator() {
     });
   };
 
+
   const addDetectedPlannerCategory = (title: string, handle: string, productsCount: number) => {
     addPlannerCategory({
       id: `detected:${handle}`,
@@ -1481,6 +1482,7 @@ export default function Templanator() {
                       const borderColor = finding.severity === "critical" ? "border-red-500/40" : finding.severity === "warning" ? "border-yellow-500/40" : finding.severity === "pass" ? "border-green-500/30" : "border-border/30";
                       const labelColor = finding.severity === "critical" ? "text-red-500" : finding.severity === "warning" ? "text-yellow-500" : finding.severity === "pass" ? "text-green-500" : "text-muted-foreground";
                       const categoryLabel: Record<string, string> = {
+                        gmc_technical: "GMC · Technical",
                         gmc_product_data: "GMC · Product Data",
                         gmc_policies: "GMC · Policies",
                         gmc_shipping: "GMC · Shipping",
