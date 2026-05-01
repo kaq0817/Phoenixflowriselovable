@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,12 +90,19 @@ export default function PricingPage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <CreditCard className="h-6 w-6 text-primary" /> Pricing
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          {TOTAL_STRIPE_PRODUCTS} live packages across subscriptions, compliance, and bundles.
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <CreditCard className="h-6 w-6 text-primary" /> Pricing
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              {TOTAL_STRIPE_PRODUCTS} live packages across subscriptions, compliance, and bundles.
+            </p>
+          </div>
+          <Link to="/auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+            Sign in
+          </Link>
+        </div>
       </motion.div>
 
       <div className="flex gap-2 flex-wrap">

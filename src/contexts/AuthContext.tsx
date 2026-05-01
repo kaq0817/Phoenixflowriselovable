@@ -6,7 +6,9 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  profileLoading: boolean;
   subscriptionStatus: string | null;
+  isAdmin: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -14,7 +16,9 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   loading: true,
+  profileLoading: true,
   subscriptionStatus: null,
+  isAdmin: false,
   signOut: async () => {},
 });
 
@@ -23,16 +27,23 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  const fetchSubscription = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("subscription_status")
-      .eq("id", userId)
-      .single();
-    const row = data as { subscription_status?: string | null } | null;
-    setSubscriptionStatus(row?.subscription_status ?? null);
+  const fetchProfile = async (userId: string) => {
+    setProfileLoading(true);
+    try {
+      const [profileRes, roleRes] = await Promise.all([
+        supabase.from("profiles").select("subscription_status").eq("id", userId).single(),
+        supabase.rpc("has_role", { _user_id: userId, _role: "admin" }),
+      ]);
+      const row = profileRes.data as { subscription_status?: string | null } | null;
+      setSubscriptionStatus(row?.subscription_status ?? null);
+      setIsAdmin(Boolean(roleRes.data));
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -40,15 +51,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (_event: AuthChangeEvent, session: Session | null) => {
         setSession(session);
         setLoading(false);
-        if (session?.user) void fetchSubscription(session.user.id);
-        else setSubscriptionStatus(null);
+        if (session?.user) {
+          void fetchProfile(session.user.id);
+        } else {
+          setSubscriptionStatus(null);
+          setIsAdmin(false);
+          setProfileLoading(false);
+        }
       }
     );
 
     supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       setSession(data.session);
       setLoading(false);
-      if (data.session?.user) void fetchSubscription(data.session.user.id);
+      if (data.session?.user) {
+        void fetchProfile(data.session.user.id);
+      } else {
+        setProfileLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -59,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, loading, subscriptionStatus, signOut }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, loading, profileLoading, subscriptionStatus, isAdmin, signOut }}>
       {children}
     </AuthContext.Provider>
   );
