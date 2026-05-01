@@ -365,7 +365,10 @@ INSTRUCTION: Skip all findings about domain consistency, brand identity conflict
 
 ` : "";
 
-    const userPrompt = `Analyze this e-commerce store for compliance:
+    const today = new Date().toISOString().split("T")[0];
+    const userPrompt = `Today's date: ${today}. Any date on or before this date is in the past — do not flag past dates as future dates.
+
+Analyze this e-commerce store for compliance:
 ${brandContext}
 URL: ${formattedUrl}
 
