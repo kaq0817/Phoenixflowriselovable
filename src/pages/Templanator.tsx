@@ -1402,10 +1402,10 @@ export default function Templanator() {
                     <p className="mt-1 text-xs text-muted-foreground">Target: {link.targetPath}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {link.status === "ok"
-                        ? "Already points to the correct Shopify policy route."
+                        ? "Footer link found — points to the correct route. Run the compliance scan to verify page content."
                         : link.status === "missing"
-                          ? "No matching footer link was found. Create the policy in Shopify Admin if it does not exist yet."
-                          : `Existing footer link found. Templanator can rewrite it to ${link.targetPath}.`}
+                          ? "No footer link found. Create this policy in Shopify Admin, then add it to your footer."
+                          : `Footer link found but points to the wrong route. Templanator can rewrite it to ${link.targetPath}.`}
                     </p>
                   </div>
                 ))}
@@ -1483,6 +1483,7 @@ export default function Templanator() {
                       const categoryLabel: Record<string, string> = {
                         gmc_product_data: "GMC · Product Data",
                         gmc_policies: "GMC · Policies",
+                        gmc_shipping: "GMC · Shipping",
                         technical_seo: "Technical SEO",
                         gmc_misrepresentation: "GMC · Misrepresentation",
                         policy_consistency: "Policy Consistency",

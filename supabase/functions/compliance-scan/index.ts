@@ -330,7 +330,19 @@ WHAT TO AUDIT — CHECK EVERY ONE OF THESE:
 - Third-party brand names: flag any unlicensed use of trademark names (Nike, Apple, Disney, etc.) in product titles or descriptions.
 - Counterfeit signals: "replica", "inspired by [brand]", "dupe", "same as [brand]" language on product pages.
 
-5. POLICY CONSISTENCY
+5. SHIPPING COMPLIANCE — MADE-TO-ORDER CONTEXT (GMC suspends accounts for shipping mismatches)
+This store sells made-to-order / print-on-demand products. Google Merchant Center requires a single "time to door" number — the total days from order placement to the package arriving at the customer. For made-to-order stores this includes production time. GMC does not separate processing from transit — it wants one total delivery window that reflects when the customer will actually receive the item. Audit with this in mind:
+
+- TIME TO DOOR STATED: Does the shipping policy state a clear maximum total delivery time (e.g. "up to 15 business days from order date")? This number must represent the full end-to-end time — production + carrier transit — not just the carrier leg. Flag as critical if the policy only states carrier transit time (e.g. "3-5 days shipping") without accounting for production, because the customer will expect delivery in 3-5 days and the GMC setting will not match reality.
+- CONSISTENCY ACROSS THE STORE: The time-to-door stated in the shipping policy must match any delivery estimates shown on product pages, banners, or checkout. If the policy says "up to 15 days" but a product page says "ships in 3-5 days," flag as critical and quote both claims verbatim — this is the most common cause of GMC account suspension for made-to-order stores.
+- CUSTOMER EXPECTATION LANGUAGE: Does the store explain WHY delivery takes this long? Customers who see "up to 15 days" without context will open disputes. The policy or product pages should include language like "Each item is made to order — please allow up to 15 days for delivery." Flag as warning if this context is missing.
+- SHIPPING LOCATIONS: Does the policy state which countries or regions are covered? GMC requires this. Flag as warning if absent.
+- FREE SHIPPING CLAIMS: If free shipping is advertised anywhere, the policy must confirm it and state any minimums. A free shipping banner that contradicts the policy is a critical GMC violation.
+- LATE DELIVERY RECOURSE: If the store states a maximum delivery window, does the refund or shipping policy address what happens if that window is missed? Customers and payment processors (Stripe, PayPal, Shopify Payments) can initiate chargebacks on late orders. A policy that states a maximum delivery time but says nothing about late deliveries leaves the merchant exposed. Flag as warning if a max delivery time is stated but there is no language covering late delivery resolution (e.g. "If your order has not arrived within X days of your order date, contact us and we will investigate or issue a refund").
+- CLAIM WINDOW / DISPUTE DEADLINE: Does the policy state a deadline by which customers must report a missing or late order? Without a claim window, a customer can report a missing package months or years later, which platforms (Etsy, Shopify, PayPal) may still act on — including closing the store. A policy should state something like "Non-delivery claims must be submitted within 30 days of the estimated delivery date." Flag as warning if no claim deadline exists. This protects the merchant from stale disputes that no carrier or platform can resolve.
+- GMC SHIPPING TEMPLATE REMINDER: Note as info that the store's GMC shipping settings must reflect the full time-to-door maximum (e.g. 15 days), not just carrier transit days. The merchant should verify this in their GMC account under Shipping settings.
+
+6. POLICY CONSISTENCY
 - Shipping promises on product pages (e.g. "ships in 24 hours") must not contradict the shipping policy page.
 - Return promises on product pages must not contradict the return policy.
 
@@ -444,7 +456,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
                               properties: {
                                 category: {
                                   type: "string",
-                                  enum: ["gmc_product_data", "gmc_policies", "technical_seo", "gmc_misrepresentation", "policy_consistency"],
+                                  enum: ["gmc_product_data", "gmc_policies", "gmc_shipping", "technical_seo", "gmc_misrepresentation", "policy_consistency"],
                                 },
                                 severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
                                 title: { type: "string", description: "Short finding title" },

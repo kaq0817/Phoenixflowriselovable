@@ -122,6 +122,7 @@ const POLICY_TARGETS = [
   { label: "Privacy Policy", targetPath: "/policies/privacy-policy", matchers: [/privacy/i] },
   { label: "Terms of Service", targetPath: "/policies/terms-of-service", matchers: [/terms/i, /conditions/i] },
   { label: "Refund Policy", targetPath: "/policies/refund-policy", matchers: [/refund/i, /return/i] },
+  { label: "Shipping Policy", targetPath: "/policies/shipping-policy", matchers: [/shipping/i, /delivery/i] },
 ] as const;
 
 const SAFE_EXTERNAL_DOMAINS = new Set([
