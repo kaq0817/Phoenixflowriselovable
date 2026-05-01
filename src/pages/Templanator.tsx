@@ -1353,7 +1353,11 @@ export default function Templanator() {
             )}
           </div>
 
-          <Button className="w-full gradient-phoenix text-primary-foreground" size="lg" onClick={handleImportTheme}>
+          {!selectedConn && connections.length > 1 ? (
+            <p className="text-center text-sm text-muted-foreground">Choose a store above to continue.</p>
+          ) : null}
+
+          <Button className="w-full gradient-phoenix text-primary-foreground" size="lg" onClick={handleImportTheme} disabled={!selectedConn || scanning}>
             {scanning ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Pulling Theme Files...</> : <><FileCode className="h-5 w-5 mr-2" /> Import Current Theme</>}
           </Button>
 
@@ -2651,12 +2655,6 @@ export default function Templanator() {
                   </p>
                 </button>
 
-                {connections.filter((connection) => connection.id !== selectedConn).slice(0, 2).map((connection) => (
-                  <div key={connection.id} className="rounded-2xl border border-border/30 bg-muted/10 px-4 py-3">
-                    <p className="text-sm font-medium">{connection.shop_name || connection.shop_domain || "Shopify store"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Available</p>
-                  </div>
-                ))}
               </div>
             </CardContent>
           </Card>
