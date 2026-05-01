@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles
+ADD COLUMN free_runs INTEGER NOT NULL DEFAULT 0;

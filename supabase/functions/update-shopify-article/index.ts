@@ -111,16 +111,31 @@ serve(async (req) => {
         const { data: isAdmin } = await supabaseAdmin.rpc("has_role", { _user_id: userData.user.id, _role: "admin" });
 
         if (!isAdmin) {
-          const periodStart = new Date(conn.optimizer_period_start);
-          const now = new Date();
-          const daysSince = (now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("subscription_status, free_runs")
+            .eq("id", userData.user.id)
+            .single();
 
-          if (daysSince >= 30) {
-            await supabaseAdmin.from("store_connections").update({ optimizer_runs: 1, optimizer_period_start: now.toISOString() }).eq("id", connectionId);
-          } else if (conn.optimizer_runs >= 50) {
-            return new Response(JSON.stringify({ error: "Monthly limit reached" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const isSubscribed = profile?.subscription_status === "active" || profile?.subscription_status === "trialing";
+
+          if (!isSubscribed) {
+            const freeRunsUsed = profile?.free_runs ?? 0;
+            if (freeRunsUsed >= 5) {
+              return new Response(JSON.stringify({ error: "free_limit_reached" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            await supabaseAdmin.from("profiles").update({ free_runs: freeRunsUsed + 1 }).eq("id", userData.user.id);
           } else {
-            await supabaseAdmin.from("store_connections").update({ optimizer_runs: conn.optimizer_runs + 1 }).eq("id", connectionId);
+            const periodStart = new Date(conn.optimizer_period_start);
+            const now = new Date();
+            const daysSince = (now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSince >= 30) {
+              await supabaseAdmin.from("store_connections").update({ optimizer_runs: 1, optimizer_period_start: now.toISOString() }).eq("id", connectionId);
+            } else if (conn.optimizer_runs >= 50) {
+              return new Response(JSON.stringify({ error: "Monthly limit reached" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            } else {
+              await supabaseAdmin.from("store_connections").update({ optimizer_runs: conn.optimizer_runs + 1 }).eq("id", connectionId);
+            }
           }
         }
       }

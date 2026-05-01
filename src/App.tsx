@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import SubscribedRoute from "@/components/SubscribedRoute";
 import DashboardLayout from "@/components/DashboardLayout";
 import Index from "./pages/Index";
 import Phoenix from "./pages/Phoenix";
@@ -44,25 +45,28 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/pricing" element={<Pricing />} />
             <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+              {/* Free tier — optimizer only */}
               <Route path="/" element={<Index />} />
-              <Route path="/phoenix" element={<Phoenix />} />
               <Route path="/optimizer" element={<Optimizer />} />
               <Route path="/bulk-analyzer" element={<BulkAnalyzer />} />
-              <Route path="/descriptions" element={<Descriptions />} />
-              <Route path="/media" element={<Media />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/audit" element={<Audit />} />
-              <Route path="/etsy-optimizer" element={<EtsyOptimizer />} />
-              <Route path="/theme-audit" element={<ThemeAudit />} />
-              <Route path="/listing-scan" element={<ListingScan />} />
-              <Route path="/bot" element={<BotBuilder />} />              <Route path="/ads" element={<BotBuilder />} />
-              <Route path="/history" element={<HistoryLedger />} />
-              <Route path="/radio" element={<Radio />} />
-              <Route path="/pricing" element={<Pricing />} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/templanator" element={<Templanator />} />
-              <Route path="/admin/users" element={<AdminUsers />} />
+              {/* Subscription required */}
+              <Route path="/phoenix" element={<SubscribedRoute><Phoenix /></SubscribedRoute>} />
+              <Route path="/descriptions" element={<SubscribedRoute><Descriptions /></SubscribedRoute>} />
+              <Route path="/media" element={<SubscribedRoute><Media /></SubscribedRoute>} />
+              <Route path="/inventory" element={<SubscribedRoute><Inventory /></SubscribedRoute>} />
+              <Route path="/audit" element={<SubscribedRoute><Audit /></SubscribedRoute>} />
+              <Route path="/etsy-optimizer" element={<SubscribedRoute><EtsyOptimizer /></SubscribedRoute>} />
+              <Route path="/theme-audit" element={<SubscribedRoute><ThemeAudit /></SubscribedRoute>} />
+              <Route path="/listing-scan" element={<SubscribedRoute><ListingScan /></SubscribedRoute>} />
+              <Route path="/bot" element={<SubscribedRoute><BotBuilder /></SubscribedRoute>} />
+              <Route path="/ads" element={<SubscribedRoute><BotBuilder /></SubscribedRoute>} />
+              <Route path="/history" element={<SubscribedRoute><HistoryLedger /></SubscribedRoute>} />
+              <Route path="/radio" element={<SubscribedRoute><Radio /></SubscribedRoute>} />
+              <Route path="/templanator" element={<SubscribedRoute><Templanator /></SubscribedRoute>} />
+              <Route path="/admin/users" element={<SubscribedRoute><AdminUsers /></SubscribedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

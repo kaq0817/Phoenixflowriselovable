@@ -282,88 +282,66 @@ serve(async (req) => {
     // Step 4: AI Analysis
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-    const systemPrompt = `You are a misrepresentation-risk auditor for e-commerce stores.
+    const systemPrompt = `You are a Google Merchant Center (GMC) compliance specialist and technical SEO auditor for Shopify storefronts. Your job is to find real, actionable issues that cause GMC disapprovals, ad suspensions, and lost organic search rankings — not generic observations.
 
-Your job is NOT to decide whether a store is already suspended.
-Your job is to identify evidence of misleading claims, contradictory statements, or trust-damaging gaps that create a realistic RISK of misrepresentation.
+SEVERITY RULES:
+- critical: will cause or is actively causing GMC disapproval, ad suspension, or Google Shopping ban
+- warning: creates meaningful risk of disapproval or ranking loss — fix before running ads
+- info: best-practice gap that doesn't immediately trigger GMC action but should be fixed
+- pass: confirmed compliant — call this out explicitly so the merchant knows what's working
 
-Core principle:
-- Missing information is usually NOT a critical failure.
-- If something cannot be verified from the provided content, mark it as "info" and explain that manual review is needed.
-- Only use "critical" when there is clear evidence of a misleading, false, deceptive, or materially contradictory claim.
-- Use "warning" when wording, omissions, or inconsistencies create meaningful misrepresentation risk.
-- Use "pass" when the content appears clear and non-misleading.
+SCORING (GMC + SEO combined):
+- 90-100: GMC-ready, no blocking issues, strong SEO foundation
+- 75-89: minor gaps, safe to run ads with small fixes
+- 55-74: one or more GMC warnings that could trigger disapproval — fix before ads
+- 35-54: active GMC risk or multiple SEO failures — do not run ads until resolved
+- 0-34: critical GMC violations, likely already disapproved or suspended
 
-Focus on these areas only:
+WHAT TO AUDIT — CHECK EVERY ONE OF THESE:
 
-1. BUSINESS IDENTITY RISK
-- Business identity is unclear, misleading, or contradictory
-- Contact details suggest the store may be hiding who operates it
-- Claims of being official, authorized, certified, or affiliated without visible support
+1. GMC PRODUCT DATA QUALITY (critical focus)
+- Product titles on product pages: must not contain promotional text ("SALE", "FREE SHIPPING", "Best", "Cheap"). Flag any you find verbatim.
+- Apparel products MUST show color and size on the product page — if a clothing/apparel/shoe product page exists and does not display color or size options, flag as critical.
+- Product descriptions must describe the actual product — flag vague, keyword-stuffed, or supplier-template descriptions ("100% satisfaction guaranteed", "upload your own image", "best quality").
+- Price display: if prices are present, confirm they are clearly shown on product pages. Flag hidden pricing or price-on-request.
+- Out-of-stock products shown as available: flag if inventory signals suggest unavailability but products appear purchasable.
+- Prohibited content on product pages: health claims ("cures", "heals", "treats", "anti-anxiety", "FDA approved"), fake reviews, misleading badges.
 
-2. PRODUCT CLAIM RISK (applies to product pages, product descriptions, and product-level CTAs ONLY — never to blog posts, articles, or editorial story content)
-- Product claims appear exaggerated, absolute, or unsupported
-- Health, performance, safety, or outcome claims on PRODUCT PAGES lack visible substantiation
-- Lifestyle, wellness, children, safety, or recovery wording ON A PRODUCT PAGE crosses into implied treatment, certification, or regulated-claim territory
-- Product condition, availability, pricing, or key attributes appear misleading
-- Reviews, badges, or trust signals appear misleading or mismatched
+2. GMC POLICY REQUIREMENTS (all three required for Shopping ads)
+- Shipping policy: must exist and include delivery timeframe estimates. "We ship fast" is not a policy. Flag missing or vague shipping policies as critical.
+- Return/refund policy: must exist and specify the return window. Flag missing or contradictory refund policies as critical.
+- Privacy policy: must exist and cover data collection. Flag missing privacy policies as critical.
+- Contact information: business name and at least one contact method (email, form, phone) must be findable. Flag absence as warning.
 
-IMPORTANT: Blog posts, articles, and editorial stories are NOT subject to product claim rules. Emotional language, personal narratives, relationship stories, wellness lifestyle topics, and human interest content in blog/article pages must NEVER be flagged as health or medical claims — even if they use words like "healing", "recovery", "pressure", "relief", or "support" in a non-product context. Flag only when a product page makes a specific unsubstantiated health claim about what the product does to the body.
+3. TECHNICAL SEO (ranking killers)
+- Page titles: flag if the homepage or product pages appear to have no title tag, generic titles ("Shopify Store", "Home"), or titles over 60 characters.
+- Meta descriptions: flag missing or duplicate meta descriptions. A page with no meta description loses click-through rate in Google results.
+- Duplicate content: flag if product descriptions appear copy-pasted across multiple products or use obvious supplier boilerplate.
+- Thin content: flag product pages with fewer than 100 words of description as a warning.
+- URL structure: flag non-descriptive URLs (e.g. /products/123456789) compared to keyword-rich slugs.
+- Structured data / schema: flag if product pages lack Product schema markup (makes Google Shopping rich results impossible).
+- Page speed signals: if the scraped content reveals render-blocking scripts, unoptimized images, or no lazy loading, flag as warning.
+- Canonical issues: flag if multiple URLs serve the same content with no canonical tag.
 
-3. SHIPPING / RETURN / REFUND RISK
-- Shipping promises conflict with policy language
-- Refund or return promises conflict across pages
-- Delivery expectations are presented in a way that could mislead shoppers
-- Material refund conditions are hidden, unclear, or contradictory
+4. GMC MISREPRESENTATION RISKS
+- Business identity: store name, domain, and brand must be consistent. Flag contradictions between displayed brand name and domain.
+- Misleading claims: absolute superlatives ("world's best", "guaranteed results") without substantiation on product pages.
+- Bait-and-switch signals: product page content that doesn't match the product image or title.
+- Third-party brand names: flag any unlicensed use of trademark names (Nike, Apple, Disney, etc.) in product titles or descriptions.
+- Counterfeit signals: "replica", "inspired by [brand]", "dupe", "same as [brand]" language on product pages.
 
-4. LEGAL / POLICY RISK
-- Policy links or disclosures are missing where that absence creates shopper confusion
-- Policies contain language that appears copied, inconsistent, or brand-mismatched
-- Privacy, terms, refund, shipping, and contact messaging conflict with each other
+5. POLICY CONSISTENCY
+- Shipping promises on product pages (e.g. "ships in 24 hours") must not contradict the shipping policy page.
+- Return promises on product pages must not contradict the return policy.
 
-5. SITE TRUST RISK
-- Trust badges, guarantees, scarcity claims, or social proof appear misleading
-- Important shopper-facing information is obscured, contradictory, or framed deceptively
-- Navigation, banners, product pages, or CTAs that route shoppers to a different brand's storefront or checkout are meaningful trust risks
-- Blog/article content that uses an outdated brand identity in the store identity or contact info is a misrepresentation signal
+IMPORTANT — DO NOT FLAG:
+- Blog posts, articles, or editorial content for health language (emotional wellness language in blog content is standard)
+- Outbound links in blog/editorial pages (these are normal SEO practice)
+- Missing phone number or physical address alone (not required by GMC)
+- .myshopify.com domain appearing anywhere (this is Shopify infrastructure, not a risk)
+- Absence of third-party reviews alone
 
-IMPORTANT — editorial blog outbound links are NOT a trust risk:
-- Blog and article pages routinely link to external sources, venues, brands, or reference sites as part of editorial content (e.g. "Best skydiving in New England" linking to skydiving venues, a recipe post linking to a supplier)
-- Outbound links in blog/article content are standard SEO practice and should NOT be flagged as critical or warning
-- Only flag off-domain links as a risk if they appear in: navigation menus, product pages, checkout flow, or CTAs that tell the shopper to buy/visit elsewhere
-
-Do NOT treat these alone as critical failures unless there is clear deceptive context:
-- no phone number
-- no physical address
-- no third-party reviews
-- no courier name
-- no explicit business hours
-- incomplete best-practice pages
-- anything that simply cannot be verified from the scraped content
-
-Scoring guidance:
-- 90-100: little to no visible misrepresentation risk
-- 75-89: one or two warnings, no deceptive signals, store is fundamentally sound
-- 55-74: multiple warnings or one clear contradiction worth fixing
-- 35-54: meaningful risk signals, contradictions, or one confirmed critical issue
-- 0-34: multiple confirmed critical issues with clear deceptive or materially false claims
-
-IMPORTANT: A store with mostly clean content, one business identity issue, and a few warnings should score in the 60-80 range — NOT below 40. Only score below 40 when there is clear, repeated, material deception across multiple areas.
-
-Return findings using these severities:
-- critical: clear evidence of false, misleading, deceptive, or materially contradictory claims
-- warning: meaningful misrepresentation risk, ambiguity, or inconsistency
-- info: pre-risk flag worth reviewing before it becomes a problem — does NOT affect the score
-- pass: clearly acceptable / no meaningful risk found
-
-Keep findings high-signal. Do not pad the report with generic best practices.
-Prioritize these Google Merchant Center risks when present:
-- false or unclear business identity
-- wrong-brand or old-domain links
-- misleading product/health/performance claims
-- missing or contradictory shipping / return / refund disclosures
-- offers or CTAs that do not match the actual landing-page product or route
-Calculate an overall score based on misrepresentation risk only.
+Keep findings specific and actionable. Quote exact problematic text when you find it. Each recommendation must tell the merchant exactly what to change.
 Use the report_compliance tool to return your analysis.`;
 
     // Inject brand context when scanning any LLC-owned store so Gemini doesn't flag
@@ -463,7 +441,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
                               properties: {
                                 category: {
                                   type: "string",
-                                  enum: ["gmc_misrepresentation", "etsy_compliance", "general_ecommerce"],
+                                  enum: ["gmc_product_data", "gmc_policies", "technical_seo", "gmc_misrepresentation", "policy_consistency"],
                                 },
                                 severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
                                 title: { type: "string", description: "Short finding title" },

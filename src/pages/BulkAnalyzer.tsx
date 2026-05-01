@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -143,6 +144,7 @@ function StoreSelector({ connections, selectedConnectionId, onChange }: StoreSel
 
 export default function BulkAnalyzerPage() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { activeStoreId } = useActiveStore();
 
   const [listings, setListings] = useState<ShopifyProduct[]>([]);
@@ -285,7 +287,14 @@ export default function BulkAnalyzerPage() {
         const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", {
           body: { product: listing, connectionId: selectedConnectionId },
         });
-        if (error) throw error;
+        if (error) {
+          const detail = (error as { message?: string }).message || "";
+          if (detail.includes("free_limit_reached")) {
+            navigate("/pricing");
+            return;
+          }
+          throw error;
+        }
         result.suggestions = data.suggestions;
         result.status = "done";
       } catch (err) {

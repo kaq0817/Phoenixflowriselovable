@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1447,72 +1448,66 @@ export default function Templanator() {
               </div>
 
               {complianceReport ? (
-                <div className="space-y-4 rounded-xl border border-border/30 bg-muted/10 p-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Badge variant="secondary">Score {complianceReport.score}</Badge>
-                    <Badge variant={complianceCounts.critical > 0 ? "destructive" : "outline"}>
-                      {complianceCounts.critical} critical
-                    </Badge>
-                    <Badge variant={complianceCounts.warning > 0 ? "destructive" : "outline"}>
-                      {complianceCounts.warning} warnings
-                    </Badge>
-                    <Badge variant="outline">{complianceCounts.info} info</Badge>
-                    <Badge variant="outline">{complianceReport.pages_analyzed} pages</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{complianceReport.summary}</p>
-                  <p className="text-xs text-muted-foreground">
-                    This is intentionally embedded in Templanator so compliance findings can guide your next fixes in real time.
-                  </p>
-
-                  {(complianceReport.findings.filter((finding) => finding.severity === "critical" || finding.severity === "warning").length > 0) ? (
-                    <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Shield className="h-4 w-4 text-primary" />
-                        <p className="text-sm font-semibold text-foreground">Fix These First</p>
+                <div className="space-y-5">
+                  {/* Score bar */}
+                  <div className="flex items-center gap-4 rounded-lg border border-border/40 bg-muted/20 px-5 py-4">
+                    <div className="flex-shrink-0 text-center">
+                      <p className={`text-3xl font-bold tabular-nums ${complianceReport.score >= 75 ? "text-green-500" : complianceReport.score >= 50 ? "text-yellow-500" : "text-red-500"}`}>
+                        {complianceReport.score}
+                      </p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">/ 100</p>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="h-1.5 w-full rounded-full bg-muted">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${complianceReport.score >= 75 ? "bg-green-500" : complianceReport.score >= 50 ? "bg-yellow-500" : "bg-red-500"}`}
+                          style={{ width: `${complianceReport.score}%` }}
+                        />
                       </div>
-                      <div className="space-y-2">
-                        {complianceReport.findings
-                          .filter((finding) => finding.severity === "critical" || finding.severity === "warning")
-                          .slice(0, 5)
-                          .map((finding, index) => (
-                            <div key={`priority-${finding.title}-${index}`} className="rounded-lg border border-border/30 bg-background/70 p-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm font-medium text-foreground">{finding.title}</p>
-                                <Badge variant={finding.severity === "critical" ? "destructive" : "outline"}>
-                                  {finding.severity}
-                                </Badge>
-                              </div>
-                              <p className="mt-2 text-sm text-foreground">{finding.recommendation}</p>
-                            </div>
-                          ))}
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        {complianceCounts.critical > 0 && <span className="font-semibold text-red-500">{complianceCounts.critical} critical</span>}
+                        {complianceCounts.warning > 0 && <span className="font-semibold text-yellow-500">{complianceCounts.warning} warnings</span>}
+                        <span>{complianceCounts.info} info</span>
+                        <span className="ml-auto">{complianceReport.pages_analyzed} pages scanned</span>
                       </div>
                     </div>
-                  ) : null}
+                  </div>
 
-                  <div className="space-y-3">
-                    {complianceReport.findings.slice(0, 8).map((finding, index) => (
-                      <div key={`${finding.title}-${index}`} className="rounded-lg border border-border/30 bg-background/40 p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-medium">{finding.title}</p>
-                          <Badge
-                            variant={
-                              finding.severity === "critical" || finding.severity === "warning"
-                                ? "destructive"
-                                : finding.severity === "pass"
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                          >
-                            {finding.severity}
-                          </Badge>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{complianceReport.summary}</p>
+
+                  {/* Findings */}
+                  <div className="space-y-2">
+                    {complianceReport.findings.map((finding, index) => {
+                      const borderColor = finding.severity === "critical" ? "border-red-500/40" : finding.severity === "warning" ? "border-yellow-500/40" : finding.severity === "pass" ? "border-green-500/30" : "border-border/30";
+                      const labelColor = finding.severity === "critical" ? "text-red-500" : finding.severity === "warning" ? "text-yellow-500" : finding.severity === "pass" ? "text-green-500" : "text-muted-foreground";
+                      const categoryLabel: Record<string, string> = {
+                        gmc_product_data: "GMC · Product Data",
+                        gmc_policies: "GMC · Policies",
+                        technical_seo: "Technical SEO",
+                        gmc_misrepresentation: "GMC · Misrepresentation",
+                        policy_consistency: "Policy Consistency",
+                        gmc_compliance: "GMC",
+                        general_ecommerce: "General",
+                      };
+                      return (
+                        <div key={`${finding.title}-${index}`} className={`rounded-lg border ${borderColor} bg-background/40 p-4`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{categoryLabel[finding.category] ?? finding.category}</p>
+                              <p className="mt-0.5 font-semibold text-foreground">{finding.title}</p>
+                            </div>
+                            <span className={`flex-shrink-0 text-xs font-bold uppercase tracking-widest ${labelColor}`}>{finding.severity}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-muted-foreground">{finding.description}</p>
+                          {finding.severity !== "pass" && (
+                            <div className="mt-3 border-t border-border/20 pt-3">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-primary">Fix</p>
+                              <p className="mt-1 text-sm text-foreground">{finding.recommendation}</p>
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-3 rounded-lg border border-primary/20 bg-background/80 p-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">What To Change</p>
-                          <p className="mt-1 text-sm text-foreground">{finding.recommendation}</p>
-                        </div>
-                        <p className="mt-3 text-sm text-muted-foreground">{finding.description}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
@@ -2607,58 +2602,11 @@ export default function Templanator() {
   return (
     <div className="mx-auto max-w-7xl">
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <motion.aside initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
-          <Card className="border-border/40 bg-card/80 shadow-sm">
-            <CardContent className="space-y-5 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl gradient-phoenix">
-                  <Flame className="h-5 w-5 text-primary-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Phoenix Flow</p>
-                  <p className="text-xs text-muted-foreground">Templanator</p>
-                </div>
-              </div>
-
-              <Button className="w-full gradient-phoenix text-primary-foreground" size="lg" onClick={resetSession}>
-                <Flame className="mr-2 h-4 w-4" /> New Session
-              </Button>
-
-              <div className="space-y-2 border-t border-border/40 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Menu</p>
-                <div className="rounded-xl border border-border/30 bg-muted/20 p-3">
-                  <p className="text-sm font-medium">Overview</p>
-                  <p className="mt-1 text-xs text-muted-foreground">LCP-first theme repair workflow for Shopify storefronts.</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 border-t border-border/40 pt-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Active Session</p>
-                  <Badge variant="secondary">{completedSteps}/{STEPS.length} done</Badge>
-                </div>
-
-                <button
-                  type="button"
-                  className="w-full rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-left transition-colors hover:bg-primary/15"
-                  onClick={() => setStep(Math.max(step, 1))}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{sessionLabel}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{sessionStatus}</p>
-                    </div>
-                    <Store className="mt-0.5 h-4 w-4 text-primary" />
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {selectedStore?.shop_domain || "Connect a Shopify store, run the LCP pass, then clear the remaining fixes."}
-                  </p>
-                </button>
-
-              </div>
-            </CardContent>
-          </Card>
-        </motion.aside>
+        <aside className="space-y-4">
+          <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-4 w-4" /> Back to Phoenix Flow
+          </Link>
+        </aside>
 
         <div className="space-y-6">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">

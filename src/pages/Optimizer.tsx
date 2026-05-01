@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,7 @@ function isApparelProduct(product: ShopifyProduct): boolean {
 export default function OptimizerPage() {
   const { session } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [platform, setPlatform] = useState<Platform>("shopify");
   const [connections, setConnections] = useState<Record<Platform, boolean>>({ shopify: false, etsy: false });
   const [storeConnections, setStoreConnections] = useState<StoreConnectionOption[]>([]);
@@ -408,6 +410,10 @@ useEffect(() => {
       });
       if (error) {
         const detail = (error as { message?: string }).message || "";
+        if (detail.includes("free_limit_reached")) {
+          navigate("/pricing");
+          return;
+        }
         if (detail.includes("Monthly limit reached") || detail.includes("429")) {
           toast({ title: "Monthly limit reached", description: "You have used all 50 optimizations for this store this month.", variant: "destructive" });
           if (optimizerUsage) setOptimizerUsage({ ...optimizerUsage, used: optimizerUsage.limit });
