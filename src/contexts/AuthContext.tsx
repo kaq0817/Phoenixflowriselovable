@@ -36,11 +36,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const [profileRes, roleRes] = await Promise.all([
         supabase.from("profiles").select("subscription_status").eq("id", userId).single(),
-        supabase.rpc("has_role", { _user_id: userId, _role: "admin" }),
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
       ]);
       const row = profileRes.data as { subscription_status?: string | null } | null;
       setSubscriptionStatus(row?.subscription_status ?? null);
-      setIsAdmin(Boolean(roleRes.data));
+      setIsAdmin(!!roleRes.data);
+    } catch {
+      // on error leave isAdmin false but don't block profileLoading
     } finally {
       setProfileLoading(false);
     }
