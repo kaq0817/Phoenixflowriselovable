@@ -122,6 +122,7 @@ serve(async (req) => {
         collectionPillars: analysis.collectionPillars,
         crossStoreLinks: analysis.crossStoreLinks,
         contentRisks: analysis.contentRisks,
+        contentArticleCount: articles.length,
         riskArticles,
         shopifyDomains,
         supportSiloStatus: analysis.supportSiloStatus,

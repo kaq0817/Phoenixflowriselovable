@@ -653,6 +653,30 @@ function detectContentRisks(
       continue;
     }
 
+    // Social media links to known old-brand profile paths (safe domains pass the domain check above,
+    // so we inspect the URL path separately for old handle strings)
+    const oldBrandSocialUrls = urls.filter((url) => {
+      if (/\{\{|\}\}|\{%|%\}/.test(url)) return false;
+      try {
+        const path = new URL(url).pathname.toLowerCase();
+        return /(gohardgaming|ironphoenix|shadowseeker|ssgohard|ghgdiscord|ironphoenixghg)/i.test(path);
+      } catch {
+        return false;
+      }
+    });
+
+    if (oldBrandSocialUrls.length > 0) {
+      risks.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        severity: "warning",
+        reason: `This article links to social profiles using old brand handles: ${oldBrandSocialUrls.slice(0, 3).join(", ")}`,
+        recommendation: "Update social media links to the Our Phoenix Rise branded accounts.",
+      });
+      continue;
+    }
+
     if (/(treats?|cures?|therapy|depression relief|anxiety relief|ptsd|adhd|medical-grade|clinically proven)/i.test(lowered)) {
       risks.push({
         title: title || handle || "Untitled article",
@@ -665,15 +689,15 @@ function detectContentRisks(
       continue;
     }
 
-    // Old brand name references — flag regardless of whether current store is also mentioned
-    if (/(iron phoenix|go hard gaming|ironphoenixghg|gohardgaming|\bghg\b)/i.test(lowered)) {
+    // Old brand name references — catches text mentions of all known legacy brand identifiers
+    if (/(iron\s*phoenix|go\s*hard\s*gaming|ironphoenixghg|gohardgaming|shadowseeker|ssgohard|ghgdiscord|\bghg\b)/i.test(lowered)) {
       risks.push({
         title: title || handle || "Untitled article",
         handle,
         blogTitle,
         severity: "warning",
-        reason: "This article mentions older brand names (Iron Phoenix GHG / Go Hard Gaming) that need to be updated to Our Phoenix Rise.",
-        recommendation: "Replace all Iron Phoenix GHG, Go Hard Gaming, and GHG references with Our Phoenix Rise branding.",
+        reason: "This article mentions older brand names or handles (Iron Phoenix GHG / Go Hard Gaming / ShadowSeeker) that need to be updated to Our Phoenix Rise.",
+        recommendation: "Replace all legacy brand references with Our Phoenix Rise branding.",
       });
       continue;
     }
@@ -691,10 +715,14 @@ function detectContentRisks(
       continue;
     }
 
+    // Store identity mismatch — article mentions store-entity language but never names the current store.
+    // Only run when shop_name is known; fall back to domain-based label if needed.
+    const shopLabel = currentShopLabel ||
+      (currentDomain ? currentDomain.replace(/\.(com|store|shop|net|org|co)$/, "").replace(/[-_]/g, " ").trim() : "");
     if (
-      currentShopLabel &&
-      currentShopLabel.length > 3 &&
-      !lowered.includes(currentShopLabel) &&
+      shopLabel &&
+      shopLabel.length > 3 &&
+      !lowered.includes(shopLabel) &&
       /\b(store|shop|boutique|co\.?|llc|inc|corp)\b/i.test(lowered)
     ) {
       risks.push({

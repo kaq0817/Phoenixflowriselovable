@@ -150,6 +150,7 @@ interface ScanResult {
   collectionPillar: CollectionPillar[];
   crossStoreLinks: CrossStoreLink[];
   contentRisks?: ContentRisk[];
+  contentArticleCount?: number;
   contentOpportunities?: ContentOpportunity[];
   riskArticles?: ContentRiskArticle[];
   shopifyDomains?: string[];
@@ -1726,7 +1727,7 @@ export default function Templanator() {
                 <StatBox label="Inline Styles" value={scanResult.stats.inlineStyles} />
                 <StatBox label="Untracked Forms" value={scanResult.stats.formsWithoutTracking} />
                 <StatBox label="Broken Links" value={brokenLinkCount} sub={`${scanResult.stats.crossStoreLinkCount} wrong-store URLs`} />
-                <StatBox label="Content Risks" value={contentRiskCount} sub="blog/article issues" />
+                <StatBox label="Content Risks" value={contentRiskCount} sub={scanResult.contentArticleCount !== undefined ? `${scanResult.contentArticleCount} articles scanned` : "blog/article issues"} />
               </div>
             </CardContent>
           </Card>
