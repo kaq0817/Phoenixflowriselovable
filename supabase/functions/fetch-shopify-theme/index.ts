@@ -96,12 +96,14 @@ serve(async (req) => {
       await fetchCollections({ shopDomain, accessToken }),
     );
     const shopifyDomains = await fetchShopifyDomains({ shopDomain, accessToken });
-    const articles = await fetchArticles({ shopDomain, accessToken });
+    const { blogs, articles } = await fetchArticles({ shopDomain, accessToken });
 
     const analysis = analyzeThemeAssets({
       assets,
       collectionPillars,
       articles,
+      blogs,
+      shopifyDomains,
       shopDomain,
       shopName: conn.shop_name,
     });
@@ -209,16 +211,19 @@ async function fetchShopifyDomains(input: {
 async function fetchArticles(input: {
   shopDomain: string;
   accessToken: string;
-}): Promise<Array<{
-  id?: number;
-  blog_id?: number;
-  title?: string;
-  handle?: string;
-  blog_title?: string;
-  tags?: string;
-  body_html?: string;
-  summary_html?: string;
-}>> {
+}): Promise<{
+  blogs: string[];
+  articles: Array<{
+    id?: number;
+    blog_id?: number;
+    title?: string;
+    handle?: string;
+    blog_title?: string;
+    tags?: string;
+    body_html?: string;
+    summary_html?: string;
+  }>;
+}> {
   try {
     const [blogsRes, articlesRes] = await Promise.all([
       fetch(
@@ -230,15 +235,18 @@ async function fetchArticles(input: {
         { headers: { "X-Shopify-Access-Token": input.accessToken } },
       ),
     ]);
-    if (!blogsRes.ok || !articlesRes.ok) return [];
+    if (!blogsRes.ok || !articlesRes.ok) return { blogs: [], articles: [] };
 
     const blogsData = await blogsRes.json();
     const articlesData = await articlesRes.json();
+    const blogs = (Array.isArray(blogsData.blogs) ? blogsData.blogs : [])
+      .map((blog: { title?: string; handle?: string }) => String(blog.title || blog.handle || "").trim())
+      .filter(Boolean);
     const blogMap = new Map<number, string>(
       (Array.isArray(blogsData.blogs) ? blogsData.blogs : []).map((blog: { id: number; title?: string }) => [blog.id, String(blog.title || "").trim()]),
     );
 
-    return (Array.isArray(articlesData.articles) ? articlesData.articles : []).map((article: {
+    const articles = (Array.isArray(articlesData.articles) ? articlesData.articles : []).map((article: {
       id?: number;
       title?: string;
       handle?: string;
@@ -256,8 +264,10 @@ async function fetchArticles(input: {
       body_html: article.body_html,
       summary_html: article.summary_html,
     }));
+
+    return { blogs, articles };
   } catch {
-    return [];
+    return { blogs: [], articles: [] };
   }
 }
 

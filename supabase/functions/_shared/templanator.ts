@@ -228,6 +228,8 @@ export function analyzeThemeAssets(input: {
   assets: Record<string, string | null>;
   collectionPillars?: CollectionPillar[];
   articles?: ArticleInput[];
+  blogs?: string[];
+  shopifyDomains?: string[];
   shopDomain?: string | null;
   shopName?: string | null;
 }): ThemeAnalysis {
@@ -264,9 +266,19 @@ export function analyzeThemeAssets(input: {
   const hasPrivacyLink = policyLinks.find((link) => link.label === "Privacy Policy")?.status === "ok";
   const hasTermsLink = policyLinks.find((link) => link.label === "Terms of Service")?.status === "ok";
   const hasRefundLink = policyLinks.find((link) => link.label === "Refund Policy")?.status === "ok";
-  const crossStoreLinks = detectCrossStoreLinks(assets, input.shopDomain || null);
-  const contentRisks = detectContentRisks(input.articles || [], input.shopDomain || null, input.shopName || "");
-  const contentOpportunities = detectContentOpportunities(input.articles || [], input.shopDomain || null);
+  const crossStoreLinks = detectCrossStoreLinks(assets, {
+    shopDomain: input.shopDomain || null,
+    shopifyDomains: input.shopifyDomains || [],
+  });
+  const contentRisks = detectContentRisks(input.articles || [], {
+    shopDomain: input.shopDomain || null,
+    shopifyDomains: input.shopifyDomains || [],
+    shopName: input.shopName || "",
+  });
+  const contentOpportunities = detectContentOpportunities(input.articles || [], {
+    shopDomain: input.shopDomain || null,
+    shopifyDomains: input.shopifyDomains || [],
+  });
   const detectedBusinessInfo = detectBusinessInfo(footerLiquid, input.shopName || "");
   const supportSiloStatus = evaluateSupportSilo({
     storeLabel: `${input.shopName || ""} ${input.shopDomain || ""}`.trim(),
@@ -328,7 +340,31 @@ export function analyzeThemeAssets(input: {
     scanIssues.push("No weighted collections found for pillar and subdomain suggestions");
   }
 
-  const blogMatches = themeLiquid.match(/blog[^"']*['"][^"']*['"]/gi) || [];
+  const normalizeBlogList = (values: string[]) => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of values) {
+      const value = String(raw || "").trim();
+      if (!value) continue;
+      const key = value.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(value);
+    }
+    return result.sort((a, b) => a.localeCompare(b));
+  };
+
+  const blogsFromApi = normalizeBlogList(input.blogs || []);
+  const blogsFromArticles = normalizeBlogList(
+    (input.articles || [])
+      .map((article) => String(article.blog_title || "").trim())
+      .filter(Boolean),
+  );
+  const blogsFromTheme = normalizeBlogList(
+    (themeLiquid.match(/\/blogs\/([a-z0-9][a-z0-9-_]*)/gi) || []).map((match) => match.replace(/^\/blogs\//i, "")),
+  );
+
+  const blogs = blogsFromApi.length > 0 ? blogsFromApi : blogsFromArticles.length > 0 ? blogsFromArticles : blogsFromTheme;
 
   return {
     scanIssues,
@@ -344,7 +380,7 @@ export function analyzeThemeAssets(input: {
       belowFoldImagesMissingLazy,
       crossStoreLinkCount: crossStoreLinks.length,
     },
-    blogs: blogMatches,
+    blogs,
     sections: orderedSections,
     detectedBusinessInfo,
     lcpCandidate,
@@ -580,9 +616,15 @@ function detectPolicyLinks(footerLiquid: string): ThemePolicyLink[] {
   });
 }
 
-function detectCrossStoreLinks(assets: Record<string, string | null>, shopDomain: string | null): ThemeLeak[] {
+function detectCrossStoreLinks(
+  assets: Record<string, string | null>,
+  input: { shopDomain: string | null; shopifyDomains: string[] },
+): ThemeLeak[] {
   const leaks: ThemeLeak[] = [];
-  const currentDomain = normalizeDomain(shopDomain || "");
+  const currentDomain = normalizeDomain(input.shopDomain || "");
+  const allowedDomains = new Set(
+    [currentDomain, ...input.shopifyDomains.map((domain) => normalizeDomain(domain))].filter(Boolean),
+  );
 
   for (const [assetKey, content] of Object.entries(assets)) {
     if (!content) continue;
@@ -595,8 +637,8 @@ function detectCrossStoreLinks(assets: Record<string, string | null>, shopDomain
       try {
         const domain = normalizeDomain(new URL(url).hostname);
         if (!domain) continue;
-        if (currentDomain && domain === currentDomain) continue;
-        if (currentDomain && domain === normalizeDomain(currentDomain.replace(".myshopify.com", ""))) continue;
+        if (allowedDomains.has(domain)) continue;
+        if (currentDomain && allowedDomains.has(normalizeDomain(currentDomain.replace(".myshopify.com", "")))) continue;
         if (SAFE_EXTERNAL_DOMAINS.has(domain)) continue;
         if (domain.endsWith(".myshopify.com")) continue;
         leaks.push({ assetKey, domain, url });
@@ -611,12 +653,14 @@ function detectCrossStoreLinks(assets: Record<string, string | null>, shopDomain
 
 function detectContentRisks(
   articles: ArticleInput[],
-  shopDomain: string | null,
-  shopName: string,
+  input: { shopDomain: string | null; shopifyDomains: string[]; shopName: string },
 ): ContentRisk[] {
   const risks: ContentRisk[] = [];
-  const currentDomain = normalizeDomain(shopDomain || "");
-  const currentShopLabel = (shopName || "").toLowerCase();
+  const currentDomain = normalizeDomain(input.shopDomain || "");
+  const currentShopLabel = (input.shopName || "").toLowerCase();
+  const allowedDomains = new Set(
+    [currentDomain, ...input.shopifyDomains.map((domain) => normalizeDomain(domain))].filter(Boolean),
+  );
 
   for (const article of articles) {
     const title = (article.title || "").trim();
@@ -632,7 +676,7 @@ function detectContentRisks(
       try {
         const domain = normalizeDomain(new URL(url).hostname);
         if (!domain) return false;
-        if (currentDomain && domain === currentDomain) return false;
+        if (allowedDomains.has(domain)) return false;
         if (SAFE_EXTERNAL_DOMAINS.has(domain)) return false;
         if (domain.endsWith(".myshopify.com")) return false;
         return true;
@@ -741,10 +785,13 @@ function detectContentRisks(
 
 function detectContentOpportunities(
   articles: ArticleInput[],
-  shopDomain: string | null,
+  input: { shopDomain: string | null; shopifyDomains: string[] },
 ): ContentOpportunity[] {
   const opportunities: ContentOpportunity[] = [];
-  const currentDomain = normalizeDomain(shopDomain || "");
+  const currentDomain = normalizeDomain(input.shopDomain || "");
+  const allowedDomains = new Set(
+    [currentDomain, ...input.shopifyDomains.map((domain) => normalizeDomain(domain))].filter(Boolean),
+  );
 
   for (const article of articles) {
     const title = (article.title || "").trim();
@@ -753,9 +800,21 @@ function detectContentOpportunities(
     const bodyText = stripHtml(article.body_html || "");
     const wordCount = bodyText.split(/\s+/).filter(Boolean).length;
     const tags = (article.tags || "").trim();
-    const hasProductLink = currentDomain
-      ? (article.body_html || "").includes(`${currentDomain}/products/`)
-      : /\/products\//i.test(article.body_html || "");
+    const bodyHtml = article.body_html || "";
+    const urls = bodyHtml.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+    const hasAllowedAbsoluteProductLink = urls.some((url) => {
+      if (/\{\{|\}\}|\{%|%\}/.test(url)) return false;
+      try {
+        const parsed = new URL(url);
+        const domain = normalizeDomain(parsed.hostname);
+        if (!domain) return false;
+        if (!allowedDomains.has(domain)) return false;
+        return /\/products\//i.test(parsed.pathname);
+      } catch {
+        return false;
+      }
+    });
+    const hasProductLink = hasAllowedAbsoluteProductLink || /\/products\//i.test(bodyHtml);
     const hasCta = /(shop now|get yours|buy now|order today|check it out|grab yours|find it here|shop the|see our|browse our)/i.test(article.body_html || "");
 
     if (wordCount > 0 && wordCount < 250) {

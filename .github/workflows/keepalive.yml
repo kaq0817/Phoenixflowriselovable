@@ -2,7 +2,8 @@ name: Keep Supabase Warm
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    # 3x/day (every 8 hours) to keep Supabase from going idle.
+    - cron: "0 */8 * * *"
   workflow_dispatch:
 
 jobs:

@@ -1,6 +1,17 @@
-export default async function handler(req: any, res: any) {
+type ApiRequest = {
+  method?: string;
+};
+
+type ApiResponse = {
+  status: (code: number) => ApiResponse;
+  json: (body: unknown) => void;
+  send: (body: unknown) => void;
+};
+
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
   }
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://nkabxuelejvvdwyvtwmz.supabase.co";
@@ -15,11 +26,13 @@ export default async function handler(req: any, res: any) {
     });
 
     const text = await upstream.text();
-    return res.status(upstream.status).send(text);
+    res.status(upstream.status).send(text);
+    return;
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       ok: false,
       error: error instanceof Error ? error.message : "Keepalive failed",
     });
+    return;
   }
 }
