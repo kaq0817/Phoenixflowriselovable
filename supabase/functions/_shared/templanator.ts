@@ -129,6 +129,8 @@ const SAFE_EXTERNAL_DOMAINS = new Set([
   "cdn.shopify.com",
   "fonts.shopifycdn.com",
   "shop.app",
+  "ourphoenixrise.com",
+  "www.ourphoenixrise.com",
   "googletagmanager.com",
   "www.googletagmanager.com",
   "tagmanager.google.com",
@@ -659,6 +661,32 @@ function detectContentRisks(
         severity: "warning",
         reason: "This article uses treatment or medical-style claims that increase misrepresentation risk.",
         recommendation: "Rewrite the copy into lifestyle-support language and remove diagnosis or treatment claims.",
+      });
+      continue;
+    }
+
+    // Old brand name references — flag regardless of whether current store is also mentioned
+    if (/(iron phoenix|go hard gaming|ironphoenixghg|gohardgaming|\bghg\b)/i.test(lowered)) {
+      risks.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        severity: "warning",
+        reason: "This article mentions older brand names (Iron Phoenix GHG / Go Hard Gaming) that need to be updated to Our Phoenix Rise.",
+        recommendation: "Replace all Iron Phoenix GHG, Go Hard Gaming, and GHG references with Our Phoenix Rise branding.",
+      });
+      continue;
+    }
+
+    // Etsy text references (separate from URL check above, catches text-only mentions)
+    if (/\betsy\b/i.test(lowered)) {
+      risks.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        severity: "warning",
+        reason: "This article references Etsy, which may direct customers away from the active storefront.",
+        recommendation: "Remove Etsy references or replace them with links to Our Phoenix Rise.",
       });
       continue;
     }
