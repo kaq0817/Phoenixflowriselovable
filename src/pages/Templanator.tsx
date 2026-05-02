@@ -226,6 +226,15 @@ interface RouteVerificationState {
   message: string;
 }
 
+type KeyCheckStatus = "pass" | "fail" | "warn" | "pending";
+
+interface KeyCheck {
+  id: string;
+  label: string;
+  status: KeyCheckStatus;
+  detail: string;
+}
+
 const NICHE_PALETTES = [
   { label: "Keep Current", value: "default", desc: "Preserve existing store color scheme", colors: [], tags: ["neutral"] },
   { label: "Minimal / Clean", value: "minimal", desc: "White, light gray, subtle blue accents", colors: [], tags: ["neutral"] },
@@ -600,6 +609,128 @@ export default function Templanator() {
   const businessIdentityMentions = useMemo(() => {
     return extractBusinessIdentityMentions(scanResult, businessIdentityCandidates);
   }, [scanResult, businessIdentityCandidates]);
+
+  const keyChecks = useMemo<KeyCheck[]>(() => {
+    return [
+      {
+        id: "store-connected",
+        label: "Shopify store connected",
+        status: selectedConn ? "pass" : "fail",
+        detail: selectedConn ? "Store selected." : "Select a Shopify store.",
+      },
+      {
+        id: "theme-imported",
+        label: "Theme imported",
+        status: scanResult ? "pass" : "pending",
+        detail: scanResult ? `${scanResult.themeName} loaded.` : "Import the current Shopify theme.",
+      },
+      {
+        id: "policies",
+        label: "Policy links valid",
+        status: allPoliciesReady ? "pass" : brokenPolicyLinks.length > 0 ? "fail" : "pending",
+        detail: allPoliciesReady
+          ? "All policy links pass."
+          : `${brokenPolicyLinks.length} policy links need work.`,
+      },
+      {
+        id: "live-compliance",
+        label: "Live compliance scan",
+        status: complianceReport
+          ? actionableComplianceFindings.length > 0
+            ? "warn"
+            : "pass"
+          : "pending",
+        detail: complianceReport
+          ? `${actionableComplianceFindings.length} warning/critical findings.`
+          : "Run live compliance scan.",
+      },
+      {
+        id: "lcp",
+        label: "LCP image priority",
+        status: scanResult?.lcpCandidate
+          ? scanResult.lcpCandidate.loadingMode === "eager" &&
+            scanResult.lcpCandidate.hasFetchPriorityHigh &&
+            scanResult.lcpCandidate.preloadDetected
+            ? "pass"
+            : "fail"
+          : "warn",
+        detail: scanResult?.lcpCandidate
+          ? scanResult.lcpCandidate.assetKey
+          : "No clear LCP candidate found.",
+      },
+      {
+        id: "lazy-images",
+        label: "Below-fold lazy loading",
+        status: scanResult
+          ? scanResult.stats.belowFoldImagesMissingLazy > 0
+            ? "fail"
+            : "pass"
+          : "pending",
+        detail: scanResult
+          ? `${scanResult.stats.belowFoldImagesMissingLazy} below-fold images missing lazy loading.`
+          : "Import theme first.",
+      },
+      {
+        id: "broken-links",
+        label: "Broken or wrong-store links",
+        status: brokenLinkCount > 0 ? "fail" : scanResult ? "pass" : "pending",
+        detail: `${brokenLinkCount} broken/wrong-store links found.`,
+      },
+      {
+        id: "identity",
+        label: "Legal/support identity",
+        status: identityReady ? "pass" : "fail",
+        detail: identityReady
+          ? "Legal and support info filled."
+          : "Legal entity, state, support location, and phone are required.",
+      },
+      {
+        id: "product-scan",
+        label: "Product scan",
+        status: scannedProducts.length > 0 ? "warn" : productScanLoading ? "pending" : "pending",
+        detail:
+          scannedProducts.length > 0
+            ? `${scannedProducts.length} products need attention.`
+            : "Run product scan.",
+      },
+      {
+        id: "subdomain-routes",
+        label: "Subdomain route checks",
+        status:
+          subdomainPlan.length === 0
+            ? "pending"
+            : allPlannedRoutesVerified
+              ? "pass"
+              : "fail",
+        detail:
+          subdomainPlan.length === 0
+            ? "No subdomain plan yet."
+            : `${verifiedRouteCount}/${subdomainPlan.length} routes verified.`,
+      },
+      {
+        id: "approved-files",
+        label: "Approved files ready",
+        status: approvedCount > 0 ? "pass" : "pending",
+        detail: `${approvedCount}/${fileApprovals.length} files approved.`,
+      },
+    ];
+  }, [
+    selectedConn,
+    scanResult,
+    allPoliciesReady,
+    brokenPolicyLinks.length,
+    complianceReport,
+    actionableComplianceFindings.length,
+    brokenLinkCount,
+    identityReady,
+    scannedProducts.length,
+    productScanLoading,
+    subdomainPlan.length,
+    allPlannedRoutesVerified,
+    verifiedRouteCount,
+    approvedCount,
+    fileApprovals.length,
+  ]);
 
   useEffect(() => {
     const selected = NICHE_PALETTES.find((palette) => palette.value === nichePalette);
@@ -2620,6 +2751,8 @@ export default function Templanator() {
             {selectedStore ? <p className="text-xs text-muted-foreground">Active store: {selectedStore.shop_name || selectedStore.shop_domain || "Shopify store"}</p> : null}
           </motion.div>
 
+          <KeyCheckList checks={keyChecks} />
+
           <div className="relative pl-6 sm:pl-10">
             <div className="absolute bottom-0 left-[11px] top-0 w-px bg-border/40 sm:left-[19px]" />
             <AnimatePresence mode="wait" initial={false}>
@@ -2925,6 +3058,34 @@ function StatBox({ label, value, sub }: { label: string; value: number; sub?: st
       <p className="text-xs text-muted-foreground">{label}</p>
       {sub ? <p className="text-xs text-yellow-500">{sub}</p> : null}
     </div>
+  );
+}
+
+function KeyCheckList({ checks }: { checks: KeyCheck[] }) {
+  const statusStyle: Record<KeyCheckStatus, string> = {
+    pass: "border-green-500/30 bg-green-500/5 text-green-500",
+    fail: "border-red-500/30 bg-red-500/5 text-red-500",
+    warn: "border-yellow-500/30 bg-yellow-500/5 text-yellow-500",
+    pending: "border-border/30 bg-muted/10 text-muted-foreground",
+  };
+
+  return (
+    <Card className="bg-card/50 border-border/30">
+      <CardContent className="p-6 space-y-3">
+        <h3 className="font-semibold">Key Launch Checks</h3>
+        <div className="grid gap-2 md:grid-cols-2">
+          {checks.map((check) => (
+            <div key={check.id} className={`rounded-lg border p-3 ${statusStyle[check.status]}`}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-foreground">{check.label}</p>
+                <Badge variant="outline">{check.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs">{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
