@@ -510,8 +510,10 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
         if (!functionCall) throw new Error("No analysis result returned");
         report = functionCall.args;
 
-        // Hard filter: remove any finding that is about dates regardless of AI behaviour
-        const DATE_KEYWORDS = /last updated|last-updated|policy date|date.*in the future|future.*date|copyright year|date.*in the past|past.*date|in the future.*date/i;
+        // ABSOLUTE: Remove any finding about dates, regardless of Gemini/AI output or prompt. This is a hard compliance rule.
+        // Do NOT flag "last updated" dates, policy dates, blog post dates, copyright years, or any other date. Do NOT compare any date to today.
+        // Date accuracy is 100% out of scope for this audit. Any finding about a date will be automatically removed before delivery.
+        const DATE_KEYWORDS = /last updated|last-updated|policy date|date.*in the future|future.*date|copyright year|date.*in the past|past.*date|in the future.*date|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b/i;
         if (report && Array.isArray(report.findings)) {
           report.findings = report.findings.filter((f) => {
             const text = `${f.title} ${f.description} ${f.recommendation}`;

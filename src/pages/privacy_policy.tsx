@@ -1,5 +1,4 @@
 export default function PrivacyPolicyPage() {
-  const effectiveDate = "February 14, 2026";
   const company = "Go Hard Gaming D LLC";
 
   return (
@@ -10,9 +9,9 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Privacy Policy
           </h1>
-          <p className="text-sm text-muted-foreground sm:text-base">
-            Effective Date: {effectiveDate}
-          </p>
+          {/* <p className="text-sm text-muted-foreground sm:text-base">
+            Effective Date removed
+          </p> */}
         </div>
 
         <div className="glass-panel rounded-3xl border border-border/50 p-6 sm:p-8 lg:p-10">
