@@ -511,7 +511,7 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
         report = functionCall.args;
 
         // Hard filter: remove any finding that is about dates regardless of AI behaviour
-        const DATE_KEYWORDS = /last updated|last-updated|policy date|date.*future|future.*date|copyright year|date.*past|past.*date|\bexpir/i;
+        const DATE_KEYWORDS = /last updated|last-updated|policy date|date.*in the future|future.*date|copyright year|date.*in the past|past.*date|in the future.*date/i;
         if (report && Array.isArray(report.findings)) {
           report.findings = report.findings.filter((f) => {
             const text = `${f.title} ${f.description} ${f.recommendation}`;
