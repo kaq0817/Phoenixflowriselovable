@@ -274,6 +274,32 @@ function stripEditorNoise(html: string): string {
     .trim();
 }
 
+function htmlToEditableText(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<\/p>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function editableTextToHtml(text: string): string {
+  if (!text.trim()) return "";
+  return text
+    .split(/\n\n+/)
+    .map((para) => para.trim())
+    .filter(Boolean)
+    .map((para) => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+}
+
 const STEPS = [
   { num: 1, label: "Theme Handshake", summary: "Import the live Shopify theme into the workflow." },
   { num: 2, label: "Policy & Compliance", summary: "Check policy links and run the live compliance audit before rewrites." },
@@ -1899,10 +1925,10 @@ export default function Templanator() {
                                   />
                                 ) : (
                                   <Textarea
-                                    className="min-h-[280px] font-mono text-sm"
-                                    value={article.bodyHtml}
+                                    className="min-h-[280px] text-sm"
+                                    value={htmlToEditableText(article.bodyHtml)}
                                     placeholder="Write your blog post here..."
-                                    onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", event.target.value)}
+                                    onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", editableTextToHtml(event.target.value))}
                                   />
                                 )}
                               </div>

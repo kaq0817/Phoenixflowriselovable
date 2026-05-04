@@ -71,7 +71,15 @@ serve(async (req: Request) => {
     const appliedFiles: string[] = [];
     const errors: string[] = [];
 
-    for (const [key, value] of Object.entries(safeApprovedFiles)) {
+    for (const [key, rawValue] of Object.entries(safeApprovedFiles)) {
+      let value = rawValue as string;
+      if (key.endsWith(".json")) {
+        try {
+          value = JSON.stringify(JSON.parse(value));
+        } catch {
+          // leave as-is if parse fails
+        }
+      }
       try {
         const putRes = await fetch(
           `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/themes/${themeId}/assets.json`,
