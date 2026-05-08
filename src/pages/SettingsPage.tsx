@@ -24,7 +24,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export default function SettingsPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin, subscriptionStatus } = useAuth();
+  const isSubscribed = subscriptionStatus === "active" || subscriptionStatus === "trialing";
   const { toast } = useToast();
   const [connections, setConnections] = useState<StoreConnection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -276,7 +277,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Etsy Connections */}
-      <Card className="bg-card/50 border-border/30">
+      {(isAdmin || isSubscribed) && (<Card className="bg-card/50 border-border/30">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-lg flex items-center gap-2">
@@ -331,7 +332,7 @@ export default function SettingsPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>)}
 
       {/* Account */}
       <Card className="bg-card/50 border-border/30">

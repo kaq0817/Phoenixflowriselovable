@@ -44,6 +44,25 @@ serve(async (req) => {
       });
     }
 
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { persistSession: false } }
+    );
+
+    const [{ data: isAdmin }, { data: profile }] = await Promise.all([
+      supabaseAdmin.rpc("has_role", { _user_id: userData.user.id, _role: "admin" }),
+      supabaseAdmin.from("profiles").select("subscription_status").eq("id", userData.user.id).single(),
+    ]);
+
+    const isSubscribed = profile?.subscription_status === "active" || profile?.subscription_status === "trialing";
+
+    if (!isAdmin && !isSubscribed) {
+      return new Response(JSON.stringify({ error: "subscription_required" }), {
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
 

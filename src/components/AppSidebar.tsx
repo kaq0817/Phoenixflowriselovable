@@ -6,7 +6,6 @@ import {
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -68,8 +67,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
-  const { user } = useAuth();
-  const isAdmin = useIsAdmin(user?.id);
+  const { user, isAdmin, subscriptionStatus } = useAuth();
   const [hasShopify, setHasShopify] = useState(false);
   const [hasEtsy, setHasEtsy] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -172,7 +170,7 @@ export function AppSidebar() {
       <SidebarContent>
         {renderGroup("Dashboard", dashboardItems)}
         {renderGroup("Shopify", shopifyItems)}
-        {renderGroup("Etsy", etsyItems)}
+        {(isAdmin || subscriptionStatus === "active" || subscriptionStatus === "trialing") && renderGroup("Etsy", etsyItems)}
         {renderGroup("Compliance", complianceItems)}
         {renderGroup("General", generalItems)}
         {renderGroup("Account", settingsItems)}
