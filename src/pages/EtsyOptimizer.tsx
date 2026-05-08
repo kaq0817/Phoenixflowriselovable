@@ -36,7 +36,7 @@ export default function EtsyOptimizer() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button className="gradient-phoenix text-primary-foreground flex-1" onClick={() => { window.location.href = "/optimizer"; }}>
+            <Button className="gradient-phoenix text-primary-foreground flex-1" onClick={() => { window.location.href = "/optimizer?platform=etsy"; }}>
               Open Main Optimizer
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { window.location.href = "/settings"; }}>

@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { isEtsyConnected } from "@/lib/etsyConnections";
+import { isShopifyPlatform } from "@/lib/storePlatforms";
 
 type NavItem = {
   title: string;
@@ -33,7 +35,7 @@ export default function DashboardLayout() {
     const loadConnections = async () => {
       const { data, error } = await supabase
         .from("store_connections")
-        .select("platform, shop_domain, scopes")
+        .select("platform, shop_domain, shop_name, scopes")
         .eq("user_id", user.id);
       if (!active) return;
       if (error) {
@@ -41,10 +43,8 @@ export default function DashboardLayout() {
         return;
       }
       const rows = data || [];
-      const hasShop = rows.some((row) => row.platform === "shopify");
-      const hasEtsyConn = rows.some(
-        (row) => row.platform === "etsy" && !!row.shop_domain && (row.scopes || "").includes("shops_r"),
-      );
+      const hasShop = rows.some((row) => isShopifyPlatform(row.platform));
+      const hasEtsyConn = rows.some(isEtsyConnected);
       setHasShopify(hasShop);
       setHasEtsy(hasEtsyConn);
       setConnectionStatus("ready");

@@ -36,11 +36,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const [profileRes, roleRes] = await Promise.all([
         supabase.from("profiles").select("subscription_status").eq("id", userId).single(),
-        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+        supabase.rpc("has_role", { _user_id: userId, _role: "admin" }),
       ]);
       const row = profileRes.data as { subscription_status?: string | null } | null;
-      setSubscriptionStatus(row?.subscription_status ?? null);
-      setIsAdmin(!!roleRes.data);
+      const nextStatus = row?.subscription_status ?? null;
+      setSubscriptionStatus(nextStatus);
+      setIsAdmin(Boolean(roleRes.data));
+
+      // Stripe webhooks can lag; do a lightweight server-side check to avoid "I just paid" lockouts.
+      const isActive = nextStatus === "active" || nextStatus === "trialing";
+      if (!isActive) {
+        try {
+          const { data } = await supabase.functions.invoke("check-subscription");
+          if (data?.subscribed) {
+            setSubscriptionStatus("active");
+          }
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // on error leave isAdmin false but don't block profileLoading
     } finally {

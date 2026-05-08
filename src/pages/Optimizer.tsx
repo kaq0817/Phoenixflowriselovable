@@ -15,6 +15,8 @@ import { CopyButton, copyAllFields } from "@/components/CopyButton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { isEtsyConnected } from "@/lib/etsyConnections";
+import { isEtsyPlatform, isShopifyPlatform } from "@/lib/storePlatforms";
 
 interface ShopifyProduct {
   id: number;
@@ -134,7 +136,7 @@ function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string):
 }
 
 function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+  return isEtsyConnected(connection);
 }
 
 function isApparelProduct(product: ShopifyProduct): boolean {
@@ -204,14 +206,21 @@ export default function OptimizerPage() {
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
       const allRows = (data || []) as StoreConnectionOption[];
-      const rows = allRows.filter((c) => c.platform === "shopify" || isUsableEtsyConnection(c));
+      const rows = allRows.filter((c) => isShopifyPlatform(c.platform) || isUsableEtsyConnection(c));
       const conn: Record<Platform, boolean> = {
-        shopify: rows.some((c) => c.platform === "shopify"),
-        etsy: rows.some((c) => c.platform === "etsy"),
+        shopify: rows.some((c) => isShopifyPlatform(c.platform)),
+        etsy: rows.some((c) => isEtsyPlatform(c.platform)),
       };
       setConnections(conn);
       setStoreConnections(rows);
-      if (!conn.shopify && conn.etsy) setPlatform("etsy");
+      const requestedPlatform = new URLSearchParams(window.location.search).get("platform");
+      if (requestedPlatform === "etsy" && conn.etsy) {
+        setPlatform("etsy");
+      } else if (requestedPlatform === "shopify" && conn.shopify) {
+        setPlatform("shopify");
+      } else if (!conn.shopify && conn.etsy) {
+        setPlatform("etsy");
+      }
       setLoading(false);
     })();
   }, [session]);
@@ -584,8 +593,8 @@ useEffect(() => {
   }
 
   const noConnections = !connections.shopify && !connections.etsy;
-  const shopifyStoreOptions = storeConnections.filter((c) => c.platform === "shopify");
-  const etsyStoreOptions = storeConnections.filter((c) => c.platform === "etsy");
+  const shopifyStoreOptions = storeConnections.filter((c) => isShopifyPlatform(c.platform));
+  const etsyStoreOptions = storeConnections.filter((c) => isEtsyPlatform(c.platform));
 
   const ProductImage = ({ src, alt, size = "md" }: { src?: string; alt: string; size?: "sm" | "md" | "lg" }) => {
     const sizeClasses = { sm: "w-14 h-14", md: "w-20 h-20", lg: "w-32 h-32" };

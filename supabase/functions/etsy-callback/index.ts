@@ -9,6 +9,30 @@ import {
   verifySignedOAuthState,
 } from "../_shared/etsy.ts";
 
+async function getEtsyUserId(accessToken: string): Promise<string | null> {
+  const prefix = accessToken.split(".")[0]?.trim() || "";
+  if (/^\d+$/.test(prefix)) return prefix;
+
+  const apiKeyHeader = getEtsyApiKeyHeader();
+  const meRes = await fetch("https://api.etsy.com/v3/application/users/me", {
+    headers: {
+      "x-api-key": apiKeyHeader,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!meRes.ok) {
+    console.error("Etsy users/me lookup failed:", await meRes.text());
+    return null;
+  }
+
+  const meData = await meRes.json().catch(() => null) as { user_id?: number | string } | null;
+  const userId = meData?.user_id;
+  if (typeof userId === "number") return String(userId);
+  if (typeof userId === "string" && userId.trim()) return userId.trim();
+  return null;
+}
+
 serve(async (req) => {
   try {
     const url = new URL(req.url);
@@ -70,28 +94,47 @@ serve(async (req) => {
     const accessToken = tokenData.access_token as string;
     const refreshToken = tokenData.refresh_token as string;
     const expiresIn = Number(tokenData.expires_in || 3600);
-    const etsyUserId = String(accessToken).split(".")[0];
 
     let shopName = "Etsy Shop";
     let shopId: string | null = null;
 
-    if (etsyUserId) {
-      const shopRes = await fetch(`https://api.etsy.com/v3/application/users/${etsyUserId}/shops`, {
-        headers: {
-          "x-api-key": getEtsyApiKeyHeader(),
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+    const etsyUserId = await getEtsyUserId(accessToken);
+    if (!etsyUserId) {
+      return Response.redirect(
+        buildAppRedirect({
+          status: "error",
+          message: "Could not determine Etsy user for this OAuth session. Please try again.",
+        }),
+        302,
+      );
+    }
 
-      if (shopRes.ok) {
-        const shopData = await shopRes.json();
-        if (Array.isArray(shopData.results) && shopData.results[0]) {
-          shopName = shopData.results[0].shop_name || shopName;
-          shopId = shopData.results[0].shop_id ? String(shopData.results[0].shop_id) : null;
-        }
-      } else {
-        console.error("Etsy shop lookup failed:", await shopRes.text());
+    const shopRes = await fetch(`https://api.etsy.com/v3/application/users/${etsyUserId}/shops`, {
+      headers: {
+        "x-api-key": getEtsyApiKeyHeader(),
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (shopRes.ok) {
+      const shopData = await shopRes.json().catch(() => null) as { results?: Array<{ shop_name?: string; shop_id?: number | string }> } | null;
+      const first = shopData?.results?.[0];
+      if (first) {
+        shopName = first.shop_name || shopName;
+        shopId = first.shop_id ? String(first.shop_id) : null;
       }
+    } else {
+      console.error("Etsy shop lookup failed:", await shopRes.text());
+    }
+
+    if (!shopId) {
+      return Response.redirect(
+        buildAppRedirect({
+          status: "error",
+          message: "Etsy OAuth succeeded, but no shop was found for this account. Make sure your Etsy account has an active shop, then try again.",
+        }),
+        302,
+      );
     }
 
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();

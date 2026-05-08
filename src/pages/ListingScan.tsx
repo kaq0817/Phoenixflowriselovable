@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { exportListingScanPdf, exportListingScanCsv } from "@/lib/reportExports";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isEtsyConnected } from "@/lib/etsyConnections";
+import { isEtsyPlatform, isShopifyPlatform } from "@/lib/storePlatforms";
 
 
 interface KeywordResearchItem {
@@ -61,7 +63,7 @@ interface ScanJob {
   store_connection_id: string | null;
 }
   function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-    return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+    return isEtsyConnected(connection);
   }
 interface StoreConnectionOption {
   id: string;
@@ -190,14 +192,14 @@ export default function ListingScanPage() {
       .order("created_at", { ascending: false });
 
     const allRows = (data || []) as StoreConnectionOption[];
-    const rows = allRows.filter((c) => c.platform === "shopify" || isUsableEtsyConnection(c));
+    const rows = allRows.filter((c) => isShopifyPlatform(c.platform) || isUsableEtsyConnection(c));
     setStoreConnections(rows);
 
-    const hasShopify = rows.some((c) => c.platform === "shopify");
-    const hasEtsy = rows.some((c) => c.platform === "etsy");
+    const hasShopify = rows.some((c) => isShopifyPlatform(c.platform));
+    const hasEtsy = rows.some((c) => isEtsyPlatform(c.platform));
 
-    const firstShopify = rows.find((c) => c.platform === "shopify");
-    const firstEtsy = rows.find((c) => c.platform === "etsy");
+    const firstShopify = rows.find((c) => isShopifyPlatform(c.platform));
+    const firstEtsy = rows.find((c) => isEtsyPlatform(c.platform));
 
     const initialPlatform: Platform = hasEtsy ? "etsy" : hasShopify ? "shopify" : "etsy";
     setPlatform(initialPlatform);

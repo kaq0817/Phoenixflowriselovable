@@ -17,9 +17,12 @@ export function getEtsyClientId(): string {
 }
 
 export function getEtsyApiKeyHeader(): string {
-  const clientId = getEtsyClientId();
-  const sharedSecret = Deno.env.get("ETSY_CLIENT_SECRET") || Deno.env.get("ETSY_SHARED_SECRET");
-  return sharedSecret ? `${clientId}:${sharedSecret}` : clientId;
+  const explicitHeader = Deno.env.get("ETSY_API_KEY_HEADER");
+  if (explicitHeader) return explicitHeader;
+
+  // Etsy's API uses the app's keystring / client_id for the `x-api-key` header.
+  // Do not append secrets here; secrets are not part of the header.
+  return getEtsyClientId();
 }
 
 export function getEtsyScopes(): string[] {

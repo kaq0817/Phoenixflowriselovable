@@ -14,6 +14,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
+import { isEtsyConnected } from "@/lib/etsyConnections";
+import { isShopifyPlatform } from "@/lib/storePlatforms";
 
 type SidebarItem = {
   title: string;
@@ -89,7 +91,7 @@ export function AppSidebar() {
     const loadConnections = async () => {
       const { data, error } = await supabase
         .from("store_connections")
-        .select("platform, shop_domain, scopes")
+        .select("platform, shop_domain, shop_name, scopes")
         .eq("user_id", user.id);
       if (!active) return;
       if (error) {
@@ -97,10 +99,8 @@ export function AppSidebar() {
         return;
       }
       const rows = data || [];
-      const hasShop = rows.some((row) => row.platform === "shopify");
-      const hasEtsyConn = rows.some(
-        (row) => row.platform === "etsy" && !!row.shop_domain && (row.scopes || "").includes("shops_r"),
-      );
+      const hasShop = rows.some((row) => isShopifyPlatform(row.platform));
+      const hasEtsyConn = rows.some(isEtsyConnected);
       setHasShopify(hasShop);
       setHasEtsy(hasEtsyConn);
       setConnectionStatus("ready");

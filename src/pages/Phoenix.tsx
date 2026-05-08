@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { isEtsyConnected } from "@/lib/etsyConnections";
 
 interface ShopifyProduct {
   id: number;
@@ -80,7 +81,7 @@ interface StoreConnectionOption {
 }
 
 function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+  return isEtsyConnected(connection);
 }
 
 function normalizeShopifyTags(tags: ShopifyProduct["tags"] | string[] | null | undefined): string[] {

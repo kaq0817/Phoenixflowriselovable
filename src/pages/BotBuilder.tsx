@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { appDomainFacts, appIdentityConfig, pillarDomainFacts, storeDomainFacts } from "@/config/appIdentity";
 import { appSupportConfig } from "@/config/appSupport";
 import { cn } from "@/lib/utils";
+import { isEtsyConnected } from "@/lib/etsyConnections";
+import { isEtsyPlatform, isShopifyPlatform } from "@/lib/storePlatforms";
 
 type SourceMode = "shopify" | "etsy" | "manual";
 type Platform = "shopify" | "etsy";
@@ -93,7 +95,7 @@ function stripHtml(value: string) {
 }
 
 function isUsableEtsyConnection(connection: StoreConnectionOption) {
-  return connection.platform === "etsy" && !!connection.shop_domain && !!connection.scopes?.includes("shops_r");
+  return isEtsyConnected(connection);
 }
 
 function getStoreLabel(connection: StoreConnectionOption) {
@@ -150,10 +152,10 @@ export default function BotPage() {
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
       const allRows = (data || []) as StoreConnectionOption[];
-      const rows = allRows.filter((connection) => connection.platform === "shopify" || isUsableEtsyConnection(connection));
+      const rows = allRows.filter((connection) => isShopifyPlatform(connection.platform) || isUsableEtsyConnection(connection));
       setStoreConnections(rows);
-      const firstShopify = rows.find((connection) => connection.platform === "shopify");
-      const firstEtsy = rows.find((connection) => connection.platform === "etsy");
+      const firstShopify = rows.find((connection) => isShopifyPlatform(connection.platform));
+      const firstEtsy = rows.find((connection) => isEtsyPlatform(connection.platform));
       setSelectedShopifyConnectionId(firstShopify?.id || "");
       setSelectedEtsyConnectionId(firstEtsy?.id || "");
       if (firstShopify) setSourceMode("shopify");
@@ -163,10 +165,10 @@ export default function BotPage() {
     })();
   }, [session]);
 
-  const hasShopify = useMemo(() => storeConnections.some((connection) => connection.platform === "shopify"), [storeConnections]);
-  const hasEtsy = useMemo(() => storeConnections.some((connection) => connection.platform === "etsy"), [storeConnections]);
-  const shopifyConnections = useMemo(() => storeConnections.filter((connection) => connection.platform === "shopify"), [storeConnections]);
-  const etsyConnections = useMemo(() => storeConnections.filter((connection) => connection.platform === "etsy"), [storeConnections]);
+  const hasShopify = useMemo(() => storeConnections.some((connection) => isShopifyPlatform(connection.platform)), [storeConnections]);
+  const hasEtsy = useMemo(() => storeConnections.some((connection) => isEtsyPlatform(connection.platform)), [storeConnections]);
+  const shopifyConnections = useMemo(() => storeConnections.filter((connection) => isShopifyPlatform(connection.platform)), [storeConnections]);
+  const etsyConnections = useMemo(() => storeConnections.filter((connection) => isEtsyPlatform(connection.platform)), [storeConnections]);
 
   const fetchShopifyProducts = useCallback(async (connectionId = selectedShopifyConnectionId) => {
     if (!connectionId) return;
