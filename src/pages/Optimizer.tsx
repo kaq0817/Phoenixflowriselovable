@@ -1022,7 +1022,9 @@ useEffect(() => {
                         <Sparkles className="h-4 w-4 inline mr-1 text-primary" />{etsySuggestions.reasoning}
                       </div>
                       <ComparisonRow label="Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.title} optimized={etsySuggestions.title} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, title: v })} />
+                      <ComparisonRow label="Description" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedListing.description || ""} optimized={etsySuggestions.description} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, description: v })} multiline />
                       <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.tags?.join(", ") || ""} optimized={etsySuggestions.tags?.join(", ") || ""} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, tags: v.split(",").map(t => t.trim()) })} multiline />
+                      <ComparisonRow label="Materials" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedListing.materials?.join(", ") || ""} optimized={etsySuggestions.materials?.join(", ") || ""} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, materials: v.split(",").map(t => t.trim()) })} multiline />
                       <div className="flex gap-3 pt-2">
                         <Button onClick={applyEtsyChanges} disabled={etsyApplying} className="gradient-phoenix text-primary-foreground flex-1">
                           {etsyApplying ? "Applying..." : "Apply to Etsy"}
