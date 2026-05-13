@@ -1,22 +1,19 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  BarChart3, Sparkles, ShoppingBag, Store, Loader2, CheckCircle2,
+  BarChart3, Sparkles, Store, Loader2, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Tag, FileText, Palette,
-  ArrowRight, Copy, AlertTriangle, Link, HelpCircle, LayoutGrid, Radio
+  Radio,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { CopyButton, copyAllFields } from "@/components/CopyButton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { isEtsyConnected } from "@/lib/etsyConnections";
-import { isEtsyPlatform, isShopifyPlatform } from "@/lib/storePlatforms";
+import { isShopifyPlatform } from "@/lib/storePlatforms";
 
 interface ShopifyProduct {
   id: number;
@@ -49,30 +46,9 @@ interface ShopifySuggestions {
   product_schema_status?: 'valid' | 'missing_fields';
 }
 
-interface EtsyListing {
-  listing_id: number;
-  title: string;
-  description: string;
-  tags: string[];
-  materials: string[];
-  taxonomy_path?: string;
-  state: string;
-  images?: { url_170x135?: string; url_570xN?: string }[];
-}
-
-interface EtsySuggestions {
-  title: string;
-  description: string;
-  tags: string[];
-  materials: string[];
-  reasoning: string;
-}
-
-type Platform = "shopify" | "etsy";
-
 interface StoreConnectionOption {
   id: string;
-  platform: Platform;
+  platform: string;
   shop_domain: string | null;
   shop_name: string | null;
   scopes: string | null;
@@ -107,7 +83,6 @@ function truncateToWordBoundary(str: string, max: number): string {
   return str.slice(0, max).replace(/\s+\S*$/, "").trim();
 }
 
-
 const FILENAME_ANGLE_SLUGS = [
   "main",
   "side-angle",
@@ -120,7 +95,6 @@ const FILENAME_ANGLE_SLUGS = [
   "scale",
   "packaging",
 ];
-
 
 function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string): Record<number, string> {
   const fullSlug = slugifyForFilename(cleanProductTitle(product.title || "product")) || "product";
@@ -135,10 +109,6 @@ function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string):
   return drafts;
 }
 
-function isUsableEtsyConnection(connection: StoreConnectionOption): boolean {
-  return isEtsyConnected(connection);
-}
-
 function isApparelProduct(product: ShopifyProduct): boolean {
   const haystack = `${product.title || ""} ${product.product_type || ""} ${product.tags || ""}`.toLowerCase();
   return ["shirt", "tee", "hoodie", "sweatshirt", "sweater", "jacket", "dress", "pants", "leggings", "shorts", "top", "tank", "skirt", "apparel", "clothing", "beanie", "hat", "cap", "jersey"].some((term) => haystack.includes(term));
@@ -148,14 +118,11 @@ export default function OptimizerPage() {
   const { session } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [platform, setPlatform] = useState<Platform>("shopify");
-  const [connections, setConnections] = useState<Record<Platform, boolean>>({ shopify: false, etsy: false });
+
   const [storeConnections, setStoreConnections] = useState<StoreConnectionOption[]>([]);
   const [selectedShopifyConnectionId, setSelectedShopifyConnectionId] = useState("");
-  const [selectedEtsyConnectionId, setSelectedEtsyConnectionId] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Shopify
   const [shopifyProducts, setShopifyProducts] = useState<ShopifyProduct[]>([]);
   const [shopifyLoading, setShopifyLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ShopifyProduct | null>(null);
@@ -168,14 +135,6 @@ export default function OptimizerPage() {
   const [seoTitleDraft, setSeoTitleDraft] = useState("");
   const [seoDescDraft, setSeoDescDraft] = useState("");
   const [titleDraft, setTitleDraft] = useState("");
-  
-  // Etsy
-  const [etsyListings, setEtsyListings] = useState<EtsyListing[]>([]);
-  const [etsyLoading, setEtsyLoading] = useState(false);
-  const [selectedListing, setSelectedListing] = useState<EtsyListing | null>(null);
-  const [etsySuggestions, setEtsySuggestions] = useState<EtsySuggestions | null>(null);
-  const [etsyOptimizing, setEtsyOptimizing] = useState(false);
-  const [etsyApplying, setEtsyApplying] = useState(false);
 
   const [productTitleEdit, setProductTitleEdit] = useState("");
   const [productContextNote, setProductContextNote] = useState("");
@@ -187,13 +146,11 @@ export default function OptimizerPage() {
   const [altScanLoading, setAltScanLoading] = useState(false);
   const [altsAIFilled, setAltsAIFilled] = useState(0);
 
-  // Sales channels
   const [salesChannels, setSalesChannels] = useState<{ id: number; name: string }[]>([]);
   const [publishedChannelIds, setPublishedChannelIds] = useState<number[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelTogglingId, setChannelTogglingId] = useState<number | null>(null);
 
-  // Optimizer usage
   const [optimizerUsage, setOptimizerUsage] = useState<{ used: number; limit: number; resetsAt: string | null } | null>(null);
 
   useEffect(() => {
@@ -205,40 +162,27 @@ export default function OptimizerPage() {
         .select("id, platform, shop_domain, shop_name, scopes, created_at")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
-      const allRows = (data || []) as StoreConnectionOption[];
-      const rows = allRows.filter((c) => isShopifyPlatform(c.platform) || isUsableEtsyConnection(c));
-      const conn: Record<Platform, boolean> = {
-        shopify: rows.some((c) => isShopifyPlatform(c.platform)),
-        etsy: rows.some((c) => isEtsyPlatform(c.platform)),
-      };
-      setConnections(conn);
+      const rows = (data || []).filter((c) => isShopifyPlatform(c.platform)) as StoreConnectionOption[];
       setStoreConnections(rows);
-      const requestedPlatform = new URLSearchParams(window.location.search).get("platform");
-      if (requestedPlatform === "etsy" && conn.etsy) {
-        setPlatform("etsy");
-      } else if (requestedPlatform === "shopify" && conn.shopify) {
-        setPlatform("shopify");
-      } else if (!conn.shopify && conn.etsy) {
-        setPlatform("etsy");
-      }
       setLoading(false);
     })();
   }, [session]);
+
   // SECTION 3: The "Rose Je" Shield Hook
-useEffect(() => {
+  useEffect(() => {
     if (shopifySuggestions) {
       const gmcGuard = (text: string, max: number) => {
         if (!text) return "";
         if (text.length <= max) return text;
         const lastSpace = text.lastIndexOf(" ", max);
         return lastSpace > 0 ? text.substring(0, lastSpace) : text.substring(0, max);
-      }; 
+      };
 
       setTitleDraft(gmcGuard(shopifySuggestions.title || "", 70));
       setSeoTitleDraft(gmcGuard(shopifySuggestions.seo_title || "", 70));
       setSeoDescDraft(gmcGuard(shopifySuggestions.seo_description || "", 160));
     }
-  }, [shopifySuggestions]); // Properly closed the hook here
+  }, [shopifySuggestions]);
 
   const fetchShopifyProducts = async (cursor: string | null = null, append = false) => {
     if (!selectedShopifyConnectionId) {
@@ -275,68 +219,6 @@ useEffect(() => {
       toast({ title: "Error", description: errorObj.message, variant: "destructive" });
     } finally {
       setShopifyLoading(false);
-    }
-  };
-
-  const fetchEtsyListings = async () => {
-    if (!selectedEtsyConnectionId) {
-      toast({ title: "Select a shop", description: "Choose an Etsy shop before loading listings." });
-      return;
-    }
-    setEtsyLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("fetch-etsy-listings", { body: { limit: 10, state: "active", connectionId: selectedEtsyConnectionId } });
-      if (error) throw error;
-      setEtsyListings(data.results || []);
-    } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Error", description: errorObj.message, variant: "destructive" });
-    } finally {
-      setEtsyLoading(false);
-    }
-  };
-
-  const optimizeEtsy = async (listing: EtsyListing) => {
-    setSelectedListing(listing);
-    setEtsySuggestions(null);
-    setEtsyOptimizing(true);
-    setExpandedSection(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("optimize-etsy-listing", { body: { listing } });
-      if (error) throw error;
-      setEtsySuggestions(data.suggestions);
-      setExpandedSection("title");
-    } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Optimization failed", description: errorObj.message, variant: "destructive" });
-      setSelectedListing(null);
-    } finally {
-      setEtsyOptimizing(false);
-    }
-  };
-
-  const applyEtsyChanges = async () => {
-    if (!selectedListing || !etsySuggestions) return;
-    setEtsyApplying(true);
-    try {
-      const { error } = await supabase.functions.invoke("apply-etsy-changes", {
-        body: {
-          listingId: selectedListing.listing_id,
-          originalData: { title: selectedListing.title, description: selectedListing.description, tags: selectedListing.tags, materials: selectedListing.materials },
-          optimizedData: etsySuggestions,
-          connectionId: selectedEtsyConnectionId || undefined,
-        },
-      });
-      if (error) throw error;
-      toast({ title: "Done!", description: "Changes applied to your Etsy shop." });
-      setSelectedListing(null);
-      setEtsySuggestions(null);
-      fetchEtsyListings();
-    } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Apply failed", description: errorObj.message, variant: "destructive" });
-    } finally {
-      setEtsyApplying(false);
     }
   };
 
@@ -592,9 +474,7 @@ useEffect(() => {
     );
   }
 
-  const noConnections = !connections.shopify && !connections.etsy;
-  const shopifyStoreOptions = storeConnections.filter((c) => isShopifyPlatform(c.platform));
-  const etsyStoreOptions = storeConnections.filter((c) => isEtsyPlatform(c.platform));
+  const shopifyStoreOptions = storeConnections;
 
   const ProductImage = ({ src, alt, size = "md" }: { src?: string; alt: string; size?: "sm" | "md" | "lg" }) => {
     const sizeClasses = { sm: "w-14 h-14", md: "w-20 h-20", lg: "w-32 h-32" };
@@ -645,13 +525,13 @@ useEffect(() => {
         <p className="text-muted-foreground mt-1">Pick a product → AI optimizes → Apply to your store.</p>
       </motion.div>
 
-      {noConnections ? (
+      {shopifyStoreOptions.length === 0 ? (
         <Card className="bg-card/50 border-border/30">
           <CardContent className="p-8 text-center space-y-4">
             <Store className="h-12 w-12 text-muted-foreground mx-auto" />
-            <h2 className="text-lg font-semibold">Connect Your Store First</h2>
+            <h2 className="text-lg font-semibold">Connect Your Shopify Store</h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Head to Settings, paste your Shopify Admin API token or connect Etsy, and come back here to optimize.
+              Head to Settings and paste your Shopify Admin API token to get started.
             </p>
             <Button onClick={() => window.location.href = "/settings"} className="gradient-phoenix text-primary-foreground">
               Go to Settings
@@ -659,405 +539,297 @@ useEffect(() => {
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={platform} onValueChange={(v) => setPlatform(v as Platform)}>
-          <TabsList className="bg-muted/50">
-            {connections.shopify && (
-              <TabsTrigger value="shopify" className="flex items-center gap-2">
-                <ShoppingBag className="h-4 w-4" /> Shopify
-              </TabsTrigger>
-            )}
-            {connections.etsy && (
-              <TabsTrigger value="etsy" className="flex items-center gap-2">
-                <Store className="h-4 w-4" /> Etsy
-              </TabsTrigger>
-            )}
-          </TabsList>
+        <div className="space-y-4">
+          <Card className="bg-card/50 border-border/30">
+            <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium">Active Shopify store</p>
+                <p className="text-xs text-muted-foreground">Choose the store this optimizer should read from and write to.</p>
+                {optimizerUsage && (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <div className="h-1.5 w-32 rounded-full bg-muted/50 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${optimizerUsage.used >= optimizerUsage.limit ? "bg-red-500" : optimizerUsage.used >= optimizerUsage.limit * 0.8 ? "bg-amber-400" : "bg-primary"}`}
+                        style={{ width: `${Math.min(100, (optimizerUsage.used / optimizerUsage.limit) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {optimizerUsage.used}/{optimizerUsage.limit} optimizations this month
+                    </span>
+                  </div>
+                )}
+              </div>
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={selectedShopifyConnectionId}
+                onChange={(e) => {
+                  setSelectedShopifyConnectionId(e.target.value);
+                  setSelectedProduct(null);
+                  setShopifySuggestions(null);
+                  setShopifyProducts([]);
+                  setShopifyNextCursor(null);
+                  setShopifyHasMore(false);
+                  setShopifyDoneIds(new Set());
+                }}
+              >
+                <option value="">Select a Shopify store</option>
+                {shopifyStoreOptions.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.shop_name || connection.shop_domain || "Shopify store"}
+                  </option>
+                ))}
+              </select>
+            </CardContent>
+          </Card>
+          {shopifyLoading ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading your products...</p>
+            </div>
+          ) : selectedProduct ? (
+            <AnimatePresence mode="wait">
+              <motion.div key="shopify-detail" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+                <Card className="bg-card/50 border-border/30">
+                  <CardContent className="p-4 flex gap-4">
+                    <ProductImage src={selectedProduct.images?.[0]?.src} alt={selectedProduct.title} size="lg" />
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="font-semibold text-base leading-tight">{selectedProduct.title}</h2>
+                        <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setSelectedProduct(null); setShopifySuggestions(null); setAltsAIFilled(0); }}>
+                          Back
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedProduct.product_type && (
+                          <Badge variant="outline" className="text-xs">{selectedProduct.product_type}</Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs">{selectedProduct.variants.length} variant{selectedProduct.variants.length !== 1 ? "s" : ""}</Badge>
+                        {selectedProduct.variants[0]?.price && (
+                          <Badge variant="outline" className="text-xs">${selectedProduct.variants[0].price}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-          <TabsContent value="shopify" className="space-y-4 mt-4">
-            <Card className="bg-card/50 border-border/30">
-              <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium">Active Shopify store</p>
-                  <p className="text-xs text-muted-foreground">Choose the store this optimizer should read from and write to.</p>
-                  {optimizerUsage && (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <div className="h-1.5 w-32 rounded-full bg-muted/50 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${optimizerUsage.used >= optimizerUsage.limit ? "bg-red-500" : optimizerUsage.used >= optimizerUsage.limit * 0.8 ? "bg-amber-400" : "bg-primary"}`}
-                          style={{ width: `${Math.min(100, (optimizerUsage.used / optimizerUsage.limit) * 100)}%` }}
+                {/* Pre-optimization form — only shown before optimization runs */}
+                {!shopifySuggestions && !shopifyOptimizing && (
+                  <Card className="bg-card/50 border-primary/20">
+                    <CardContent className="p-4 space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Product Title</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          value={productTitleEdit}
+                          onChange={(e) => setProductTitleEdit(e.target.value)}
+                        />
+                        <p className="text-[10px] text-muted-foreground text-right">{productTitleEdit.length} chars — AI will optimize to GMC limits</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={`text-xs font-medium uppercase tracking-wider ${selectedProduct.body_html?.trim() ? "text-muted-foreground" : "text-amber-500"}`}>
+                          {selectedProduct.body_html?.trim() ? "Additional context for AI (optional)" : "No description found — what is this product?"}
+                        </label>
+                        <textarea
+                          className={`w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 resize-none ${selectedProduct.body_html?.trim() ? "border-input focus:ring-primary" : "border-amber-500/40 focus:ring-amber-500"}`}
+                          rows={3}
+                          placeholder={selectedProduct.body_html?.trim() ? "e.g. Christmas tablecloth, 60\" round, fixed design — not customizable. Or: metal wall art, generic specs only, do not name a specific design." : "e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."}
+                          value={productContextNote}
+                          onChange={(e) => setProductContextNote(e.target.value)}
                         />
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {optimizerUsage.used}/{optimizerUsage.limit} optimizations this month
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={selectedShopifyConnectionId}
-                  onChange={(e) => {
-                    setSelectedShopifyConnectionId(e.target.value);
-                    setSelectedProduct(null);
-                    setShopifySuggestions(null);
-                    setShopifyProducts([]);
-                    setShopifyNextCursor(null);
-                    setShopifyHasMore(false);
-                    setShopifyDoneIds(new Set());
-                  }}
-                >
-                  <option value="">Select a Shopify store</option>
-                  {shopifyStoreOptions.map((connection) => (
-                    <option key={connection.id} value={connection.id}>
-                      {connection.shop_name || connection.shop_domain || "Shopify store"}
-                    </option>
-                  ))}
-                </select>
-              </CardContent>
-            </Card>
-            {shopifyLoading ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Loading your products...</p>
-              </div>
-            ) : selectedProduct ? (
-              <AnimatePresence mode="wait">
-                <motion.div key="shopify-detail" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-                  <Card className="bg-card/50 border-border/30">
-                    <CardContent className="p-4 flex gap-4">
-                      <ProductImage src={selectedProduct.images?.[0]?.src} alt={selectedProduct.title} size="lg" />
-                      <div className="flex-1 min-w-0 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h2 className="font-semibold text-base leading-tight">{selectedProduct.title}</h2>
-                          <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setSelectedProduct(null); setShopifySuggestions(null); setAltsAIFilled(0); }}>
-                            Back
-                          </Button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedProduct.product_type && (
-                            <Badge variant="outline" className="text-xs">{selectedProduct.product_type}</Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs">{selectedProduct.variants.length} variant{selectedProduct.variants.length !== 1 ? "s" : ""}</Badge>
-                          {selectedProduct.variants[0]?.price && (
-                            <Badge variant="outline" className="text-xs">${selectedProduct.variants[0].price}</Badge>
-                          )}
-                        </div>
-                      </div>
+                      <Button
+                        className="w-full gradient-phoenix text-primary-foreground"
+                        onClick={() => void startOptimization()}
+                        disabled={!productTitleEdit.trim()}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" /> Start Optimization
+                      </Button>
                     </CardContent>
                   </Card>
+                )}
 
-                  {/* Pre-optimization form — only shown before optimization runs */}
-                  {!shopifySuggestions && !shopifyOptimizing && (
-                    <Card className="bg-card/50 border-primary/20">
-                      <CardContent className="p-4 space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Product Title</label>
-                          <input
-                            type="text"
-                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            value={productTitleEdit}
-                            onChange={(e) => setProductTitleEdit(e.target.value)}
-                          />
-                          <p className="text-[10px] text-muted-foreground text-right">{productTitleEdit.length} chars — AI will optimize to GMC limits</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-medium uppercase tracking-wider ${selectedProduct.body_html?.trim() ? "text-muted-foreground" : "text-amber-500"}`}>
-                            {selectedProduct.body_html?.trim() ? "Additional context for AI (optional)" : "No description found — what is this product?"}
-                          </label>
-                          <textarea
-                            className={`w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 resize-none ${selectedProduct.body_html?.trim() ? "border-input focus:ring-primary" : "border-amber-500/40 focus:ring-amber-500"}`}
-                            rows={3}
-                            placeholder={selectedProduct.body_html?.trim() ? "e.g. Christmas tablecloth, 60\" round, fixed design — not customizable. Or: metal wall art, generic specs only, do not name a specific design." : "e.g. A 3-piece paint splatter lounge set including hoodie, joggers and shorts. Unisex sizing XS-4XL."}
-                            value={productContextNote}
-                            onChange={(e) => setProductContextNote(e.target.value)}
-                          />
-                        </div>
-                        <Button
-                          className="w-full gradient-phoenix text-primary-foreground"
-                          onClick={() => void startOptimization()}
-                          disabled={!productTitleEdit.trim()}
-                        >
-                          <Sparkles className="h-4 w-4 mr-2" /> Start Optimization
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  )}
+                {shopifyOptimizing && (
+                  <Card className="bg-card/50 border-border/30">
+                    <CardContent className="p-6 flex flex-col items-center gap-3">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">AI is optimizing your product...</p>
+                    </CardContent>
+                  </Card>
+                )}
 
-                  {shopifyOptimizing && (
-                    <Card className="bg-card/50 border-border/30">
-                      <CardContent className="p-6 flex flex-col items-center gap-3">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">AI is optimizing your product...</p>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {shopifySuggestions && selectedProduct.images && selectedProduct.images.length > 0 && (
-                    <Card className={`border-border/30 overflow-hidden ${altsAIFilled > 0 ? "bg-primary/5 border-primary/30" : "bg-card/50"}`}>
-                      <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setAltTextExpanded((v) => !v)}>
-                        <div className="flex items-center gap-2">
-                          <ImageIcon className="h-4 w-4 text-primary" />
-                          <span className="text-sm font-medium">Image Alt Text</span>
-                          <Badge variant="outline" className="text-[10px] py-0">{selectedProduct.images.length} image{selectedProduct.images.length !== 1 ? "s" : ""}</Badge>
-                          {altsAIFilled > 0 && (
-                            <Badge className="bg-primary/20 text-primary border-primary/30 border text-[10px] px-1.5">AI filled {altsAIFilled}</Badge>
-                          )}
-                        </div>
-                        {altTextExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                      </button>
-                      {altTextExpanded && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={altScanLoading}
-                              onClick={scanImageAlts}
-                            >
-                              {altScanLoading
-                                ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Scanning images...</>
-                                : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Scan Images for Alt + Names</>
-                              }
-                            </Button>
-                          </div>
-                          {selectedProduct.images.map((img, i) => (
-                            <div key={img.id} className="flex gap-3 items-start">
-                              <img src={img.src} alt={img.alt || ""} className="w-16 h-16 rounded-lg object-cover border border-border/30 shrink-0" />
-                              <div className="flex-1 space-y-1">
-                                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Image {i + 1}</p>
-                                <input
-                                  type="text"
-                                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
-                                  placeholder="Describe this image..."
-                                  value={imageAltEdits[img.id] ?? (img.alt || "")}
-                                  onChange={(e) => setImageAltEdits(prev => ({ ...prev, [img.id]: e.target.value }))}
-                                  maxLength={512}
-                                />
-                                <input
-                                  type="text"
-                                  readOnly
-                                  className="w-full h-8 rounded-md border border-input bg-muted/30 px-3 text-xs text-muted-foreground"
-                                  value={imageFilenameDrafts[img.id] || ""}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                          <Button size="sm" disabled={savingAltText || Object.keys(imageAltEdits).length === 0} onClick={saveAltTextOnly} className="w-full">
-                            {savingAltText ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...</> : "Save Alt Text to Shopify"}
-                          </Button>
-                          <Button size="sm" variant="ghost" className="w-full text-muted-foreground" onClick={() => setAltTextExpanded(false)}>
-                            <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> Collapse
-                          </Button>
-                        </motion.div>
-                      )}
-                    </Card>
-                  )}
-
-                  {shopifySuggestions && (<Card className="bg-card/50 border-border/30 overflow-hidden">
-                    <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("sales_channels")}>
+                {shopifySuggestions && selectedProduct.images && selectedProduct.images.length > 0 && (
+                  <Card className={`border-border/30 overflow-hidden ${altsAIFilled > 0 ? "bg-primary/5 border-primary/30" : "bg-card/50"}`}>
+                    <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => setAltTextExpanded((v) => !v)}>
                       <div className="flex items-center gap-2">
-                        <Radio className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">Sales Channels</span>
-                        {!channelsLoading && salesChannels.length > 0 && (
-                          <Badge variant="outline" className="text-[10px] py-0">{publishedChannelIds.length}/{salesChannels.length} active</Badge>
+                        <ImageIcon className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Image Alt Text</span>
+                        <Badge variant="outline" className="text-[10px] py-0">{selectedProduct.images.length} image{selectedProduct.images.length !== 1 ? "s" : ""}</Badge>
+                        {altsAIFilled > 0 && (
+                          <Badge className="bg-primary/20 text-primary border-primary/30 border text-[10px] px-1.5">AI filled {altsAIFilled}</Badge>
                         )}
                       </div>
-                      {expandedSection === "sales_channels" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      {altTextExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                     </button>
-                    {expandedSection === "sales_channels" && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-2">
-                        {channelsLoading ? (
-                          <div className="flex items-center gap-2 py-2">
-                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                            <span className="text-sm text-muted-foreground">Loading channels...</span>
+                    {altTextExpanded && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={altScanLoading}
+                            onClick={scanImageAlts}
+                          >
+                            {altScanLoading
+                              ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Scanning images...</>
+                              : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Scan Images for Alt + Names</>
+                            }
+                          </Button>
+                        </div>
+                        {selectedProduct.images.map((img, i) => (
+                          <div key={img.id} className="flex gap-3 items-start">
+                            <img src={img.src} alt={img.alt || ""} className="w-16 h-16 rounded-lg object-cover border border-border/30 shrink-0" />
+                            <div className="flex-1 space-y-1">
+                              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Image {i + 1}</p>
+                              <input
+                                type="text"
+                                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="Describe this image..."
+                                value={imageAltEdits[img.id] ?? (img.alt || "")}
+                                onChange={(e) => setImageAltEdits(prev => ({ ...prev, [img.id]: e.target.value }))}
+                                maxLength={512}
+                              />
+                              <input
+                                type="text"
+                                readOnly
+                                className="w-full h-8 rounded-md border border-input bg-muted/30 px-3 text-xs text-muted-foreground"
+                                value={imageFilenameDrafts[img.id] || ""}
+                              />
+                            </div>
                           </div>
-                        ) : salesChannels.length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-2">No sales channels found for this store.</p>
-                        ) : (
-                          salesChannels.map((channel) => {
-                            const isPublished = publishedChannelIds.includes(channel.id);
-                            const isToggling = channelTogglingId === channel.id;
-                            return (
-                              <div key={channel.id} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0">
-                                <div className="flex items-center gap-2">
-                                  {isToggling ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                                  ) : (
-                                    <div className={`w-2 h-2 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
-                                  )}
-                                  <span className="text-sm">{channel.name}</span>
-                                </div>
-                                <Switch
-                                  checked={isPublished}
-                                  disabled={isToggling}
-                                  onCheckedChange={() => toggleSalesChannel(channel.id, isPublished)}
-                                />
-                              </div>
-                            );
-                          })
-                        )}
+                        ))}
+                        <Button size="sm" disabled={savingAltText || Object.keys(imageAltEdits).length === 0} onClick={saveAltTextOnly} className="w-full">
+                          {savingAltText ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...</> : "Save Alt Text to Shopify"}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="w-full text-muted-foreground" onClick={() => setAltTextExpanded(false)}>
+                          <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> Collapse
+                        </Button>
                       </motion.div>
                     )}
                   </Card>
-
-                   )}
-
-                   {shopifyOptimizing ? (
-                    <Card className="bg-card/50 border-border/30">
-                      <CardContent className="p-8 flex flex-col items-center gap-3">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">Optimizing for Shopify SEO...</p>
-                      </CardContent>
-                    </Card>
-                  ) : shopifySuggestions ? (
-                    <>
-                      {shopifySuggestions.reasoning?.includes("AI QUOTA EXCEEDED") ? (
-                        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/40">
-                          <p className="text-sm text-amber-500 font-medium">AI quota exceeded — basic cleanup only. Wait a few minutes and re-run for full optimization.</p>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                          <p className="text-sm text-muted-foreground"><Sparkles className="h-4 w-4 inline mr-1 text-primary" />{shopifySuggestions.reasoning}</p>
-                        </div>
-                      )}
-                      <ComparisonRow label="Product Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, title: v })} />
-                      <ComparisonRow label="Product Description" icon={<FileText className="h-4 w-4 text-primary" />} original={(selectedProduct.body_html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || "No description"} optimized={shopifySuggestions.body_html} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, body_html: v })} multiline />
-                      <ComparisonRow label="SEO Title" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.seo_title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_title: v })} />
-                      <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original={(selectedProduct.metafields_global_description_tag || "No meta description")} optimized={shopifySuggestions.seo_description} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_description: v })} multiline />
-                      <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, product_type: v })} />
-                      <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, tags: v })} multiline />
-                      <div className="flex gap-3 pt-2">
-                        <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">
-                          {shopifyApplying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Applying...</> : <><CheckCircle2 className="h-4 w-4 mr-2" /> Apply All Changes to Shopify</>}
-                        </Button>
-                      </div>
-                    </>
-                  ) : null}
-                </motion.div>
-              </AnimatePresence>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">{selectedShopifyConnectionId ? `${shopifyProducts.length} products` : "Select a store."}</p>
-                  <Button variant="outline" size="sm" onClick={() => void fetchShopifyProducts(null, false)} disabled={!selectedShopifyConnectionId}>Refresh</Button>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {shopifyProducts.map((product) => (
-                    <motion.div key={product.id} whileHover={{ scale: 1.01 }} className="cursor-pointer" onClick={() => selectProduct(product)}>
-                      <Card className="bg-card/50 border-border/30 hover:border-primary/40">
-                        <CardContent className="p-3 flex gap-3">
-                          <ProductImage src={product.images?.[0]?.src} alt={product.title} size="md" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm line-clamp-2">{product.title}</p>
-                            <Badge variant="outline" className="text-[10px] mt-1">{product.product_type}</Badge>
-
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-                {shopifyHasMore && (
-                  <Button variant="outline" className="w-full" onClick={() => void fetchShopifyProducts(shopifyNextCursor, true)} disabled={shopifyLoading}>
-                    {shopifyLoading ? "Loading..." : "Load More Products"}
-                  </Button>
                 )}
-              </>
-            )}
-          </TabsContent>
 
-          <TabsContent value="etsy" className="space-y-4 mt-4">
-            <Card className="bg-card/50 border-border/30">
-              <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium">Active Etsy shop</p>
-                  <p className="text-xs text-muted-foreground">Select connection for optimization.</p>
-                </div>
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={selectedEtsyConnectionId}
-                  onChange={(e) => {
-                    setSelectedEtsyConnectionId(e.target.value);
-                    setSelectedListing(null);
-                    setEtsyListings([]);
-                  }}
-                >
-                  <option value="">Select an Etsy shop</option>
-                  {etsyStoreOptions.map((connection) => (
-                    <option key={connection.id} value={connection.id}>
-                      {connection.shop_name || connection.shop_domain || "Etsy shop"}
-                    </option>
-                  ))}
-                </select>
-              </CardContent>
-            </Card>
-            {etsyLoading ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Loading listings...</p>
-              </div>
-            ) : selectedListing ? (
-              <AnimatePresence mode="wait">
-                <motion.div key="etsy-detail" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-                  <Card className="bg-card/50 border-border/30">
-                    <CardContent className="p-4 flex gap-4">
-                      <ProductImage src={selectedListing.images?.[0]?.url_570xN} alt={selectedListing.title} size="lg" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <h2 className="font-semibold text-base leading-tight">{selectedListing.title}</h2>
-                          <Button variant="ghost" size="sm" onClick={() => setSelectedListing(null)}>Back</Button>
+                {shopifySuggestions && (<Card className="bg-card/50 border-border/30 overflow-hidden">
+                  <button className="w-full p-4 flex items-center justify-between text-left" onClick={() => toggle("sales_channels")}>
+                    <div className="flex items-center gap-2">
+                      <Radio className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">Sales Channels</span>
+                      {!channelsLoading && salesChannels.length > 0 && (
+                        <Badge variant="outline" className="text-[10px] py-0">{publishedChannelIds.length}/{salesChannels.length} active</Badge>
+                      )}
+                    </div>
+                    {expandedSection === "sales_channels" ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+                  {expandedSection === "sales_channels" && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="px-4 pb-4 space-y-2">
+                      {channelsLoading ? (
+                        <div className="flex items-center gap-2 py-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground">Loading channels...</span>
                         </div>
-                      </div>
+                      ) : salesChannels.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">No sales channels found for this store.</p>
+                      ) : (
+                        salesChannels.map((channel) => {
+                          const isPublished = publishedChannelIds.includes(channel.id);
+                          const isToggling = channelTogglingId === channel.id;
+                          return (
+                            <div key={channel.id} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0">
+                              <div className="flex items-center gap-2">
+                                {isToggling ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                ) : (
+                                  <div className={`w-2 h-2 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+                                )}
+                                <span className="text-sm">{channel.name}</span>
+                              </div>
+                              <Switch
+                                checked={isPublished}
+                                disabled={isToggling}
+                                onCheckedChange={() => toggleSalesChannel(channel.id, isPublished)}
+                              />
+                            </div>
+                          );
+                        })
+                      )}
+                    </motion.div>
+                  )}
+                </Card>
+
+                )}
+
+                {shopifyOptimizing ? (
+                  <Card className="bg-card/50 border-border/30">
+                    <CardContent className="p-8 flex flex-col items-center gap-3">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Optimizing for Shopify SEO...</p>
                     </CardContent>
                   </Card>
-
-                  {etsyOptimizing ? (
-                    <Card className="bg-card/50 border-border/30 p-8 text-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
-                      <p className="text-sm text-muted-foreground">Optimizing Etsy search...</p>
+                ) : shopifySuggestions ? (
+                  <>
+                    {shopifySuggestions.reasoning?.includes("AI QUOTA EXCEEDED") ? (
+                      <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/40">
+                        <p className="text-sm text-amber-500 font-medium">AI quota exceeded — basic cleanup only. Wait a few minutes and re-run for full optimization.</p>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                        <p className="text-sm text-muted-foreground"><Sparkles className="h-4 w-4 inline mr-1 text-primary" />{shopifySuggestions.reasoning}</p>
+                      </div>
+                    )}
+                    <ComparisonRow label="Product Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, title: v })} />
+                    <ComparisonRow label="Product Description" icon={<FileText className="h-4 w-4 text-primary" />} original={(selectedProduct.body_html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || "No description"} optimized={shopifySuggestions.body_html} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, body_html: v })} multiline />
+                    <ComparisonRow label="SEO Title" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedProduct.title} optimized={shopifySuggestions.seo_title} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_title: v })} />
+                    <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original={(selectedProduct.metafields_global_description_tag || "No meta description")} optimized={shopifySuggestions.seo_description} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_description: v })} multiline />
+                    <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, product_type: v })} />
+                    <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, tags: v })} multiline />
+                    <div className="flex gap-3 pt-2">
+                      <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">
+                        {shopifyApplying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Applying...</> : <><CheckCircle2 className="h-4 w-4 mr-2" /> Apply All Changes to Shopify</>}
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">{selectedShopifyConnectionId ? `${shopifyProducts.length} products` : "Select a store."}</p>
+                <Button variant="outline" size="sm" onClick={() => void fetchShopifyProducts(null, false)} disabled={!selectedShopifyConnectionId}>Refresh</Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {shopifyProducts.map((product) => (
+                  <motion.div key={product.id} whileHover={{ scale: 1.01 }} className="cursor-pointer" onClick={() => selectProduct(product)}>
+                    <Card className="bg-card/50 border-border/30 hover:border-primary/40">
+                      <CardContent className="p-3 flex gap-3">
+                        <ProductImage src={product.images?.[0]?.src} alt={product.title} size="md" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm line-clamp-2">{product.title}</p>
+                          <Badge variant="outline" className="text-[10px] mt-1">{product.product_type}</Badge>
+                        </div>
+                      </CardContent>
                     </Card>
-                  ) : etsySuggestions ? (
-                    <>
-                      <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
-                        <Sparkles className="h-4 w-4 inline mr-1 text-primary" />{etsySuggestions.reasoning}
-                      </div>
-                      <ComparisonRow label="Title" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.title} optimized={etsySuggestions.title} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, title: v })} />
-                      <ComparisonRow label="Description" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedListing.description || ""} optimized={etsySuggestions.description} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, description: v })} multiline />
-                      <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.tags?.join(", ") || ""} optimized={etsySuggestions.tags?.join(", ") || ""} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, tags: v.split(",").map(t => t.trim()) })} multiline />
-                      <ComparisonRow label="Materials" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedListing.materials?.join(", ") || ""} optimized={etsySuggestions.materials?.join(", ") || ""} onChange={(v) => setEtsySuggestions({ ...etsySuggestions, materials: v.split(",").map(t => t.trim()) })} multiline />
-                      <div className="flex gap-3 pt-2">
-                        <Button onClick={applyEtsyChanges} disabled={etsyApplying} className="gradient-phoenix text-primary-foreground flex-1">
-                          {etsyApplying ? "Applying..." : "Apply to Etsy"}
-                        </Button>
-                      </div>
-                    </>
-                  ) : null}
-                </motion.div>
-              </AnimatePresence>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">{selectedEtsyConnectionId ? `${etsyListings.length} listings` : "Select shop."}</p>
-                  <Button variant="outline" size="sm" onClick={fetchEtsyListings} disabled={!selectedEtsyConnectionId}>Refresh</Button>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {etsyListings.map((listing) => (
-                    <motion.div key={listing.listing_id} whileHover={{ scale: 1.01 }} className="cursor-pointer" onClick={() => optimizeEtsy(listing)}>
-                      <Card className="bg-card/50 border-border/30 hover:border-primary/40">
-                        <CardContent className="p-3 flex gap-3">
-                          <ProductImage src={listing.images?.[0]?.url_170x135} alt={listing.title} size="md" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm line-clamp-2">{listing.title}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-              </>
-            )}
-          </TabsContent>
-        </Tabs>
+                  </motion.div>
+                ))}
+              </div>
+              {shopifyHasMore && (
+                <Button variant="outline" className="w-full" onClick={() => void fetchShopifyProducts(shopifyNextCursor, true)} disabled={shopifyLoading}>
+                  {shopifyLoading ? "Loading..." : "Load More Products"}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );
