@@ -180,15 +180,9 @@ export default function ListingScanPage() {
     return lastSpace > 0 ? text.substring(0, lastSpace) : text.substring(0, limit);
   };
   const fetchConnections = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setLoading(false);
-      return;
-    }
     const { data } = await supabase
       .from("store_connections")
       .select("id, platform, shop_domain, shop_name, scopes, created_at")
-      .eq("user_id", session.user.id)
       .order("created_at", { ascending: false });
 
     const allRows = (data || []) as StoreConnectionOption[];

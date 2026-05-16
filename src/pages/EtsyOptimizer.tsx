@@ -103,7 +103,6 @@ export default function EtsyOptimizer() {
       const { data } = await supabase
         .from("store_connections")
         .select("id, platform, shop_domain, shop_name, scopes, created_at")
-        .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
       const rows = (data || []).filter((c) => isEtsyPlatform(c.platform) && isEtsyConnected(c));
       setConnections(rows);
