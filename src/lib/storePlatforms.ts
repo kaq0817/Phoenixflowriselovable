@@ -9,6 +9,6 @@ export function isShopifyPlatform(value: unknown): boolean {
 }
 
 export function isEtsyPlatform(value: unknown): boolean {
-  return normalizePlatform(value) === "etsy";
+  return normalizePlatform(value).startsWith("etsy");
 }
 

@@ -135,11 +135,7 @@ export default function DashboardLayout() {
         key={item.title}
         type="button"
         onClick={() => {
-          if (enabled) {
-            navigate(item.url);
-          } else {
-            navigate("/settings");
-          }
+          navigate(item.url);
           setMenuOpen(false);
         }}
         className={cn(

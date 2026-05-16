@@ -8,8 +8,7 @@ export type EtsyConnectionLike = {
 };
 
 export function isEtsyConnected(connection: EtsyConnectionLike): boolean {
-  if (!isEtsyPlatform(connection.platform)) return false;
-  return Boolean(connection.shop_domain || connection.shop_name);
+  return isEtsyPlatform(connection.platform);
 }
 
 export function isEtsyOAuthConnected(connection: EtsyConnectionLike): boolean {

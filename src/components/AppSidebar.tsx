@@ -129,11 +129,11 @@ export function AppSidebar() {
                 : "";
               return (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild disabled={item.comingSoon || !enabled}>
+                  <SidebarMenuButton asChild disabled={!!item.comingSoon}>
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className={`hover:bg-sidebar-accent/50 transition-colors ${item.comingSoon || !enabled ? "opacity-50 pointer-events-none" : ""}`}
+                      className={`hover:bg-sidebar-accent/50 transition-colors ${item.comingSoon ? "opacity-50 pointer-events-none" : !enabled ? "opacity-50" : ""}`}
                       activeClassName="bg-primary/10 text-primary font-semibold border-l-2 border-primary"
                     >
                       <item.icon className={`mr-2 h-4 w-4 ${isActive(item.url) ? "text-primary" : ""}`} />
