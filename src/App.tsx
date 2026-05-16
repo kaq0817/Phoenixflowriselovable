@@ -29,6 +29,7 @@ import AdminUsers from "./pages/AdminUsers";
 import Templanator from "./pages/Templanator";
 import Terms from "./pages/Terms";
 import PrivacyPolicy from "./pages/privacy_policy";
+import OAuthConsent from "./pages/OAuthConsent";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/oauth/consent" element={<OAuthConsent />} />
             <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               {/* Free tier — optimizer only */}
               <Route path="/" element={<Index />} />
