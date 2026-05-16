@@ -48,6 +48,7 @@ export default function RadioPage() {
   const [loading, setLoading] = useState(true);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
 
   const currentTrack = currentTrackIndex >= 0 ? tracks[currentTrackIndex] : null;
   const currentTrackId = currentTrack?.id ?? null;
@@ -55,10 +56,19 @@ export default function RadioPage() {
   const storage = useStorageUsage(user?.id, "music");
   const isAdmin = useIsAdmin(user?.id);
 
-  const getPublicUrl = (filePath: string) => {
-    const { data } = supabase.storage.from("music").getPublicUrl(filePath);
-    return data.publicUrl;
-  };
+  const getSignedUrl = (filePath: string | null) => filePath ? (signedUrls[filePath] ?? "") : "";
+
+  const refreshSignedUrls = useCallback(async (trackList: Track[]) => {
+    const paths = trackList.flatMap((t) =>
+      [t.file_path, t.cover_image_path].filter((p): p is string => Boolean(p))
+    );
+    if (paths.length === 0) return;
+    const { data } = await supabase.storage.from("music").createSignedUrls(paths, 3600);
+    if (!data) return;
+    const map: Record<string, string> = {};
+    data.forEach(({ path, signedUrl }) => { if (path && signedUrl) map[path] = signedUrl; });
+    setSignedUrls(map);
+  }, []);
 
   const fetchTracks = useCallback(async () => {
     if (!user) return;
@@ -71,10 +81,12 @@ export default function RadioPage() {
     if (error) {
       toast({ title: "Error loading tracks", description: error.message, variant: "destructive" });
     } else {
-      setTracks(data || []);
+      const trackList = data || [];
+      setTracks(trackList);
+      await refreshSignedUrls(trackList);
     }
     setLoading(false);
-  }, [user, toast]);
+  }, [user, toast, refreshSignedUrls]);
 
   useEffect(() => { fetchTracks(); }, [fetchTracks]);
 
@@ -196,18 +208,14 @@ export default function RadioPage() {
     toast({ title: "Track deleted" });
   };
 
-  const getCoverUrl = (path: string | null) => {
-    if (!path) return null;
-    const { data } = supabase.storage.from("music").getPublicUrl(path);
-    return data.publicUrl;
-  };
+  const getCoverUrl = (path: string | null) => getSignedUrl(path);
 
   const currentCoverUrl = currentTrack ? getCoverUrl(currentTrack.cover_image_path) : null;
 
   return (
     <div className="space-y-6">
       {currentTrack && (
-        <audio ref={audioRef} src={getPublicUrl(currentTrackFilePath)} preload="auto" />
+        <audio ref={audioRef} src={getSignedUrl(currentTrackFilePath)} preload="auto" />
       )}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">

@@ -51,6 +51,7 @@ DELETE FROM storage.buckets WHERE id = 'music' AND public = true;
 UPDATE storage.buckets SET public = false WHERE id = 'music';
 
 -- Drop any overly-broad public storage policy on music if it exists.
+DROP POLICY IF EXISTS "Public read music" ON storage.objects;
 DROP POLICY IF EXISTS "Public can read music" ON storage.objects;
 DROP POLICY IF EXISTS "Give public access to music" ON storage.objects;
 DROP POLICY IF EXISTS "Allow public read on music" ON storage.objects;
