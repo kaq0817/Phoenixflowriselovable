@@ -44,10 +44,10 @@ const shopifyItems: SidebarItem[] = [
 ];
 
 const etsyItems: SidebarItem[] = [
-  { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2, requiresEtsy: true },
-  { title: "Listing Scanner", url: "/listing-scan", icon: Scan, requiresEtsy: true },
-  { title: "Ad Generator", url: "/ads", icon: Bot, requiresEtsy: true },
-  { title: "History", url: "/history", icon: History, requiresEtsy: true },
+  { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2 },
+  { title: "Listing Scanner", url: "/listing-scan", icon: Scan },
+  { title: "Ad Generator", url: "/ads", icon: Bot },
+  { title: "History", url: "/history", icon: History },
 ];
 
 const complianceItems: SidebarItem[] = [
