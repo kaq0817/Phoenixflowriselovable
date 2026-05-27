@@ -56,7 +56,8 @@ serve(async (req) => {
       });
     }
 
-    if (connection.access_token === "public_only" || !connection.refresh_token) {
+    const isPublicOnly = (connection.access_token || "").toLowerCase() === "public_only" || (connection.scopes || "") === "public_read";
+    if (isPublicOnly) {
       const shopName = connection.shop_name || connection.shop_domain;
       if (!shopName) {
         return new Response(JSON.stringify({ error: "Connected Etsy store is missing shop identifier." }), {
@@ -102,6 +103,12 @@ serve(async (req) => {
     }
 
     if (connection.token_expires_at && new Date(connection.token_expires_at) <= new Date()) {
+      if (!connection.refresh_token) {
+        return new Response(JSON.stringify({ error: "Token expired. Please reconnect your Etsy shop." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },

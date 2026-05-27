@@ -55,7 +55,8 @@ serve(async (req: Request) => {
       });
     }
 
-    if (connection.access_token === "public_only") {
+    const isPublicOnly = (connection.access_token || "").toLowerCase() === "public_only" || (connection.scopes || "") === "public_read";
+    if (isPublicOnly) {
       return new Response(JSON.stringify({ error: "This Etsy connection is read-only. Use Copy buttons, or connect via Etsy OAuth to apply changes directly." }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -76,6 +77,12 @@ serve(async (req: Request) => {
     }
 
     if (connection.token_expires_at && new Date(connection.token_expires_at) <= new Date()) {
+      if (!connection.refresh_token) {
+        return new Response(JSON.stringify({ error: "Token expired. Please reconnect your Etsy shop." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const refreshRes = await fetch("https://api.etsy.com/v3/public/oauth/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },

@@ -41,10 +41,23 @@ serve(async (req) => {
     const stateParam = url.searchParams.get("state");
 
     if (errorCode) {
+      let origin: string | undefined;
+      let path: string | undefined;
+      if (stateParam) {
+        try {
+          const recovered = await verifySignedOAuthState(stateParam);
+          origin = recovered.appOrigin;
+          path = recovered.returnPath;
+        } catch {
+          // ignore
+        }
+      }
       return Response.redirect(
         buildAppRedirect({
           status: errorCode === "access_denied" ? "denied" : "error",
           message: errorDescription || errorCode,
+          origin,
+          path,
         }),
         302,
       );
@@ -87,7 +100,7 @@ serve(async (req) => {
     if (!tokenRes.ok) {
       const tokenError = await tokenRes.text();
       console.error("Etsy token exchange failed:", tokenError);
-      return Response.redirect(buildAppRedirect({ status: "error", message: "Etsy token exchange failed." }), 302);
+      return Response.redirect(buildAppRedirect({ status: "error", message: "Etsy token exchange failed.", origin: state.appOrigin, path: state.returnPath }), 302);
     }
 
     const tokenData = await tokenRes.json();
@@ -104,6 +117,8 @@ serve(async (req) => {
         buildAppRedirect({
           status: "error",
           message: "Could not determine Etsy user for this OAuth session. Please try again.",
+          origin: state.appOrigin,
+          path: state.returnPath,
         }),
         302,
       );
@@ -132,6 +147,8 @@ serve(async (req) => {
         buildAppRedirect({
           status: "error",
           message: "Etsy OAuth succeeded, but no shop was found for this account. Make sure your Etsy account has an active shop, then try again.",
+          origin: state.appOrigin,
+          path: state.returnPath,
         }),
         302,
       );
@@ -160,7 +177,7 @@ serve(async (req) => {
 
     if (upsertError) {
       console.error("Failed to save Etsy connection:", upsertError);
-      return Response.redirect(buildAppRedirect({ status: "error", message: "Failed to save Etsy connection." }), 302);
+      return Response.redirect(buildAppRedirect({ status: "error", message: "Failed to save Etsy connection.", origin: state.appOrigin, path: state.returnPath }), 302);
     }
 
     return Response.redirect(
@@ -168,6 +185,7 @@ serve(async (req) => {
         status: "connected",
         path: state.returnPath,
         message: shopName === "Etsy Shop" ? "Etsy OAuth connected." : `Connected ${shopName}.`,
+        origin: state.appOrigin,
       }),
       302,
     );

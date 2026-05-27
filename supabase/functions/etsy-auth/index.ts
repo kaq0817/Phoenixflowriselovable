@@ -23,6 +23,23 @@ serve(async (req) => {
   }
 
   try {
+    const { returnPath, appOrigin } = await req.json().catch(() => ({})) as { returnPath?: unknown; appOrigin?: unknown };
+    const safeReturnPath = typeof returnPath === "string"
+      && returnPath.startsWith("/")
+      && !returnPath.includes("://")
+      && !returnPath.includes("\\");
+
+    const originCandidate = typeof appOrigin === "string" ? appOrigin : req.headers.get("origin") || "";
+    let safeAppOrigin: string | undefined;
+    if (originCandidate) {
+      try {
+        const parsed = new URL(originCandidate);
+        safeAppOrigin = parsed.origin;
+      } catch {
+        // ignore
+      }
+    }
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
@@ -46,7 +63,12 @@ serve(async (req) => {
     const codeVerifier = generateCodeVerifier();
     const challengeBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
     const codeChallenge = base64urlEncode(challengeBuffer);
-    const state = await createSignedOAuthState({ userId, codeVerifier, returnPath: "/settings" });
+    const state = await createSignedOAuthState({
+      userId,
+      codeVerifier,
+      returnPath: safeReturnPath ? returnPath : "/settings",
+      appOrigin: safeAppOrigin,
+    });
     const scopes = getEtsyScopes();
 
     const authUrl = new URL("https://www.etsy.com/oauth/connect");

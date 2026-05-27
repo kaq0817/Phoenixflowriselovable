@@ -117,20 +117,14 @@ export default function SettingsPage() {
   const handleEtsyConnect = async () => {
     setEtsyConnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("etsy-auth");
+      const { data, error } = await supabase.functions.invoke("etsy-auth", {
+        body: { returnPath: "/settings", appOrigin: window.location.origin },
+      });
       if (error) throw error;
       if (!data?.url) throw new Error("Etsy authorization URL was not returned");
 
       setShowEtsyForm(false);
-      const opened = window.open(data.url, "_blank", "noopener,noreferrer");
-      if (!opened) {
-        window.location.href = data.url;
-      } else {
-        toast({
-          title: "Etsy login opened",
-          description: "Use an incognito/private window or a different browser profile to switch Etsy accounts.",
-        });
-      }
+      window.location.href = data.url;
     } catch (error: unknown) {
       toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Etsy authorization."), variant: "destructive" });
       setEtsyConnecting(false);

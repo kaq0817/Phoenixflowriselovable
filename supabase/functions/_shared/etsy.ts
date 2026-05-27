@@ -7,6 +7,7 @@ interface EtsyOAuthStatePayload {
   userId: string;
   codeVerifier: string;
   returnPath: string;
+  appOrigin?: string;
   exp: number;
 }
 
@@ -33,8 +34,8 @@ export function getEtsyRedirectUri(): string {
   return Deno.env.get("ETSY_REDIRECT_URI") || `${Deno.env.get("SUPABASE_URL")}/functions/v1/etsy-callback`;
 }
 
-export function buildAppRedirect(input: { status: "connected" | "denied" | "error"; message?: string; path?: string }): string {
-  const base = new URL(input.path || "/settings", getAppOrigin());
+export function buildAppRedirect(input: { status: "connected" | "denied" | "error"; message?: string; path?: string; origin?: string }): string {
+  const base = new URL(input.path || "/settings", input.origin || getAppOrigin());
   base.searchParams.set("etsy", input.status);
   if (input.message) {
     base.searchParams.set("etsy_message", sanitizeMessage(input.message));
@@ -46,11 +47,13 @@ export async function createSignedOAuthState(input: {
   userId: string;
   codeVerifier: string;
   returnPath?: string;
+  appOrigin?: string;
 }): Promise<string> {
   const payload: EtsyOAuthStatePayload = {
     userId: input.userId,
     codeVerifier: input.codeVerifier,
     returnPath: input.returnPath || "/settings",
+    appOrigin: input.appOrigin,
     exp: Date.now() + STATE_TTL_MS,
   };
   const encodedPayload = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)).buffer);
@@ -72,6 +75,15 @@ export async function verifySignedOAuthState(state: string): Promise<EtsyOAuthSt
   }
   if (payload.exp < Date.now()) {
     throw new Error("OAuth state expired");
+  }
+  if (payload.appOrigin) {
+    try {
+      const origin = new URL(payload.appOrigin).origin;
+      if (!origin.startsWith("http")) throw new Error("Invalid origin");
+      payload.appOrigin = origin;
+    } catch {
+      throw new Error("Invalid OAuth app origin");
+    }
   }
 
   return payload;

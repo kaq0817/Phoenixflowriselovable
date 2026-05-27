@@ -3,14 +3,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ToastAction } from "@/components/ui/toast";
 import {
   Flower2, Sparkles, Store, Loader2, Tag, FileText, Palette,
-  AlertTriangle, Image as ImageIcon,
+  Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { isEtsyConnected, isEtsyOAuthConnected } from "@/lib/etsyConnections";
+import { isEtsyConnected } from "@/lib/etsyConnections";
 import { isEtsyPlatform } from "@/lib/storePlatforms";
 
 interface EtsyListing {
@@ -88,6 +89,7 @@ export default function EtsyOptimizer() {
   const [connections, setConnections] = useState<StoreConnectionOption[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [etsyOAuthStarting, setEtsyOAuthStarting] = useState(false);
 
   const [listings, setListings] = useState<EtsyListing[]>([]);
   const [listingsLoading, setListingsLoading] = useState(false);
@@ -95,24 +97,62 @@ export default function EtsyOptimizer() {
   const [suggestions, setSuggestions] = useState<EtsySuggestions | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  const loadConnections = async () => {
+    const { data } = await supabase
+      .from("store_connections")
+      .select("id, platform, shop_domain, shop_name, scopes, created_at")
+      .order("created_at", { ascending: false });
+    const etsyRows = (data || []).filter((c) => isEtsyPlatform(c.platform) && isEtsyConnected(c));
+    const eligibleRows = etsyRows.filter((c) => (c.scopes || "").trim() !== "public_read");
+
+    setConnections(eligibleRows);
+    setSelectedConnectionId((prev) => prev || (eligibleRows[0]?.id ?? ""));
+  };
 
   useEffect(() => {
     if (!session) return;
     (async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("store_connections")
-        .select("id, platform, shop_domain, shop_name, scopes, created_at")
-        .order("created_at", { ascending: false });
-      const rows = (data || []).filter((c) => isEtsyPlatform(c.platform) && isEtsyConnected(c));
-      setConnections(rows);
-      if (rows.length === 1) setSelectedConnectionId(rows[0].id);
+      await loadConnections();
       setLoading(false);
     })();
   }, [session]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const etsyStatus = params.get("etsy");
+    const etsyMessage = params.get("etsy_message");
+    if (!etsyStatus) return;
+
+    if (etsyStatus === "connected") {
+      toast({ title: "Etsy connected", description: etsyMessage || "Your Etsy OAuth connection is active." });
+      void loadConnections();
+    } else {
+      toast({
+        title: etsyStatus === "denied" ? "Etsy authorization denied" : "Etsy connection failed",
+        description: etsyMessage || "The Etsy OAuth flow did not complete.",
+        variant: "destructive",
+      });
+    }
+
+    params.delete("etsy");
+    params.delete("etsy_message");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!selectedConnectionId) return;
+    if (listingsLoading) return;
+    if (selectedListing) return;
+    if (listings.length > 0) return;
+    void fetchListings(selectedConnectionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConnectionId]);
+
   const selectedConnection = connections.find((c) => c.id === selectedConnectionId) ?? null;
-  const isOAuth = selectedConnection ? isEtsyOAuthConnected(selectedConnection) : false;
 
   const fetchListings = async (connectionId?: string) => {
     const id = connectionId ?? selectedConnectionId;
@@ -128,6 +168,21 @@ export default function EtsyOptimizer() {
       toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
     } finally {
       setListingsLoading(false);
+    }
+  };
+
+  const startEtsyOAuth = async () => {
+    setEtsyOAuthStarting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("etsy-auth", {
+        body: { returnPath: "/etsy-optimizer", appOrigin: window.location.origin },
+      });
+      if (error) throw error;
+      if (!data?.url) throw new Error("Etsy authorization URL was not returned");
+      window.location.href = data.url;
+    } catch (err: unknown) {
+      toast({ title: "Connection failed", description: (err as Error).message, variant: "destructive" });
+      setEtsyOAuthStarting(false);
     }
   };
 
@@ -170,9 +225,43 @@ export default function EtsyOptimizer() {
       setSuggestions(null);
       void fetchListings();
     } catch (err: unknown) {
-      toast({ title: "Apply failed", description: (err as Error).message, variant: "destructive" });
+      const message = (err as Error).message;
+      const needsReconnect = /reconnect|token expired|unauthorized/i.test(message);
+      toast({
+        title: "Apply failed",
+        description: message,
+        variant: "destructive",
+        action: needsReconnect ? (
+          <ToastAction altText="Reconnect with Etsy" onClick={() => void startEtsyOAuth()}>
+            Reconnect
+          </ToastAction>
+        ) : undefined,
+      });
     } finally {
       setApplying(false);
+    }
+  };
+
+  const copyOptimized = async () => {
+    if (!suggestions) return;
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(
+        [
+          `Title: ${suggestions.title}`,
+          "",
+          "Description:",
+          suggestions.description,
+          "",
+          `Tags: ${suggestions.tags.join(", ")}`,
+          `Materials: ${suggestions.materials.join(", ")}`,
+        ].join("\n"),
+      );
+      toast({ title: "Copied", description: "Optimized fields copied to clipboard." });
+    } catch (err: unknown) {
+      toast({ title: "Copy failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -199,11 +288,25 @@ export default function EtsyOptimizer() {
             <Store className="h-12 w-12 text-muted-foreground mx-auto" />
             <h2 className="text-lg font-semibold">Connect Your Etsy Shop</h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Go to Settings and click <strong>Connect with Etsy</strong> to authorize your shop, then come back here.
+              Connect via Etsy OAuth so Phoenix Flow can fetch listings and apply changes directly to Etsy.
             </p>
-            <Button onClick={() => { window.location.href = "/settings"; }} className="gradient-phoenix text-primary-foreground">
-              Go to Settings
-            </Button>
+            <div className="space-y-3 max-w-md mx-auto">
+              <Button
+                onClick={() => void startEtsyOAuth()}
+                disabled={etsyOAuthStarting}
+                className="gradient-phoenix text-primary-foreground w-full"
+              >
+                {etsyOAuthStarting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Connect with Etsy (OAuth)
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => { window.location.href = "/settings"; }}
+                className="w-full"
+              >
+                Go to Settings
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -269,15 +372,12 @@ export default function EtsyOptimizer() {
                     <ComparisonRow label="Description" icon={<FileText className="h-4 w-4 text-primary" />} original={selectedListing.description || ""} optimized={suggestions.description} onChange={(v) => setSuggestions({ ...suggestions, description: v })} multiline />
                     <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedListing.tags?.join(", ") || ""} optimized={suggestions.tags?.join(", ") || ""} onChange={(v) => setSuggestions({ ...suggestions, tags: v.split(",").map((t) => t.trim()) })} multiline />
                     <ComparisonRow label="Materials" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedListing.materials?.join(", ") || ""} optimized={suggestions.materials?.join(", ") || ""} onChange={(v) => setSuggestions({ ...suggestions, materials: v.split(",").map((t) => t.trim()) })} multiline />
-                    {!isOAuth && (
-                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400 flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>This connection is read-only. Go to <a href="/settings" className="underline font-medium">Settings</a> and click <strong>Connect with Etsy</strong> to enable writing changes.</span>
-                      </div>
-                    )}
                     <div className="flex gap-3 pt-2">
-                      <Button onClick={applyChanges} disabled={applying || !isOAuth} className="gradient-phoenix text-primary-foreground flex-1">
-                        {applying ? "Applying..." : isOAuth ? "Apply to Etsy" : "Read-only — reconnect in Settings"}
+                      <Button onClick={applyChanges} disabled={applying || !selectedConnection} className="gradient-phoenix text-primary-foreground flex-1">
+                        {applying ? "Applying..." : "Apply to Etsy"}
+                      </Button>
+                      <Button variant="outline" onClick={() => void copyOptimized()} disabled={copying} className="flex-1">
+                        {copying ? "Copying..." : "Copy optimized fields"}
                       </Button>
                     </div>
                   </>
