@@ -371,9 +371,25 @@ serve(async (req) => {
     }
 
     const variants = product.variants || [];
+
+    // Detect if variants represent distinct designs/poses/themes vs just size/price variation
+    // Distinct = option1 values differ in ways that suggest different buyer intent (not just S/M/L/XL)
+    const option1Values = [...new Set(variants.map((v: ShopifyVariantLike) => (v.option1 || "").trim()).filter(Boolean))];
+    const option2Values = [...new Set(variants.map((v: ShopifyVariantLike) => (v.option2 || "").trim()).filter(Boolean))];
+    const sizePattern = /^(xxs|xs|s|m|l|xl|2xl|xxl|3xl|xxxl|4xl|5xl|6xl|\d+(\.\d+)?"?\s*(x|\d)?)$/i;
+    const isJustSizing = option1Values.every((v) => sizePattern.test(v.trim()));
+    const hasDistinctDesigns = option1Values.length >= 3 && !isJustSizing;
+
     const variantInfo = variants.map((v: ShopifyVariantLike) =>
       `${v.title || "Default"} - $${v.price || "0.00"} (${v.inventory_quantity || 0} in stock)`,
     ).join("\n");
+
+    // Summarize distinct design options for the AI prompt
+    const variantDesignSummary = hasDistinctDesigns
+      ? `\n⚠️ MULTI-DESIGN PRODUCT: This product has ${option1Values.length} distinct design/style variants (${option1Values.slice(0, 8).join(", ")}${option1Values.length > 8 ? `... +${option1Values.length - 8} more` : ""}). The SEO description MUST be written to cover this as a product RANGE — not one specific design. Use language like "available in X poses/styles" or "choose from X designs". Populate variant_suggestions with per-design keyword recommendations.`
+      : option2Values.length >= 3 && !option2Values.every((v) => sizePattern.test(v.trim()))
+      ? `\n⚠️ MULTI-STYLE PRODUCT: This product has ${option2Values.length} style options (${option2Values.slice(0, 6).join(", ")}). Write the SEO description to cover the range. Populate variant_suggestions.`
+      : "";
 
     const productImages = product.images || [];
     const imageInfo = productImages.length > 0
@@ -397,9 +413,7 @@ serve(async (req) => {
     const trendsBlock = formatTrendsForPrompt(trendsResults);
     // ─────────────────────────────────────────────────────────────────────────
 
-    const systemPrompt = `${trendsBlock ? trendsBlock + "
-
-" : ""}You are a sales machine. Your only job is to make this product sell. You find the exact words a real buyer types into Google when they are ready to spend money, and you build every field around those words so this product appears in front of that buyer and they click. You work within GMC compliance rules — not because rules matter, but because breaking them gets the product suspended and suspended products don't sell. You do not write for Google's approval. You write for the human who needs this item in their life and doesn't know it yet. Every title, every sentence, every tag is a door that opens when the right buyer searches. Your job is to build those doors.
+    const systemPrompt = `${trendsBlock ? trendsBlock + "\n\n" : ""}You are a sales machine. Your only job is to make this product sell. You find the exact words a real buyer types into Google when they are ready to spend money, and you build every field around those words so this product appears in front of that buyer and they click. You work within GMC compliance rules — not because rules matter, but because breaking them gets the product suspended and suspended products don't sell. You do not write for Google's approval. You write for the human who needs this item in their life and doesn't know it yet. Every title, every sentence, every tag is a door that opens when the right buyer searches. Your job is to build those doors.
 
 KEYWORD TARGETING (do this before anything else):
 Identify 3-5 keywords for this product that a buyer types when they are ready to purchase — not researching, not browsing, BUYING. Target keywords with estimated US monthly search volume between 500 and 5,000. This is the range where a newer store with low domain authority can actually rank — high-volume terms (25,000+) are locked up by Amazon, Wayfair, and established Etsy sellers. Avoid keywords under 200/month (no traffic) and over 10,000/month (too competitive to crack without backlinks). Favor 4-6 word hyper-specific phrases where the big players are not competing: "personalized gaming room metal wall sign", "custom name fleece blanket dad birthday gift" — not "wall art" or "blanket". The more specific the phrase, the lower the competition and the more buyer-ready the intent. Build every field below around these keywords.
@@ -421,6 +435,9 @@ SHOPIFY SEO RULES:
 - TAGS: Generate 20-25 NEW buyer-intent tags only — do NOT re-list the existing product tags (we merge them automatically). Tags in Shopify create crawlable collection pages at /collections/all/[tag] — treat each tag as a mini landing page keyword. The primary keyword MUST appear as one of the tags verbatim. Mix tag lengths: 40% should be 3-5 word long-tail phrases (highest conversion and easiest to rank), 40% should be 2-3 word mid-tail phrases, 20% can be single specific niche words. COLLECTION GUARANTEE: Include at least 1-2 tags matching the collection name's core keyword. Ask "would an actual shopper type this exact phrase into Google?" — if no, drop it. CRITICAL: Never split hyphenated terms. Never use competitor brand names, vendor names, "sale", "cheap", "new", or junk terms. Each individual tag max 255 chars.
 - URL HANDLE: Hyphenated, lowercase, PRIMARY KEYWORD as the base, max 50 chars. Shorter is better — 3-5 words ideal. Example: "cartoon-space-crew-metal-wall-sign" not "cartoon-space-crew-iron-wall-sign-gaming-character-metal-wall-decor-art".
 - FAQ: Return a JSON array string of 3-4 Q&A pairs.
+- VARIANT PLAYBOOK (variant_suggestions field — CRITICAL for multi-variant products): When this product has 3 or more variants with meaningfully different option values (e.g. different poses, designs, themes, colors, styles — NOT just size/price), you MUST populate variant_suggestions with a JSON array of per-variant recommendations. Each variant is its own SEO opportunity on Shopify because customers can search specifically for that style. Format:
+[{"variant":"<variant title>","angle":"<1-sentence unique selling angle that distinguishes THIS variant from the others>","primary_keyword":"<the specific long-tail keyword a buyer types to find THIS exact variant — 3-6 words>","secondary_keywords":["<2-3 supporting keyword phrases>"],"listing_tip":"<one concrete action to improve search visibility for this variant — e.g. add variant-specific alt text, create a separate URL redirect, duplicate as standalone product>"},...]
+Rules: Only include variants whose option values suggest a truly different buyer intent or search query. Skip variants that are just size/quantity differences of the same design — they share the same keyword. If all variants are truly the same product (just sizing), return an empty array []. Max 10 variants in the output. Each primary_keyword must be unique across variants.
 - IMAGE ALT TEXT: Write alt text for EVERY image listed in the image list — not just the ones attached as photos. For images you can see visually, describe what you actually see. For images beyond the attached photos, write descriptive alt text based on the product name, type, and design theme. Rules: under 125 chars each; Format: "[Product Name] - [Color/Detail/Angle] | ${storeName || "store"}" (e.g. "Block World Pixelated Travel Mug - Matte Black Finish | Phoenix Rise"); CRITICAL: NEVER use "image of", "picture of", generic text like "product image 1", or the vendor/brand name "Iron Phoenix GHG"; include relevant niche keywords naturally before the pipe. NEVER include the store name BOTH in the descriptive part AND after the pipe — it appears exactly once, after the pipe only. NEVER use curly/smart quotes (" " ' ') — only plain straight quotes (" '). Your image_alts JSON array MUST have one entry per image id listed above. Return as a JSON-encoded string in image_alts: [{"image_id": <id>, "alt": "<text>"}].
 - IMAGE FILENAMES: For every image, suggest a clean SEO-rich filename. Rules: all lowercase, hyphen-separated, no special chars, end in .jpg; Format: "[clean-product-name]-[detail]-[store-slug].jpg" where store-slug = "${storeName ? storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "store"}"; Image 1 = full product slug + store slug (e.g. "block-world-pixelated-travel-mug-phoenix-rise.jpg"); Images 2+ = product slug + detail + store slug (e.g. "block-world-pixelated-travel-mug-handle-detail-phoenix-rise.jpg"); NEVER use generic names like "image-1.jpg", vendor names, or LLC suffixes. Return as a JSON-encoded string in image_filenames: [{"image_id": <id>, "filename": "<name>.jpg"}].
 
@@ -468,7 +485,7 @@ ${bodyForPrompt}
 Product Type: ${product.product_type || ""}
 Vendor: ${product.vendor || ""}
 Tags: ${product.tags || ""}
-Variants:
+Variants:${variantDesignSummary}
 ${variantInfo}${imageInfo}
 
 Current SEO Title: ${product.metafields_global_title_tag || ""}
@@ -507,7 +524,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
               seo_description: { type: "string" },
               product_type: { type: "string" },
               tags: { type: "string" },
-              variant_suggestions: { type: "string" },
+              variant_suggestions: { type: "string", description: "JSON array of per-variant SEO recs for products with 3+ meaningfully different variants (different designs/poses/themes, not just sizes). Format: [{\"variant\":\"Title\",\"angle\":\"unique selling angle\",\"primary_keyword\":\"specific long-tail keyword 3-6 words\",\"secondary_keywords\":[\"kw1\",\"kw2\"],\"listing_tip\":\"one action item\"}]. Return stringified empty array [] if variants only differ by size/quantity." },
               url_handle: { type: "string" },
               faq_json: { type: "string" },
               collections_suggestion: { type: "string" },
@@ -599,7 +616,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
                     seo_description: { type: "string" },
                     product_type: { type: "string" },
                     tags: { type: "string" },
-                    variant_suggestions: { type: "string" },
+                    variant_suggestions: { type: "string", description: "JSON array of per-variant SEO recs. Format: [{\"variant\":\"Title\",\"angle\":\"angle\",\"primary_keyword\":\"keyword\",\"secondary_keywords\":[\"kw\"],\"listing_tip\":\"tip\"}]. Empty array [] if variants differ only by size." },
                     url_handle: { type: "string" },
                     faq_json: { type: "string" },
                     collections_suggestion: { type: "string" },
