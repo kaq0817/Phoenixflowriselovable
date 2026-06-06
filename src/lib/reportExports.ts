@@ -74,6 +74,7 @@ interface ComplianceFinding {
   title: string;
   description: string;
   recommendation: string;
+  fix_steps?: string[];
   reference?: string;
 }
 
@@ -230,11 +231,16 @@ export function exportCompliancePdf(report: ComplianceReport, storeUrl: string) 
     doc.autoTable({
       startY: 26,
       head: [["Category", "Finding", "Recommendation"]],
-      body: group.items.map((f) => [
-        f.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-        `${f.title}\n${f.description}`,
-        f.recommendation + (f.reference ? `\nRef: ${f.reference}` : ""),
-      ]),
+      body: group.items.map((f) => {
+        const stepsText = f.fix_steps && f.fix_steps.length > 0
+          ? f.fix_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")
+          : f.recommendation;
+        return [
+          f.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          `${f.title}\n${f.description}`,
+          stepsText + (f.reference ? `\nRef: ${f.reference}` : ""),
+        ];
+      }),
       styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
       headStyles: { fillColor: group.color, textColor: 255, fontSize: 8, fontStyle: "bold" },
       columnStyles: {

@@ -372,7 +372,28 @@ IMPORTANT — DO NOT FLAG:
 - .myshopify.com domain appearing anywhere (this is Shopify infrastructure, not a risk)
 - Absence of third-party reviews alone
 
-Keep findings specific and actionable. Quote exact problematic text when you find it. Each recommendation must tell the merchant exactly what to change.
+RECOMMENDATION QUALITY RULES — THIS IS THE MOST IMPORTANT PART:
+Every finding MUST have a recommendation that tells the merchant EXACTLY what to do with step-by-step instructions. Vague advice like "consolidate your brand identity" or "review your policies" is NOT acceptable — those are $0 observations. A $50 tool gives precise instructions.
+
+For EVERY finding:
+1. State the exact Shopify Admin path where the fix happens (e.g. "Shopify Admin → Settings → Policies → Privacy Policy")
+2. If you found specific wrong text, quote it verbatim and give the exact replacement text
+3. Number the steps — 1, 2, 3 — so the merchant can follow without thinking
+4. If the fix is outside Shopify (e.g. Google Merchant Center, social media), state exactly where to go
+
+Examples of BAD vs GOOD recommendations:
+ BAD: "Ensure consistent business identity across all customer-facing elements."
+ GOOD: "1. Shopify Admin → Settings → Policies → Privacy Policy → find 'Go Hard Gaming Discord LLC' → replace with 'Our Phoenix Rise'. 2. Repeat for Terms of Service and Refund Policy. 3. Footer: Shopify Admin → Online Store → Themes → Customize → Footer section → update Business Name field to 'Our Phoenix Rise'."
+
+ BAD: "Add a physical address for transparency."
+ GOOD: "1. Shopify Admin → Settings → Policies → Privacy Policy → add your mailing address after the contact section. 2. Shopify Admin → Online Store → Themes → Customize → Footer → add a text block with your address. Format: Your Name/Business, PO Box or Street, City, NY ZIP."
+
+ BAD: "Verify your GMC shipping settings reflect actual delivery times."
+ GOOD: "1. Google Merchant Center → Shipping → click your shipping service → set Max transit time to 15 business days (or whatever your total production + shipping time is). 2. Shopify Admin → Settings → Policies → Shipping Policy → change any line saying '3-5 days shipping' to 'Please allow up to 15 business days from order date for delivery — your item is made to order.'"
+
+Also populate fix_steps as a JSON array of strings — each string is one numbered step, plain text, no markdown. This is used to render a clickable checklist in the UI.
+Example fix_steps: ["Shopify Admin → Settings → Policies → Privacy Policy", "Find 'Go Hard Gaming Discord LLC'", "Replace with 'Our Phoenix Rise'", "Save. Repeat for Terms of Service."]
+
 Use the report_compliance tool to return your analysis.`;
 
     // Inject brand context when scanning any LLC-owned store so Gemini doesn't flag
@@ -476,9 +497,10 @@ ${offDomainLinks.slice(0, 25).join("\n")}`;
                                 },
                                 severity: { type: "string", enum: ["critical", "warning", "info", "pass"] },
                                 title: { type: "string", description: "Short finding title" },
-                                description: { type: "string", description: "Detailed explanation" },
-                                recommendation: { type: "string", description: "How to fix this issue" },
-                                reference: { type: "string", description: "Policy reference" },
+                                description: { type: "string", description: "Detailed explanation quoting exact problematic text found" },
+                                recommendation: { type: "string", description: "Numbered step-by-step fix instructions with exact Shopify Admin paths" },
+                                fix_steps: { type: "array", items: { type: "string" }, description: "Array of individual fix steps, one action per item, plain text no markdown. Used for checklist rendering." },
+                                reference: { type: "string", description: "Policy reference URL" },
                               },
                               required: ["category", "severity", "title", "description", "recommendation"],
                             },

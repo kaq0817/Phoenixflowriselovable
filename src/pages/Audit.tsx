@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Shield, AlertTriangle, CheckCircle, XCircle, Globe, Loader2,
   ExternalLink, ChevronDown, ChevronUp, Clock, FileSearch, BarChart3,
-  Download, CreditCard,
+  Download, CreditCard, Printer, Square, CheckSquare, Copy, Check,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,11 +19,12 @@ import { exportCompliancePdf, exportComplianceCsv } from "@/lib/reportExports";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 interface Finding {
-  category: "gmc_misrepresentation" | "etsy_compliance" | "general_ecommerce";
+  category: string;
   severity: "critical" | "warning" | "info" | "pass";
   title: string;
   description: string;
   recommendation: string;
+  fix_steps?: string[];
   reference?: string;
 }
 
@@ -83,42 +84,112 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+function StepItem({ step, index }: { step: string; index: number }) {
+  const [done, setDone] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(step);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className={`flex items-start gap-2.5 p-2 rounded-md transition-colors ${
+      done ? "bg-phoenix-success/10 opacity-60" : "bg-background/60 hover:bg-background/90"
+    }`}>
+      <button onClick={() => setDone(!done)} className="mt-0.5 shrink-0">
+        {done
+          ? <CheckSquare className="h-4 w-4 text-phoenix-success" />
+          : <Square className="h-4 w-4 text-muted-foreground" />}
+      </button>
+      <span className={`text-xs flex-1 leading-relaxed ${
+        done ? "line-through text-muted-foreground" : "text-foreground"
+      }`}>
+        <span className="font-bold text-primary mr-1.5">{index + 1}.</span>
+        {step}
+      </span>
+      <button onClick={handleCopy} className="shrink-0 opacity-50 hover:opacity-100 transition-opacity">
+        {copied
+          ? <Check className="h-3.5 w-3.5 text-phoenix-success" />
+          : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
+      </button>
+    </div>
+  );
+}
+
 function FindingCard({ finding }: { finding: Finding }) {
   const [expanded, setExpanded] = useState(false);
   const config = SEVERITY_CONFIG[finding.severity];
   const Icon = config.icon;
 
+  // Build steps: prefer fix_steps array, fall back to splitting recommendation by numbered pattern
+  const steps: string[] = finding.fix_steps && finding.fix_steps.length > 0
+    ? finding.fix_steps
+    : (finding.recommendation || "")
+        .split(/(?=\d+\.\s)/)
+        .map(s => s.replace(/^\d+\.\s*/, "").trim())
+        .filter(Boolean);
+
   return (
-    <motion.div layout className={`p-4 rounded-lg ${config.bg} border ${config.border}`}>
-      <div className="flex items-start gap-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+    <motion.div layout className={`rounded-lg border ${config.border} overflow-hidden`}>
+      {/* Header — always visible */}
+      <div
+        className={`flex items-start gap-3 p-4 cursor-pointer ${config.bg}`}
+        onClick={() => setExpanded(!expanded)}
+      >
         <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${config.color}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm">{finding.title}</span>
+            <span className="font-semibold text-sm">{finding.title}</span>
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {CATEGORY_LABELS[finding.category]}
+              {CATEGORY_LABELS[finding.category] ?? finding.category.replace(/_/g, " ")}
             </Badge>
+            {steps.length > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {steps.length} fix step{steps.length !== 1 ? "s" : ""}
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{finding.description}</p>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        {expanded
+          ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+          : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
       </div>
+
       <AnimatePresence>
         {expanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} className="overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
           >
-            <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
-              <p className="text-sm text-foreground">{finding.description}</p>
-              <div className="bg-background/50 p-3 rounded-md">
-                <p className="text-xs font-medium text-phoenix-success mb-1">💡 Recommendation</p>
-                <p className="text-xs text-muted-foreground">{finding.recommendation}</p>
-              </div>
+            <div className="px-4 pb-4 pt-3 border-t border-border/30 space-y-3 bg-background/30">
+              {/* Full description */}
+              <p className="text-sm text-foreground leading-relaxed">{finding.description}</p>
+
+              {/* Fix checklist */}
+              {steps.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wide mb-2">How to fix</p>
+                  {steps.map((step, i) => (
+                    <StepItem key={i} step={step} index={i} />
+                  ))}
+                </div>
+              )}
+
+              {/* Reference link */}
               {finding.reference && (
-                <a href={finding.reference} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-1">
-                  View policy reference <ExternalLink className="h-3 w-3" />
+                <a
+                  href={finding.reference}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  GMC policy reference <ExternalLink className="h-3 w-3" />
                 </a>
               )}
             </div>
@@ -356,6 +427,9 @@ export default function AuditPage() {
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => exportComplianceCsv(report, storeUrl)}>
                           <Download className="h-3.5 w-3.5 mr-1.5" /> CSV
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => window.print()}>
+                          <Printer className="h-3.5 w-3.5 mr-1.5" /> Print
                         </Button>
                       </div>
                     </div>
