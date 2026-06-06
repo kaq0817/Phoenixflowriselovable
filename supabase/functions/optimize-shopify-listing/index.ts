@@ -372,24 +372,61 @@ serve(async (req) => {
 
     const variants = product.variants || [];
 
-    // Detect if variants represent distinct designs/poses/themes vs just size/price variation
-    // Distinct = option1 values differ in ways that suggest different buyer intent (not just S/M/L/XL)
+    // ── Variant / bundle analysis ──────────────────────────────────────────
     const option1Values = [...new Set(variants.map((v: ShopifyVariantLike) => (v.option1 || "").trim()).filter(Boolean))];
     const option2Values = [...new Set(variants.map((v: ShopifyVariantLike) => (v.option2 || "").trim()).filter(Boolean))];
-    const sizePattern = /^(xxs|xs|s|m|l|xl|2xl|xxl|3xl|xxxl|4xl|5xl|6xl|\d+(\.\d+)?"?\s*(x|\d)?)$/i;
-    const isJustSizing = option1Values.every((v) => sizePattern.test(v.trim()));
-    const hasDistinctDesigns = option1Values.length >= 3 && !isJustSizing;
+    const sizePattern = /^(xxs|xs|s|m|l|xl|2xl|xxl|3xl|xxxl|4xl|5xl|6xl|one\s*size|os|free\s*size|\d+(\.\d+)?"?\s*(x\s*\d+)?)$/i;
+
+    // Detect "choice bundle" — product title uses or/and/vs to signal multiple distinct item types
+    const productTitle = product.title || "";
+    const choiceBundlePattern = /\b(or|and|\/|\||\bvs\.?\b|\bchoice\b|\bpick\b|\bselect\b)\b/i;
+    const isBundleByTitle = choiceBundlePattern.test(productTitle);
+
+    // Detect distinct item types in option values (leggings, hoodie, crop top, tee, etc.)
+    const garmentWords = /\b(legging|hoodie|sweatshirt|hoodie|tee|t-shirt|crop|top|jogger|short|jacket|cardigan|tank|dress|skirt|pullover|zip|vest|coat|pant|bra|bodysuit|swimsuit|bikini|brief|thong|sock|hat|cap|beanie|glove|scarf|bag|tote|mug|tumbler|poster|print|canvas|pillow|blanket|throw|ornament|keychain|charm|necklace|ring|bracelet|earring)s?\b/i;
+    const option2HasGarments = option2Values.filter(v => garmentWords.test(v));
+    const option1HasGarments = option1Values.filter(v => garmentWords.test(v));
+
+    // Pick which axis has the item-type dimension
+    const itemTypeValues = option1HasGarments.length >= 2 ? option1Values
+      : option2HasGarments.length >= 2 ? option2Values
+      : [];
+    const isBundle = isBundleByTitle || itemTypeValues.length >= 2;
+
+    // Distinct designs = option axis has 3+ non-size, non-garment values (poses, themes, colors)
+    const option1IsSize = option1Values.every(v => sizePattern.test(v));
+    const option2IsSize = option2Values.every(v => sizePattern.test(v));
+    const designAxis = !option1IsSize && option1HasGarments.length === 0 ? option1Values
+      : !option2IsSize && option2HasGarments.length === 0 ? option2Values
+      : [];
+    const hasDistinctDesigns = designAxis.length >= 3;
 
     const variantInfo = variants.map((v: ShopifyVariantLike) =>
       `${v.title || "Default"} - $${v.price || "0.00"} (${v.inventory_quantity || 0} in stock)`,
     ).join("\n");
 
-    // Summarize distinct design options for the AI prompt
-    const variantDesignSummary = hasDistinctDesigns
-      ? `\n⚠️ MULTI-DESIGN PRODUCT: This product has ${option1Values.length} distinct design/style variants (${option1Values.slice(0, 8).join(", ")}${option1Values.length > 8 ? `... +${option1Values.length - 8} more` : ""}). The SEO description MUST be written to cover this as a product RANGE — not one specific design. Use language like "available in X poses/styles" or "choose from X designs". Populate variant_suggestions with per-design keyword recommendations.`
-      : option2Values.length >= 3 && !option2Values.every((v) => sizePattern.test(v.trim()))
-      ? `\n⚠️ MULTI-STYLE PRODUCT: This product has ${option2Values.length} style options (${option2Values.slice(0, 6).join(", ")}). Write the SEO description to cover the range. Populate variant_suggestions.`
-      : "";
+    // Build the variant/bundle warning block injected into the AI prompt
+    let variantDesignSummary = "";
+    if (isBundle) {
+      const itemList = itemTypeValues.length >= 2 ? itemTypeValues.join(", ") : productTitle;
+      variantDesignSummary = `\n🚨 BUNDLE / MULTI-ITEM PRODUCT — CRITICAL RULES:\n` +
+        `This listing sells ${itemTypeValues.length >= 2 ? itemTypeValues.length : "multiple"} DIFFERENT item types (${itemList}). ` +
+        `This is NOT a single product — it is a choice bundle where the customer picks which item they want.\n` +
+        `TITLE RULE: The optimized title MUST include ALL item types. Do NOT reduce to just one. ` +
+        `Format example: "Meditation Lotus Leggings, Crop Top & Hoodie Blue Black XS-2XL". ` +
+        `Use ", " and "&" to list them — not "or" (Shopify/GMC prefers "&" over "or" in titles).\n` +
+        `DESCRIPTION RULE: Describe all ${itemTypeValues.length >= 2 ? itemTypeValues.length : ""} item types. ` +
+        `Open with the set, then give each item its own paragraph with its specific benefits.\n` +
+        `SEO DESCRIPTION RULE: Cover the full bundle. Example: "Complete your yoga wardrobe with this meditation lotus set — available as leggings, a crop top, or a hoodie in blue and black.".\n` +
+        `TAGS RULE: Generate tags for EVERY item type, not just one.\n` +
+        `variant_suggestions: Generate one entry per item type with its own primary keyword.`;
+    } else if (hasDistinctDesigns) {
+      variantDesignSummary = `\n⚠️ MULTI-DESIGN PRODUCT: This product has ${designAxis.length} distinct design/style variants (${designAxis.slice(0, 8).join(", ")}${designAxis.length > 8 ? ` ... +${designAxis.length - 8} more` : ""}). ` +
+        `Write the SEO description to cover this as a product RANGE — not one specific design. ` +
+        `Populate variant_suggestions with per-design keyword recs.`;
+    } else if (option2Values.length >= 2 && !option2IsSize && option2HasGarments.length === 0) {
+      variantDesignSummary = `\n⚠️ MULTI-STYLE PRODUCT: This product has ${option2Values.length} style options (${option2Values.slice(0, 6).join(", ")}). Write the SEO description to cover the range. Populate variant_suggestions.`;
+    }
 
     const productImages = product.images || [];
     const imageInfo = productImages.length > 0
@@ -419,7 +456,7 @@ KEYWORD TARGETING (do this before anything else):
 Identify 3-5 keywords for this product that a buyer types when they are ready to purchase — not researching, not browsing, BUYING. Target keywords with estimated US monthly search volume between 500 and 5,000. This is the range where a newer store with low domain authority can actually rank — high-volume terms (25,000+) are locked up by Amazon, Wayfair, and established Etsy sellers. Avoid keywords under 200/month (no traffic) and over 10,000/month (too competitive to crack without backlinks). Favor 4-6 word hyper-specific phrases where the big players are not competing: "personalized gaming room metal wall sign", "custom name fleece blanket dad birthday gift" — not "wall art" or "blanket". The more specific the phrase, the lower the competition and the more buyer-ready the intent. Build every field below around these keywords.
 
 SHOPIFY SEO RULES:
-- TITLE: Descriptor-first product name only. Under 60 chars (GMC hard limit). No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL".
+- TITLE: Descriptor-first product name only. Under 60 chars (GMC hard limit). No vendor/brand names. Format: [Descriptor] [Item Type] [Key Attribute if critical — e.g. color+size for apparel, Waterproof/Insulated for drinkware/outerwear]. Strip "Iron Phoenix GHG", "Iron Phoenix", "ghg", "| Iron Phoenix", or any store name. Example: "Block World Pixelated Travel Mug" or "Aurora Flow Gradient Athletic Shorts Black XS-4XL". BUNDLE TITLE RULE: If the 🚨 BUNDLE warning is present above, the title MUST include ALL item types separated by ", " and "&". Example: "Meditation Lotus Leggings, Crop Top & Hoodie Blue Black". Collapsing a bundle to one item type is a critical error.
 - PERSONALIZATION ATTRIBUTES (NEVER REMOVE): "Personalized", "Custom", "Custom Name", "Customizable" are PRODUCT ATTRIBUTES that buyers search for — they are NOT promotional words. If the product accepts a custom name, text, or design, the word "Personalized" or "Custom Name" MUST appear in the title. Removing these words from a personalizable product's title is an error. Research shows these terms increase click-through and conversion significantly.
 - SELLER DIRECTION OVERRIDES: If a seller direction is provided in the prompt, the occasion/season/use case it specifies MUST appear in the title. Example: seller says "Christmas tablecloth" → title must say "Christmas" not "birthday" or "thanksgiving". Multi-occasion products should lead with the seller-specified primary use; other occasions belong in the description body only.
 - TABLE LINEN IDENTIFICATION (GMC rejects mismatched product types): A table runner is a long narrow strip down the center of a table. A tablecloth covers the entire table surface. ALWAYS check dimensions and shape: if the product is described as round (e.g. 60" round, 152.5cm round) it is a ROUND TABLECLOTH — never call it a "runner". If it is rectangular and narrow (e.g. 12"x72") it is a table runner. If it covers a full rectangular table it is a tablecloth. Use the correct term in the title, description, and product_type.
