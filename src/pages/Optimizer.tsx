@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   BarChart3, Sparkles, Store, Loader2, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Tag, FileText, Palette,
-  Radio,
+  Radio, Layers, Search, Lightbulb,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
@@ -792,6 +792,60 @@ export default function OptimizerPage() {
                     <ComparisonRow label="SEO Description" icon={<FileText className="h-4 w-4 text-primary" />} original={(selectedProduct.metafields_global_description_tag || "No meta description")} optimized={shopifySuggestions.seo_description} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, seo_description: v })} multiline />
                     <ComparisonRow label="Product Type" icon={<Palette className="h-4 w-4 text-primary" />} original={selectedProduct.product_type || ""} optimized={shopifySuggestions.product_type} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, product_type: v })} />
                     <ComparisonRow label="Tags" icon={<Tag className="h-4 w-4 text-primary" />} original={selectedProduct.tags || ""} optimized={shopifySuggestions.tags} onChange={(v) => setShopifySuggestions({ ...shopifySuggestions, tags: v })} multiline />
+
+                    {/* ── Variant Playbook ── */}
+                    {(() => {
+                      if (!shopifySuggestions.variant_suggestions) return null;
+                      let variantRecs: Array<{
+                        variant: string;
+                        angle: string;
+                        primary_keyword: string;
+                        secondary_keywords?: string[];
+                        listing_tip?: string;
+                      }> = [];
+                      try {
+                        const parsed = JSON.parse(shopifySuggestions.variant_suggestions);
+                        if (Array.isArray(parsed) && parsed.length > 0) variantRecs = parsed;
+                      } catch { return null; }
+                      if (variantRecs.length === 0) return null;
+                      return (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 overflow-hidden">
+                          <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/20">
+                            <Layers className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-primary">Variant Playbook</span>
+                            <Badge variant="outline" className="text-[10px] ml-auto">{variantRecs.length} variant{variantRecs.length !== 1 ? "s" : ""}</Badge>
+                          </div>
+                          <p className="px-4 py-2 text-xs text-muted-foreground border-b border-primary/10">
+                            Each variant targets a different buyer search. Use these to write variant-specific alt text, or split high-traffic designs into standalone products.
+                          </p>
+                          <div className="divide-y divide-border/30">
+                            {variantRecs.map((rec, idx) => (
+                              <div key={idx} className="px-4 py-3 space-y-1.5">
+                                <div className="flex items-start gap-2">
+                                  <span className="text-xs font-semibold text-foreground/80 min-w-0 flex-1 line-clamp-1">{rec.variant}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground italic">{rec.angle}</p>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                                    <Search className="h-3 w-3" />{rec.primary_keyword}
+                                  </span>
+                                  {(rec.secondary_keywords || []).map((kw, ki) => (
+                                    <span key={ki} className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{kw}</span>
+                                  ))}
+                                </div>
+                                {rec.listing_tip && (
+                                  <div className="flex items-start gap-1.5 mt-1">
+                                    <Lightbulb className="h-3 w-3 text-amber-500 mt-0.5 shrink-0" />
+                                    <span className="text-[11px] text-amber-600 dark:text-amber-400">{rec.listing_tip}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="flex gap-3 pt-2">
                       <Button onClick={applyShopifyChanges} disabled={shopifyApplying} className="gradient-phoenix text-primary-foreground flex-1">
                         {shopifyApplying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Applying...</> : <><CheckCircle2 className="h-4 w-4 mr-2" /> Apply All Changes to Shopify</>}

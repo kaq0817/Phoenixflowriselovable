@@ -660,7 +660,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
     seo_description: cleanSeoDescription,
     product_type,
     tags: tagsString,
-    variant_suggestions: sanitizePlainText(raw.variant_suggestions || "", 240),
+    variant_suggestions: sanitizePlainText(raw.variant_suggestions || "", 6000),
     url_handle: cleanHandle,
     faq_json: raw.faq_json || "",
     collections_suggestion: sanitizePlainText(raw.collections_suggestion || "", 300),
