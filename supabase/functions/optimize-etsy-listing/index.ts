@@ -5,6 +5,11 @@ import {
   type EtsyListingLike,
   type EtsySuggestionShape,
 } from "../_shared/listingValidators.ts";
+import {
+  getGoogleTrendsMulti,
+  formatTrendsForPrompt,
+  extractTrendSeeds,
+} from "../_shared/googleTrends.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,48 +78,61 @@ serve(async (req) => {
       });
     }
 
-    const systemPrompt = `You are an expert Etsy SEO optimizer. Given a listing's current title, description, tags, and materials, produce optimized versions that improve search ranking and conversion.
+    // ── Google Trends: fetch real buyer search data ───────────────────────────
+    // Run trends lookup in parallel with nothing — it's fast and cached after
+    // the first call for that keyword. Falls back silently if Google is slow.
+    const trendSeeds = extractTrendSeeds(
+      listing.taxonomy_path ?? "",
+      listing.title ?? "",
+      listing.taxonomy_path ?? "",
+    );
 
-Rules:
-- Etsy titles: max 140 characters, but aim for under 15 words when possible; shoppers only see the first 50-60 characters in search
-- Make the title easy to scan and clearly name the item for sale in the first few words
-- Include the most important traits early, such as color, material, and size, only when truly relevant
-- Keep titles concise and readable instead of cramming every keyword variation
-- Tags: exactly 13 tags, each max 20 characters
-- Prefer multi-word tags made of 2-4 natural words when possible
-- Tags should sound like real search phrases a buyer could type into Etsy or Google
-- Avoid generic one-word tags unless the term is required for accuracy, such as a material, color, or size
-- Do not repeat the same keyword phrase twice in the tag set
-- Do not create near-duplicate tags that only swap word order or singular/plural form
-- It is acceptable for multiple tags to share a core noun if each phrase targets a distinct long-tail search intent
-- Do not waste tags by repeating words already heavily covered in the title unless the phrase becomes a stronger long-tail search term
-- Description: informative and engaging, with a strong first sentence that clearly states what the item is
-- Put essential details near the top, such as size, dimensions, color, ordering notes, or customization details
-- Work relevant keywords naturally into the first few sentences without copying the title verbatim
-- Use short paragraphs or bullet-style formatting when it improves readability
-- End with a brand or story note only after the practical buying details are clear
-- Materials: accurate, specific materials list
+    const trendsResults = await getGoogleTrendsMulti(trendSeeds, "US");
+    const trendsBlock = formatTrendsForPrompt(trendsResults);
+    // ─────────────────────────────────────────────────────────────────────────
 
-GOOGLE MERCHANT CENTER & PLATFORM COMPLIANCE (CRITICAL):
-- FOR CLOTHING/APPAREL ONLY: Color MUST be included as a tag. Color in the title is encouraged but not strictly required on Etsy. If the original title has a color, keep it.
-- NEVER use special characters or symbols in titles, descriptions, tags, or materials. This includes: curly quotes, em dashes, en dashes, bullets, trademark symbols, arrows, stars, checkmarks, hearts, or ANY Unicode decorative characters.
-- Only use plain ASCII characters: regular quotes (" "), hyphens (-), commas, periods, parentheses, forward slashes, ampersands (&), and plus signs (+).
-- No ALL CAPS words (except material acronyms like "PLA" or "UV").
-- No promotional text in titles (e.g. "FREE SHIPPING", "SALE", "BEST SELLER").
-- No excessive punctuation (!!!, ???, ...).
-- Descriptions must be factual and accurate with no exaggerated claims.
+    const systemPrompt = `You are a sales machine for Etsy. Your job is to find the exact words a real buyer types into Etsy and Google when they are ready to spend money, and build every field around those words so this product appears in front of that buyer and they click.
 
-In reasoning, briefly explain the title lead, long-tail keyword angle, and any pivot away from weak or repetitive tags.
-Return your optimizations using the suggest_optimizations function.`;
+${trendsBlock ? trendsBlock + "\n\n" : ""}KEYWORD STRATEGY (do this first):
+Identify ONE primary keyword — the exact 3-5 word phrase a ready-to-buy shopper would type. Target phrases with realistic Etsy competition: specific enough that big sellers are not dominating it, popular enough that real buyers search it. The primary keyword MUST appear at the start of the title and woven into the first sentence of the description.
+
+TITLE RULES:
+- Max 140 characters. The first 50-60 characters are all buyers see in search — make them count.
+- Lead with the item name and its most important trait (color, material, occasion, or style).
+- Do NOT cram every keyword variation into the title — one clear phrase beats five weak ones.
+- No brand names, no promotional text (FREE SHIPPING, SALE, BEST SELLER), no ALL CAPS.
+- No special characters: no curly quotes, em dashes, bullets, hearts, stars, or any Unicode symbols.
+- Plain ASCII only: straight quotes, hyphens, commas, periods, parentheses, slashes, &, +.
+
+TAGS (exactly 13, each max 20 characters INCLUDING spaces):
+- Every tag must be a phrase a real buyer would type into Etsy or Google search.
+- Prioritize any Rising or Breakout queries from the Google Trends data above — these are what buyers are searching RIGHT NOW.
+- Mix tag lengths: 40% should be 3-4 word long-tail phrases (highest conversion), 40% should be 2-3 word mid-tail, 20% can be precise single words (a material, color, or niche term — not generic).
+- No duplicate intent: do not create tags that swap word order of the same phrase.
+- For apparel/clothing: color MUST appear as at least one tag.
+- Every tag must be under 20 characters. Count carefully — "gaming wall art" is 15 chars (ok), "personalized gift" is 17 chars (ok), "custom name wall decor" is 22 chars (too long, cut it).
+- No promotional words: sale, cheap, free, discount, deal, new, best, hot.
+
+DESCRIPTION:
+- First sentence must name the item clearly and include the primary keyword.
+- Put buying-critical details near the top: size, material, color, customization options, production time.
+- Write for the buyer who is one sentence away from clicking Add to Cart.
+- 600-900 characters. Short paragraphs or bullets for readability.
+- Work secondary keywords in naturally — do not repeat the title verbatim.
+- End with a practical note (shipping estimate, care instructions, or personalization process) — not a sales pitch.
+- No special characters. Plain ASCII only. No exclamation points. No hollow hype.
+
+MATERIALS: Accurate, specific list. Real fiber contents and percentages if known.
+
+In reasoning: name the primary keyword you chose, list which Google Trends signals you used, and explain any tags you pivoted away from the original.`;
 
     const userPrompt = `Optimize this Etsy listing:
 
-Title: ${listing.title || ""}
-Description: ${listing.description || ""}
-Tags: ${(listing.tags || []).join(", ")}
-Materials: ${(listing.materials || []).join(", ")}
-
-Category: ${listing.taxonomy_path || "Unknown"}`;
+Title: ${listing.title ?? ""}
+Description: ${listing.description ?? ""}
+Tags: ${(listing.tags ?? []).join(", ")}
+Materials: ${(listing.materials ?? []).join(", ")}
+Category: ${listing.taxonomy_path ?? "Unknown"}`;
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
@@ -137,11 +155,11 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
                   parameters: {
                     type: "object",
                     properties: {
-                      title: { type: "string", description: "Optimized title (max 140 chars)" },
-                      description: { type: "string", description: "Optimized description" },
-                      tags: { type: "array", items: { type: "string" }, description: "Exactly 13 optimized tags with long-tail preference" },
-                      materials: { type: "array", items: { type: "string" }, description: "Optimized materials list" },
-                      reasoning: { type: "string", description: "Brief explanation of changes made" },
+                      title: { type: "string", description: "Optimized title (max 140 chars, first 50-60 chars are what buyers see)" },
+                      description: { type: "string", description: "Optimized description 600-900 characters, buyer-intent focused" },
+                      tags: { type: "array", items: { type: "string" }, description: "Exactly 13 tags, each max 20 characters, real buyer search phrases" },
+                      materials: { type: "array", items: { type: "string" }, description: "Accurate materials list" },
+                      reasoning: { type: "string", description: "Primary keyword chosen, Google Trends signals used, tags pivoted" },
                     },
                     required: ["title", "description", "tags", "materials", "reasoning"],
                   },
@@ -168,7 +186,10 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
     }
 
     const data = await response.json();
-    const functionCall = data.candidates?.[0]?.content?.parts?.find((part: GeminiFunctionCallPart) => part.functionCall) as GeminiFunctionCallPart | undefined;
+    const functionCall = data.candidates?.[0]?.content?.parts?.find(
+      (part: GeminiFunctionCallPart) => part.functionCall,
+    ) as GeminiFunctionCallPart | undefined;
+
     if (!functionCall?.functionCall?.args) {
       console.error("Gemini response missing function call:", JSON.stringify(data).slice(0, 2000));
       throw new Error("AI returned an unexpected format");
@@ -176,13 +197,15 @@ Category: ${listing.taxonomy_path || "Unknown"}`;
 
     const suggestions = normalizeEtsySuggestions(listing, functionCall.functionCall.args);
 
-    return new Response(JSON.stringify({ suggestions }), {
+    return new Response(JSON.stringify({ suggestions, trendsUsed: trendsResults.filter(r => r.source === "google_trends").map(r => r.keyword) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (error) {
     console.error("optimize-etsy-listing error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 });

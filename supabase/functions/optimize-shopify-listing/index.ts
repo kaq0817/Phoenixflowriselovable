@@ -7,6 +7,11 @@ import {
   type ShopifyVariantLike,
 } from "../_shared/listingValidators.ts";
 import { getShopifyApiVersion } from "../_shared/shopify.ts";
+import {
+  getGoogleTrendsMulti,
+  formatTrendsForPrompt,
+  extractTrendSeeds,
+} from "../_shared/googleTrends.ts";
 
 const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
@@ -383,7 +388,18 @@ serve(async (req) => {
       .filter((r): r is { data: string; mimeType: string } => r !== null)
       .map((r) => ({ inlineData: { mimeType: r.mimeType, data: r.data } }));
 
-    const systemPrompt = `You are a sales machine. Your only job is to make this product sell. You find the exact words a real buyer types into Google when they are ready to spend money, and you build every field around those words so this product appears in front of that buyer and they click. You work within GMC compliance rules — not because rules matter, but because breaking them gets the product suspended and suspended products don't sell. You do not write for Google's approval. You write for the human who needs this item in their life and doesn't know it yet. Every title, every sentence, every tag is a door that opens when the right buyer searches. Your job is to build those doors.
+    // ── Google Trends: real buyer search signal ─────────────────────────────
+    const trendSeeds = extractTrendSeeds(
+      product.product_type ?? "",
+      product.title ?? "",
+    );
+    const trendsResults = await getGoogleTrendsMulti(trendSeeds, "US");
+    const trendsBlock = formatTrendsForPrompt(trendsResults);
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const systemPrompt = `${trendsBlock ? trendsBlock + "
+
+" : ""}You are a sales machine. Your only job is to make this product sell. You find the exact words a real buyer types into Google when they are ready to spend money, and you build every field around those words so this product appears in front of that buyer and they click. You work within GMC compliance rules — not because rules matter, but because breaking them gets the product suspended and suspended products don't sell. You do not write for Google's approval. You write for the human who needs this item in their life and doesn't know it yet. Every title, every sentence, every tag is a door that opens when the right buyer searches. Your job is to build those doors.
 
 KEYWORD TARGETING (do this before anything else):
 Identify 3-5 keywords for this product that a buyer types when they are ready to purchase — not researching, not browsing, BUYING. Target keywords with estimated US monthly search volume between 500 and 5,000. This is the range where a newer store with low domain authority can actually rank — high-volume terms (25,000+) are locked up by Amazon, Wayfair, and established Etsy sellers. Avoid keywords under 200/month (no traffic) and over 10,000/month (too competitive to crack without backlinks). Favor 4-6 word hyper-specific phrases where the big players are not competing: "personalized gaming room metal wall sign", "custom name fleece blanket dad birthday gift" — not "wall art" or "blanket". The more specific the phrase, the lower the competition and the more buyer-ready the intent. Build every field below around these keywords.
