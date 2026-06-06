@@ -299,6 +299,19 @@ SCORING (GMC + SEO combined):
 
 WHAT TO AUDIT — CHECK EVERY ONE OF THESE:
 
+GMC MISREPRESENTATION REVIEW — THE 5 PASS/FAIL GATES (check these first, in order):
+Google's automated crawlers and manual reviewers look for these exact signals. Missing or broken = automatic suspension.
+
+GATE 1 — CONTACT PAGE: GMC requires at least TWO of the following three contact methods to be visible as printed text (not hidden behind a form only): physical business address, contact email address, customer service phone number. A blank contact form with no actual address or email printed on the page FAILS. Flag as critical if fewer than 2 methods are present as visible text. Flag as critical if the contact email is on a free provider (Gmail, Yahoo, Hotmail) with no physical address also shown — free email + no address = trust signal failure.
+
+GATE 2 — RETURN/REFUND POLICY COMPLETENESS: The policy must explicitly state ALL FOUR of: (1) how to initiate a return, (2) the exact return timeframe in days, (3) who pays return shipping, (4) what condition the item must be in. Vague language like "we accept returns" or "contact us for returns" FAILS. Also scan for legacy brand names — if the policy text says "Iron Phoenix GHG" anywhere while the domain is ourphoenixrise.com, flag as critical misrepresentation (GMC treats name mismatches in policies as bait-and-switch).
+
+GATE 3 — PAYMENT TRANSPARENCY: Payment method logos (Visa, Mastercard, PayPal, etc.) must be visible in the footer before checkout. Terms of Service must outline billing conditions. The checkout must use HTTPS. Flag as warning if payment methods are not visible on the storefront before clicking Add to Cart.
+
+GATE 4 — BRAND COHESION: The shopper-facing brand name must be singular and consistent with the domain. Scan every page for competing operating names. The rule: "Our Phoenix Rise" is the only name shoppers should see. "Go Hard Gaming Discord LLC" belongs ONLY in the fine print of Terms of Service or Privacy Policy legal section — never in navigation, banners, headers, footers, or product pages. If multiple operating names compete for attention anywhere visible to shoppers, flag as critical.
+
+GATE 5 — PRODUCT REPRESENTATION: What is shown must exactly match what ships. Flag: out-of-stock products shown as available, product images that don't match the item described, exaggerated capability claims, mockup images that misrepresent the final product quality.
+
 0. TECHNICAL SIGNAL PARITY (GMC 2026 — these cause silent suspensions)
 - JSON-LD / SCHEMA PRICE MISMATCH: Google crawls the rendered HTML of every product page and compares the price in the JSON-LD Product schema against the visible price. If any product page shows a "compare at" price or sale price in the schema but a different current price in the HTML, flag as critical. Look for <script type="application/ld+json"> blocks containing "offers" with a "price" field. Even a $0.01 difference triggers suspension.
 - PLACEHOLDER / TEMPLATE TEXT IN POLICIES: Google identifies policies containing unfilled template placeholders as "not yet operational." Scan all policy pages for: bracketed text like [YOUR COMPANY NAME], [INSERT DATE], [COUNTRY], [EMAIL ADDRESS], "Lorem ipsum", or any text surrounded by brackets or angle brackets that is clearly an unfilled template slot. Flag each instance as critical.
@@ -368,7 +381,8 @@ IMPORTANT — DO NOT FLAG:
 - A policy as "missing" when its page URL is listed above and marked "PAGE EXISTS — scraper could not read content." The page exists on the storefront. Only flag a policy as absent if no URL for it appears anywhere in the scraped data at all.
 - Blog posts, articles, or editorial content for health language (emotional wellness language in blog content is standard)
 - Outbound links in blog/editorial pages (these are normal SEO practice)
-- Missing phone number or physical address alone (not required by GMC)
+- Missing phone number alone (phone is optional if email + address are both present)
+- A physical address alone being absent IF a business email on the store's own domain AND a phone number are both clearly visible (two contact methods still satisfied)
 - .myshopify.com domain appearing anywhere (this is Shopify infrastructure, not a risk)
 - Absence of third-party reviews alone
 
