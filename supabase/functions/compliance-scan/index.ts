@@ -369,12 +369,18 @@ This store sells made-to-order / print-on-demand products. Google Merchant Cente
 - Return promises on product pages must not contradict the return policy.
 
 ABSOLUTE RULE — BLOG AND EDITORIAL CONTENT:
-Blog posts, articles, fiction excerpts, personal essays, and editorial stories operate under completely different rules than product pages. The following types of language in blog/article content are NEVER health claims, NEVER medical claims, and must NEVER be flagged under any severity:
+Blog posts, articles, fiction excerpts, personal essays, and editorial stories operate under completely different rules than product pages. If the content is on a blog page, article page, or any editorial URL (contains /blogs/, /articles/, /posts/, /news/), ALL of the following are NORMAL and must NEVER be flagged under any severity:
+
+- OUTBOUND LINKS IN BLOGS: External links to Etsy shops, Pinterest, social media, other stores, partner sites, or any third-party URL are standard blogging practice and a deliberate SEO strategy. Linking from a Shopify blog to an Etsy listing is not a brand inconsistency — it is a cross-platform sales funnel. NEVER flag outbound links in blog content as misrepresentation, brand confusion, or off-domain risk. Blogs are supposed to link out.
+- BRAND MENTIONS IN BLOGS: A blog post that mentions "Iron Phoenix GHG", "PixelChicBoTreasures", "IronPhoenixGHG.store", or any related brand as part of a product announcement, story, or update is normal. This is not brand confusion — it is a business explaining its own brand family to readers.
 - Emotional or psychological language: "doubt", "anxiety", "spiraled", "felt lighter", "breathe", "vulnerability", "hard days", "healing", "hope", "relief", "pressure"
 - Relationship and narrative language: "guardian", "connection", "love", "enduring", "offered", "needed"
 - Literary and storytelling devices: metaphor, vulnerability arcs, emotional transformation, character inner states
 - Wellness lifestyle language in a personal or narrative context
-If the content is on a blog page, article page, or any editorial URL (contains /blogs/, /articles/, /posts/, /news/), treat ALL emotional, psychological, and relational language as creative writing — not as regulated health claims. Only flag blog content if a product is directly named alongside a specific medical outcome claim (e.g. "buy this supplement — it cured my depression").
+- Announcements of new products with links to those products on any platform
+- Social media handles or links embedded in blog content
+
+Only flag blog content if a specific physical product sold on the storefront is directly named alongside a specific medical outcome claim (e.g. "buy this supplement — it cured my depression"). Everything else in blog content is off-limits for flagging.
 
 IMPORTANT — DO NOT FLAG:
 - Dates of any kind. This is an absolute prohibition. Do NOT flag "last updated" dates, policy dates, blog post dates, copyright years, or any other date. Do NOT compare any date to today. Do NOT flag a date as "in the future" or "in the past." Date accuracy is 100% out of scope for this audit. Any finding about a date will be automatically removed before delivery.
