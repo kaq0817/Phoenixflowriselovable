@@ -746,18 +746,8 @@ function detectContentRisks(
       continue;
     }
 
-    // Etsy text references (separate from URL check above, catches text-only mentions)
-    if (/\betsy\b/i.test(lowered)) {
-      risks.push({
-        title: title || handle || "Untitled article",
-        handle,
-        blogTitle,
-        severity: "warning",
-        reason: "This article references Etsy, which may direct customers away from the active storefront.",
-        recommendation: "Remove Etsy references or replace them with links to Our Phoenix Rise.",
-      });
-      continue;
-    }
+    // NOTE: Etsy references in blog content are intentional cross-platform marketing.
+    // A Shopify blog linking to an Etsy shop is a deliberate sales funnel — do NOT flag.
 
     // Store identity mismatch — article mentions store-entity language but never names the current store.
     // Only run when shop_name is known; fall back to domain-based label if needed.
@@ -780,7 +770,7 @@ function detectContentRisks(
     }
   }
 
-  return risks.slice(0, 50);
+  return risks.slice(0, 200);
 }
 
 function detectContentOpportunities(
@@ -816,6 +806,28 @@ function detectContentOpportunities(
     });
     const hasProductLink = hasAllowedAbsoluteProductLink || /\/products\//i.test(bodyHtml);
     const hasCta = /(shop now|get yours|buy now|order today|check it out|grab yours|find it here|shop the|see our|browse our)/i.test(article.body_html || "");
+
+    // Jolt/AI template garbage detection
+    const hasIntroductionHeading = /<h[1-6][^>]*>\s*introduction\s*<\/h[1-6]>/i.test(bodyHtml);
+    const hasConclusionHeading = /<h[1-6][^>]*>\s*conclusion\s*<\/h[1-6]>/i.test(bodyHtml);
+    const hasPlaceholderText = /\[your (name|store|product|company|brand)\]|\[insert|lorem ipsum/i.test(bodyHtml);
+    const hasJoltSignals = hasIntroductionHeading || hasConclusionHeading || hasPlaceholderText;
+
+    if (hasJoltSignals) {
+      const signals = [
+        hasIntroductionHeading ? '"Introduction" heading found' : null,
+        hasConclusionHeading ? '"Conclusion" heading found' : null,
+        hasPlaceholderText ? 'unfilled placeholder text found' : null,
+      ].filter(Boolean).join(", ");
+      opportunities.push({
+        title: title || handle || "Untitled article",
+        handle,
+        blogTitle,
+        type: "jolt_template",
+        label: "AI template garbage — needs full rewrite",
+        suggestion: `This post has signs of unedited AI/Jolt output: ${signals}. These signal low quality to Google and hurt your store's credibility. Rewrite this post from scratch or use the Improve button to regenerate it.`,
+      });
+    }
 
     if (wordCount > 0 && wordCount < 250) {
       opportunities.push({
@@ -862,7 +874,7 @@ function detectContentOpportunities(
     }
   }
 
-  return opportunities.slice(0, 50);
+  return opportunities.slice(0, 200);
 }
 
 function detectBusinessInfo(footerLiquid: string, _shopName: string) {
