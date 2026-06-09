@@ -916,6 +916,23 @@ export default function Templanator() {
     }
   };
 
+  const handleOpenAuditResults = () => {
+    const scrollToResults = () => {
+      document
+        .getElementById("phoenix-audit-results")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    if (step === 3) {
+      scrollToResults();
+      return;
+    }
+
+    setStep(3);
+    requestAnimationFrame(() => requestAnimationFrame(scrollToResults));
+    window.setTimeout(scrollToResults, 350);
+  };
+
   const handlePushApproved = async () => {
     if (!scanResult) return;
     if (pushing) return;
@@ -1580,7 +1597,7 @@ export default function Templanator() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => window.open("/audit", "_blank", "noopener")}
+                    onClick={handleOpenAuditResults}
                   >
                     Open Full Audit View
                   </Button>
@@ -1689,9 +1706,9 @@ export default function Templanator() {
   );
 
   const renderStep3 = () => (
-    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-6">
+    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
       {scanResult ? (
-        <>
+        <div id="phoenix-audit-results" className="space-y-6">
           <Card className="bg-card/50 border-border/30">
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center gap-3">
@@ -2228,7 +2245,7 @@ export default function Templanator() {
               Continue to Subdomain Separation
             </Button>
           </div>
-        </>
+        </div>
       ) : null}
     </motion.div>
   );
