@@ -360,6 +360,7 @@ export default function Templanator() {
   const [improvingFocus, setImprovingFocus] = useState<Record<number, string>>({});
   const [scannedProducts, setScannedProducts] = useState<ScannedProduct[]>([]);
   const [productScanLoading, setProductScanLoading] = useState(false);
+  const [dismissedArticleIds, setDismissedArticleIds] = useState<Set<number>>(new Set());
   const identityReady = Boolean(
     legalEntityName.trim() &&
       stateOfIncorporation.trim() &&
@@ -414,6 +415,30 @@ export default function Templanator() {
     const baseArticles = scanResult?.riskArticles ?? [];
     return baseArticles.map((article) => articleEdits[article.articleId] ?? article);
   }, [scanResult, articleEdits]);
+  const triageArticles = useMemo(() => {
+    const articles = editableRiskArticles.filter((a) => !dismissedArticleIds.has(a.articleId));
+    return [...articles].sort((a, b) => {
+      const risksA = contentRisksByHandle.get(a.handle) ?? [];
+      const risksB = contentRisksByHandle.get(b.handle) ?? [];
+      const oppsA = (scanResult?.contentOpportunities ?? []).filter((o) => o.handle === a.handle);
+      const oppsB = (scanResult?.contentOpportunities ?? []).filter((o) => o.handle === b.handle);
+      return getBlogPriorityScore(b, risksB, oppsB) - getBlogPriorityScore(a, risksA, oppsA);
+    });
+  }, [editableRiskArticles, dismissedArticleIds, contentRisksByHandle, scanResult?.contentOpportunities]);
+  const oppsByHandle = useMemo(() => {
+    const map = new Map<string, { title: string; blogTitle: string; opps: ContentOpportunity[] }>();
+    for (const opp of scanResult?.contentOpportunities ?? []) {
+      const handle = String(opp.handle || "").trim();
+      if (!handle) continue;
+      const existing = map.get(handle);
+      if (existing) {
+        existing.opps.push(opp);
+      } else {
+        map.set(handle, { title: opp.title, blogTitle: opp.blogTitle, opps: [opp] });
+      }
+    }
+    return Array.from(map.entries()).map(([handle, data]) => ({ handle, ...data }));
+  }, [scanResult?.contentOpportunities]);
   const previewTitle = previewTrack === "lcp"
     ? "LCP Preview"
     : previewTrack === "domains"
@@ -638,6 +663,21 @@ export default function Templanator() {
   }, [scanResult, businessIdentityCandidates]);
 
   const keyChecks = useMemo<KeyCheck[]>(() => {
+    const requiredPolicyHandles = new Set([
+      "privacy-policy",
+      "terms-of-service",
+      "refund-policy",
+      "shipping-policy",
+    ]);
+
+    const requiredMissing = (scanResult?.policyLinks ?? []).filter((link) => {
+      const parts = String(link.targetPath || "").split("/").filter(Boolean);
+      const handle = parts.length > 0 ? parts[parts.length - 1] : "";
+      return Boolean(handle) && requiredPolicyHandles.has(handle) && link.status !== "ok";
+    });
+
+    const allRequiredReady = Boolean(scanResult) && requiredMissing.length === 0;
+
     return [
       {
         id: "store-connected",
@@ -654,10 +694,12 @@ export default function Templanator() {
       {
         id: "policies",
         label: "Policy links valid",
-        status: allPoliciesReady ? "pass" : brokenPolicyLinks.length > 0 ? "fail" : "pending",
-        detail: allPoliciesReady
-          ? "All policy links pass."
-          : `${brokenPolicyLinks.length} policy links need work.`,
+        status: !scanResult ? "pending" : allRequiredReady ? "pass" : "fail",
+        detail: !scanResult
+          ? "Import the current Shopify theme."
+          : allRequiredReady
+            ? "All required policy links pass."
+            : `${requiredMissing.length} required policy links need work.`,
       },
       {
         id: "live-compliance",
@@ -744,8 +786,6 @@ export default function Templanator() {
   }, [
     selectedConn,
     scanResult,
-    allPoliciesReady,
-    brokenPolicyLinks.length,
     complianceReport,
     actionableComplianceFindings.length,
     brokenLinkCount,
@@ -1192,10 +1232,30 @@ export default function Templanator() {
 
     // Gather known opportunities for this article
     const articleOpps = (scanResult?.contentOpportunities ?? [])
-      .filter((o) => o.handle === article.handle)
-      .map((o) => o.type);
+      .filter((o) => o.handle === article.handle);
 
     const focus = improvingFocus[article.articleId] ?? "";
+
+    const articleRisksForAI = contentRisksByHandle.get(article.handle) ?? [];
+    const derivedFlags = getDerivedBlogFlags(article, articleRisksForAI, articleOpps);
+    const repairParts: string[] = [];
+    if (derivedFlags.some((f) => ["Introduction heading detected", "Conclusion heading detected", "Generic intro/outro structure"].includes(f))) {
+      repairParts.push("remove templated intro and conclusion");
+    }
+    if (derivedFlags.includes("Possible duplicate template")) {
+      repairParts.push("reduce duplicate boilerplate and make the article sound human");
+    }
+    if (derivedFlags.includes("No product tie-in")) {
+      repairParts.push("weave in a relevant product naturally");
+    }
+    if (derivedFlags.includes("Weak tags")) {
+      repairParts.push("improve SEO tags");
+    }
+    if (derivedFlags.includes("Thin content")) {
+      repairParts.push("expand thin content with useful details");
+    }
+    repairParts.push("improve excerpt");
+    const combinedFocus = [repairParts.join("; "), focus].filter(Boolean).join(". ");
 
     setImprovingArticleId(article.articleId);
     try {
@@ -1206,8 +1266,8 @@ export default function Templanator() {
           title: article.title,
           tags: article.tags,
           storeDomain,
-          opportunities: articleOpps,
-          focus: focus || undefined,
+          opportunities: articleOpps.map((o) => o.type),
+          focus: combinedFocus || undefined,
         },
       });
 
@@ -1397,6 +1457,7 @@ export default function Templanator() {
     setExpandedArticleId(null);
     setSavingArticleId(null);
     setScannedProducts([]);
+    setDismissedArticleIds(new Set());
   };
 
   const renderPreviewCard = (track: FixTrack) => {
@@ -1819,194 +1880,298 @@ export default function Templanator() {
                 <div className="flex items-center gap-3">
                   <TrendingUp className="h-5 w-5 text-emerald-400" />
                   <div>
-                    <h3 className="font-semibold">Blog Growth Opportunities</h3>
-                    <p className="text-xs text-muted-foreground">{scanResult.contentOpportunities!.length} ways to get more traffic from your existing content.</p>
+                    <h3 className="font-semibold">Blog Opportunities & Repairs</h3>
+                    <p className="text-xs text-muted-foreground">{scanResult.contentOpportunities!.length} ways to improve your existing content.</p>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  {scanResult.contentOpportunities!.map((opp, i) => (
-                    <div key={i} className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1">
-                      <div className="flex items-start gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mt-0.5">
-                          {opp.blogTitle || "Blog"}
-                        </span>
+                  {oppsByHandle.map(({ handle, title, blogTitle, opps }) => {
+                    const articleId = editableRiskArticles.find((a) => a.handle === handle)?.articleId;
+                    return (
+                      <div key={handle} className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{title}</p>
+                            <p className="text-xs text-muted-foreground">{blogTitle || "Blog"}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-xs">{opps.length} {opps.length === 1 ? "fix" : "fixes"}</Badge>
+                            {articleId !== undefined ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setExpandedArticleId(articleId);
+                                  setTimeout(() => {
+                                    document.getElementById("blog-triage-queue")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                  }, 50);
+                                }}
+                              >
+                                Open in Queue
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {opps.map((opp, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs text-emerald-400">{opp.label}</Badge>
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-sm font-medium">{opp.title}</p>
-                      <p className="text-xs font-semibold text-emerald-400">{opp.label}</p>
-                      <p className="text-xs text-muted-foreground">{opp.suggestion}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {contentRiskCount > 0 ? (
-            <Card className="bg-card/50 border-border/30">
-              <CardContent className="p-6 space-y-3">
-                <div className="flex items-center gap-3">
-                  <Shield className="h-5 w-5 text-red-400" />
-                  <div>
-                    <h3 className="font-semibold">Content Compliance Editor</h3>
-                    <p className="text-xs text-muted-foreground">Flagged articles are fully loaded below so you can edit and save directly to Shopify.</p>
-                  </div>
+          <Card id="blog-triage-queue" className="bg-card/50 border-border/30">
+            <CardContent className="p-6 space-y-3">
+              <div className="flex items-center gap-3">
+                <Flame className="h-5 w-5 text-orange-400" />
+                <div>
+                  <h3 className="font-semibold">Blog Triage Queue</h3>
+                  <p className="text-xs text-muted-foreground">Worst blog issues first. Fix scammy, duplicated, or weak posts directly. Edit and save back to Shopify.</p>
                 </div>
+                <Badge variant="outline" className="ml-auto">{triageArticles.length} in queue</Badge>
+              </div>
 
-                {editableRiskArticles.length > 0 ? (
-                  <div className="space-y-4">
-                    {editableRiskArticles.map((article) => {
-                      const articleRisks = contentRisksByHandle.get(article.handle) ?? [];
-                      const dirty = isArticleDirty(article);
-                      const expanded = expandedArticleId === article.articleId;
+              {triageArticles.length > 0 ? (
+                <div className="space-y-4">
+                  {triageArticles.map((article) => {
+                    const articleRisks = contentRisksByHandle.get(article.handle) ?? [];
+                    const articleOpps = (scanResult.contentOpportunities ?? []).filter((o) => o.handle === article.handle);
+                    const flags = getDerivedBlogFlags(article, articleRisks, articleOpps);
+                    const score = getBlogPriorityScore(article, articleRisks, articleOpps);
+                    const dirty = isArticleDirty(article);
+                    const expanded = expandedArticleId === article.articleId;
+                    const topReasons = [
+                      ...articleRisks.slice(0, 2).map((r) => r.reason),
+                      ...flags.slice(0, 1),
+                    ].filter(Boolean).slice(0, 3);
 
-                      return (
-                        <div key={article.articleId} className="rounded-lg border border-border/30 bg-muted/10 p-4 space-y-3">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="font-medium text-sm">{article.title || article.handle}</p>
-                              <p className="text-xs text-muted-foreground">Blog: {article.blogTitle || "Unmapped blog"}</p>
-                            </div>
+                    return (
+                      <div key={article.articleId} className="rounded-lg border border-border/30 bg-muted/10 p-4 space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline">{articleRisks.length} risks</Badge>
-                              {articleRisks.some((risk) => risk.severity === "critical") ? (
+                              <p className="font-medium text-sm">{article.title || article.handle}</p>
+                              <Badge variant="outline" className="text-xs">Priority {score}</Badge>
+                              {articleRisks.some((r) => r.severity === "critical") ? (
                                 <Badge variant="destructive">critical</Badge>
-                              ) : (
+                              ) : articleRisks.length > 0 ? (
                                 <Badge variant="outline">warning</Badge>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setExpandedArticleId(expanded ? null : article.articleId)}
-                              >
-                                {expanded ? "Collapse" : "Edit Full Post"}
-                              </Button>
+                              ) : null}
                             </div>
+                            <p className="text-xs text-muted-foreground">Blog: {article.blogTitle || "Unmapped blog"}</p>
                           </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setExpandedArticleId(expanded ? null : article.articleId)}>
+                              {expanded ? "Collapse" : "Open Editor"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={Boolean(improvingArticleId) || Boolean(savingArticleId)}
+                              onClick={() => improveArticleWithAI(article)}
+                            >
+                              {improvingArticleId === article.articleId
+                                ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Improving...</>
+                                : <><Bot className="h-3.5 w-3.5 mr-1.5" /> Improve with AI</>}
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="gradient-phoenix text-primary-foreground"
+                              disabled={!dirty || Boolean(savingArticleId)}
+                              onClick={() => handleSaveArticle(article)}
+                            >
+                              {savingArticleId === article.articleId
+                                ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving...</>
+                                : "Save to Shopify"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDismissedArticleIds((prev) => new Set([...prev, article.articleId]))}
+                            >
+                              Mark Done
+                            </Button>
+                          </div>
+                        </div>
 
-                          <div className="space-y-2">
-                            {articleRisks.slice(0, 3).map((risk, index) => (
-                              <div key={`${article.articleId}-${index}`} className="rounded-md bg-background/50 p-2 text-xs">
-                                <p className="font-medium">{risk.reason}</p>
-                                <p className="mt-1 text-muted-foreground">Fix: {risk.recommendation}</p>
-                              </div>
+                        {flags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {flags.map((flag) => (
+                              <Badge key={flag} variant="secondary" className="text-xs">{flag}</Badge>
                             ))}
                           </div>
+                        ) : null}
 
-                          {expanded ? (
-                            <div className="space-y-3 border-t border-border/30 pt-3">
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="space-y-1">
-                                  <p className="text-xs font-medium text-muted-foreground">Article Title</p>
-                                  <Input
-                                    value={article.title}
-                                    onChange={(event) => updateArticleEdit(article.articleId, "title", event.target.value)}
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-xs font-medium text-muted-foreground">Tags</p>
-                                  <Input
-                                    value={article.tags}
-                                    onChange={(event) => updateArticleEdit(article.articleId, "tags", event.target.value)}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="space-y-1">
-                                <p className="text-xs font-medium text-muted-foreground">Summary HTML</p>
-                                <Textarea
-                                  className="min-h-[120px]"
-                                  value={article.summaryHtml}
-                                  onChange={(event) => updateArticleEdit(article.articleId, "summaryHtml", event.target.value)}
-                                />
-                              </div>
-
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs font-medium text-muted-foreground">Blog Post Content</p>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-primary hover:underline"
-                                    onClick={() => setArticlePreviewIds((prev) => {
-                                      const next = new Set(prev);
-                                      if (next.has(article.articleId)) { next.delete(article.articleId); } else { next.add(article.articleId); }
-                                      return next;
-                                    })}
-                                  >
-                                    {articlePreviewIds.has(article.articleId) ? "Edit HTML" : "Preview"}
-                                  </button>
-                                </div>
-                                {articlePreviewIds.has(article.articleId) ? (
-                                  <div
-                                    className="min-h-[280px] rounded-md border border-input bg-background px-4 py-3 text-sm prose prose-invert max-w-none overflow-auto"
-                                    dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
-                                  />
-                                ) : (
-                                  <Textarea
-                                    className="min-h-[280px] text-sm"
-                                    value={htmlToEditableText(article.bodyHtml)}
-                                    placeholder="Write your blog post here..."
-                                    onChange={(event) => updateArticleEdit(article.articleId, "bodyHtml", editableTextToHtml(event.target.value))}
-                                  />
-                                )}
-                              </div>
-
-                              <div className="rounded-md border border-border/30 bg-muted/20 p-3 space-y-2">
-                                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                  <Bot className="h-3.5 w-3.5" /> AI Blog Assist
-                                </p>
-                                <div className="flex gap-2">
-                                  <Input
-                                    className="h-8 text-xs"
-                                    placeholder='Optional: "add more product links" or "make it warmer" or "expand the story"'
-                                    value={improvingFocus[article.articleId] ?? ""}
-                                    onChange={(e) => setImprovingFocus((prev) => ({ ...prev, [article.articleId]: e.target.value }))}
-                                  />
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="shrink-0"
-                                    disabled={Boolean(improvingArticleId) || Boolean(savingArticleId)}
-                                    onClick={() => improveArticleWithAI(article)}
-                                  >
-                                    {improvingArticleId === article.articleId
-                                      ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Improving...</>
-                                      : <><Bot className="h-3.5 w-3.5 mr-1.5" /> Improve with AI</>}
-                                  </Button>
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Gemini will expand thin content, add product links, and fix compliance issues while keeping your story intact.
-                                </p>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-xs text-muted-foreground">
-                                  {dirty ? "Unsaved edits" : "No unsaved edits"}
-                                </p>
-                                <Button
-                                  size="sm"
-                                  className="gradient-phoenix text-primary-foreground"
-                                  disabled={!dirty || Boolean(savingArticleId)}
-                                  onClick={() => handleSaveArticle(article)}
-                                >
-                                  {savingArticleId === article.articleId
-                                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
-                                    : "Save Article To Shopify"}
-                                </Button>
-                              </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {topReasons.length > 0 ? (
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Why It's Flagged</p>
+                              {topReasons.map((reason, i) => (
+                                <p key={i} className="text-xs text-muted-foreground">&#8226; {reason}</p>
+                              ))}
+                            </div>
+                          ) : null}
+                          {articleOpps.slice(0, 3).length > 0 ? (
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Opportunities</p>
+                              {articleOpps.slice(0, 3).map((opp, i) => (
+                                <p key={i} className="text-xs text-emerald-400">&#8226; {opp.label}</p>
+                              ))}
                             </div>
                           ) : null}
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
-                    Risk signals were found, but full article payloads were not returned. Re-run Theme Handshake to refresh article content for editing.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : null}
+
+                        {expanded ? (
+                          <div className="space-y-3 border-t border-border/30 pt-3">
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground">Article Title</p>
+                                <Input
+                                  value={article.title}
+                                  onChange={(e) => updateArticleEdit(article.articleId, "title", e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground">SEO Tags</p>
+                                <Input
+                                  value={article.tags}
+                                  onChange={(e) => updateArticleEdit(article.articleId, "tags", e.target.value)}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-muted-foreground">Excerpt</p>
+                              <Textarea
+                                className="min-h-[80px]"
+                                value={article.summaryHtml}
+                                onChange={(e) => updateArticleEdit(article.articleId, "summaryHtml", e.target.value)}
+                              />
+                            </div>
+
+                            <div className="rounded-md border border-border/30 bg-muted/20 p-3 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-primary">SEO Fixes</p>
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground">Suggested meta description</p>
+                                <p className="mt-1 text-sm">{getSuggestedMetaDescription(article) || "Add an excerpt to generate a meta description."}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground">Current tags</p>
+                                {article.tags ? (
+                                  <p className="mt-1 text-sm">{article.tags}</p>
+                                ) : (
+                                  <p className="mt-1 text-sm text-muted-foreground">No tags — add relevant search terms.</p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-md border border-border/30 bg-muted/20 p-3 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-primary">Product Tie-In</p>
+                              {getSuggestedProductTieIn(article, articleOpps) ? (
+                                <p className="text-sm">{getSuggestedProductTieIn(article, articleOpps)}</p>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">No product tie-in detected. Use AI Blog Assist to weave one in.</p>
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-medium text-muted-foreground">Blog Content</p>
+                                <button
+                                  type="button"
+                                  className="text-xs text-primary hover:underline"
+                                  onClick={() => setArticlePreviewIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(article.articleId)) { next.delete(article.articleId); } else { next.add(article.articleId); }
+                                    return next;
+                                  })}
+                                >
+                                  {articlePreviewIds.has(article.articleId) ? "Edit HTML" : "Preview"}
+                                </button>
+                              </div>
+                              {articlePreviewIds.has(article.articleId) ? (
+                                <div
+                                  className="min-h-[280px] rounded-md border border-input bg-background px-4 py-3 text-sm prose prose-invert max-w-none overflow-auto"
+                                  dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
+                                />
+                              ) : (
+                                <Textarea
+                                  className="min-h-[280px] text-sm"
+                                  value={htmlToEditableText(article.bodyHtml)}
+                                  placeholder="Write your blog post here..."
+                                  onChange={(e) => updateArticleEdit(article.articleId, "bodyHtml", editableTextToHtml(e.target.value))}
+                                />
+                              )}
+                            </div>
+
+                            <div className="rounded-md border border-border/30 bg-muted/20 p-3 space-y-2">
+                              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                                <Bot className="h-3.5 w-3.5" /> AI Blog Assist
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Removes templated intros/conclusions, reduces duplicate-sounding phrasing, strengthens the excerpt, improves SEO tags, and adds a better product tie-in while keeping the original story.
+                              </p>
+                              <div className="flex gap-2">
+                                <Input
+                                  className="h-8 text-xs"
+                                  placeholder="Optional: add more product links, make it warmer, expand the story..."
+                                  value={improvingFocus[article.articleId] ?? ""}
+                                  onChange={(e) => setImprovingFocus((prev) => ({ ...prev, [article.articleId]: e.target.value }))}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="shrink-0"
+                                  disabled={Boolean(improvingArticleId) || Boolean(savingArticleId)}
+                                  onClick={() => improveArticleWithAI(article)}
+                                >
+                                  {improvingArticleId === article.articleId
+                                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Improving...</>
+                                    : <><Bot className="h-3.5 w-3.5 mr-1.5" /> Improve with AI</>}
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs text-muted-foreground">
+                                {dirty ? "Unsaved edits" : "No unsaved edits"}
+                              </p>
+                              <Button
+                                size="sm"
+                                className="gradient-phoenix text-primary-foreground"
+                                disabled={!dirty || Boolean(savingArticleId)}
+                                onClick={() => handleSaveArticle(article)}
+                              >
+                                {savingArticleId === article.articleId
+                                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                                  : "Save Article To Shopify"}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : contentRiskCount > 0 ? (
+                <div className="rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
+                  Article payloads were not loaded. Re-run Theme Handshake to refresh article content for editing.
+                </div>
+              ) : (
+                <div className="rounded-md bg-muted/20 p-4 space-y-1">
+                  <p className="text-sm text-muted-foreground">No flagged blogs found in this scan.</p>
+                  {scanResult.contentArticleCount !== undefined ? (
+                    <p className="text-xs text-muted-foreground">{scanResult.contentArticleCount} articles scanned.</p>
+                  ) : null}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="bg-card/50 border-border/30">
             <CardContent className="p-6 space-y-4">
@@ -2852,6 +3017,94 @@ export default function Templanator() {
       </div>
     </div>
   );
+}
+
+function getDerivedBlogFlags(
+  article: ContentRiskArticle,
+  articleRisks: ContentRisk[],
+  articleOpps: ContentOpportunity[],
+): string[] {
+  const flags: string[] = [];
+  const stripped = `${article.title} ${article.summaryHtml} ${article.bodyHtml}`
+    .replace(/<[^>]+>/g, " ")
+    .toLowerCase();
+
+  if (/\bintroduction\b/.test(stripped)) flags.push("Introduction heading detected");
+  if (/\bconclusion\b/.test(stripped)) flags.push("Conclusion heading detected");
+  if (flags.some((f) => f.includes("Introduction") || f.includes("Conclusion"))) {
+    flags.push("Generic intro/outro structure");
+  }
+  if (
+    /in this (article|post|blog)/i.test(stripped) ||
+    /we hope this (helps|was helpful)/i.test(stripped) ||
+    /in conclusion,/i.test(stripped) ||
+    /to summarize,/i.test(stripped)
+  ) {
+    flags.push("Possible duplicate template");
+  }
+
+  const wordCount = stripped.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 200) flags.push("Thin content");
+
+  if (articleOpps.some((o) => o.type === "no_product_link")) flags.push("No product tie-in");
+  if (articleOpps.some((o) => o.type === "missing_tags")) flags.push("Weak tags");
+
+  if (
+    articleRisks.some(
+      (r) =>
+        r.reason?.toLowerCase().includes("brand") ||
+        r.reason?.toLowerCase().includes("wrong store") ||
+        r.reason?.toLowerCase().includes("competitor"),
+    )
+  ) {
+    flags.push("Mixed brand wording");
+  }
+
+  return flags;
+}
+
+function getBlogPriorityScore(
+  article: ContentRiskArticle,
+  articleRisks: ContentRisk[],
+  articleOpps: ContentOpportunity[],
+): number {
+  let score = 0;
+  score += articleRisks.filter((r) => r.severity === "critical").length * 10;
+  score += articleRisks.filter((r) => r.severity === "warning").length * 5;
+
+  const flags = getDerivedBlogFlags(article, articleRisks, articleOpps);
+  if (flags.includes("Mixed brand wording")) score += 7;
+  if (flags.includes("Possible duplicate template")) score += 8;
+  if (flags.includes("Generic intro/outro structure")) score += 3;
+  if (flags.includes("Thin content")) score += 4;
+  if (flags.includes("No product tie-in")) score += 3;
+  if (flags.includes("Weak tags")) score += 2;
+
+  return score;
+}
+
+function getSuggestedProductTieIn(
+  article: ContentRiskArticle,
+  articleOpps: ContentOpportunity[],
+): string | null {
+  const tieInOpp = articleOpps.find((o) => o.type === "no_product_link");
+  if (tieInOpp?.suggestion) return tieInOpp.suggestion;
+
+  const title = article.title.toLowerCase();
+  if (title.includes("gaming") || title.includes("game")) return "Link to your gaming products collection.";
+  if (title.includes("art") || title.includes("print")) return "Link to your art prints or wall art collection.";
+  if (title.includes("candle") || title.includes("wax")) return "Link to your candles collection.";
+  if (title.includes("shirt") || title.includes("apparel") || title.includes("clothing")) return "Link to your apparel collection.";
+
+  return null;
+}
+
+function getSuggestedMetaDescription(article: ContentRiskArticle): string {
+  const summary = article.summaryHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (summary.length > 40) return summary.slice(0, 155).trim();
+
+  const body = article.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return body.slice(0, 155).trim();
 }
 
 function ArchitectPanel({
