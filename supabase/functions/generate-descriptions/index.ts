@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { buildDescriptionPrompt, normalizeGeneratedHtml } from "./prompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,25 +68,12 @@ serve(async (req) => {
     const results = await Promise.all(active.map(async (product) => {
       const fda = needsFdaDisclaimer(product.title);
 
-      const prompt = `You are a Shopify conversion copywriter. Your job is to make the person reading this description feel like they NEED to own this product — "she must buy that" or "he would look incredible in that."
-
-Write for a real human who is scrolling and deciding in 8 seconds. Lead with who this product is for and why it fits their life, identity, or style. Make them picture themselves owning it.
-
-COPY RULES:
-- Open with 1 punchy hook sentence: who is this for and what does it do for them (not what it IS — what it MEANS to own it).
-- Then 4-6 benefit-driven bullets. Each bullet should answer "why do I want this?" not just list specs. Lead with the benefit, follow with the spec if helpful.
-- Confident, specific language. No vague filler ("high quality", "perfect for everyone"). Be specific about the person and the moment.
-- No exclamation points. Strong copy doesn't need them.
-- No ALL CAPS (except acronyms: USA, UV, FDA).
-- HTML only. Allowed tags: <h3>, <p>, <ul>, <li>, <strong>. Nothing else.
-- Structure: <h3> product name, <p> hook sentence (who this is for + why they'll love it), <ul> 4-6 benefit bullets.${fda ? `
-- REQUIRED: End with this exact FDA disclaimer paragraph: <p><em>*These statements have not been evaluated by the Food and Drug Administration. This product is not intended to diagnose, treat, cure, or prevent any disease.</em></p>` : ""}
-
-${globalContext ? `Brand context (use this to set tone and audience): ${globalContext}` : ""}
-Product title: ${product.title}
-Features / attributes: ${product.features || "Not provided"}
-
-Output raw HTML only. No markdown, no code fences, no explanation.`;
+      const prompt = buildDescriptionPrompt({
+        title: product.title,
+        features: product.features || "Not provided",
+        globalContext,
+        requiresFdaDisclaimer: fda,
+      });
 
       let html = "";
       let error = "";
@@ -106,8 +94,7 @@ Output raw HTML only. No markdown, no code fences, no explanation.`;
         if (response.ok) {
           const data = await response.json();
           html = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-          // Strip any code fences Gemini sometimes adds
-          html = html.replace(/^```html?\s*/i, "").replace(/```\s*$/, "").trim();
+          html = normalizeGeneratedHtml(html, product.title, product.features || "", fda);
         } else {
           const errText = await response.text();
           error = `Gemini error ${response.status}: ${errText.slice(0, 150)}`;
@@ -117,11 +104,18 @@ Output raw HTML only. No markdown, no code fences, no explanation.`;
       }
 
       if (!html) {
-        // Minimal compliant fallback
-        const bullets = product.features
-          ? product.features.split(/[,\n]/).map((f) => f.trim()).filter(Boolean).slice(0, 6).map((f) => `<li>${f}</li>`).join("")
-          : "<li>See product images for full specifications</li>";
-        html = `<h3>${product.title}</h3><p>${product.title}. See specifications below.</p><ul>${bullets}</ul>${fda ? '<p><em>*These statements have not been evaluated by the Food and Drug Administration. This product is not intended to diagnose, treat, cure, or prevent any disease.</em></p>' : ""}`;
+        html = normalizeGeneratedHtml(
+          `<h3>${product.title}</h3><p>Details for this product are listed below.</p><ul>${(product.features || "")
+            .split(/[\n,]/)
+            .map((f) => f.trim())
+            .filter(Boolean)
+            .slice(0, 6)
+            .map((f) => `<li>${f}</li>`)
+            .join("") || "<li>See product details for full specifications.</li>"}</ul><p>Use this information to confirm fit, size, and everyday use.</p>`,
+          product.title,
+          product.features || "",
+          fda,
+        );
       }
 
       return { title: product.title, content: html, error };
