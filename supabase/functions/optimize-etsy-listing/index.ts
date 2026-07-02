@@ -115,13 +115,15 @@ TAGS (exactly 13, each max 20 characters INCLUDING spaces):
 
 DESCRIPTION:
 - Write like a real seller talking to one buyer, not a bot filling in a template. You know this item and you're telling them the specific reason they need it — not reciting a spec sheet.
+- DESIGN SELLS THE PRODUCT, NOT THE MATERIAL: If this listing's appeal is a printed design, graphic, quote, joke, or theme (mug, shirt, ornament, sticker, etc.), lead with why THAT design is cute, funny, or exactly right for the person who'd want it — not the ceramic or fabric it's printed on. Name the specific identity or interest it speaks to.
+- COLLECTOR ANGLE: If the design is part of a themed or ongoing series, speak to the buyer who collects these — inviting, enthusiastic direct-address lines are welcome ("look no further," "add this to your collection," "your first or your tenth, it earns its spot") as long as they're specific to this design, not generic filler.
 - First sentence must name the item clearly, include the primary keyword, and say in plain language why this buyer needs it.
 - Put buying-critical details near the top: size, material, color, customization options, production time.
 - 600-900 characters. Short paragraphs or bullets for readability. Vary sentence length like real speech.
 - Work secondary keywords in naturally — do not repeat the title verbatim.
-- BANNED PATTERNS: "perfect for", "elevate your", "look no further", "whether you're X or Y", "must-have", "in today's world" — these sound like every other Etsy listing and buyers tune them out.
-- End with either a practical note (shipping estimate, care instructions, personalization process) or one honest closing line on why they'll be glad they bought it — whichever fits the product better.
-- No special characters. Plain ASCII only. No exclamation points. No hollow hype.
+- BANNED PATTERNS: "elevate your", "whether you're X or Y", "in today's world" — generic filler that could describe any product. Hype tied to something specific about THIS design is good; hype tied to nothing is not.
+- End with either a practical note (shipping estimate, care instructions, personalization process) or one honest, enthusiastic closing line on why they'll be glad they bought it — whichever fits the product better.
+- No special characters. Plain ASCII only.
 
 MATERIALS: Accurate, specific list. Real fiber contents and percentages if known.
 
