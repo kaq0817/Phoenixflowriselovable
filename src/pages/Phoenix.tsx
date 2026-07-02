@@ -217,7 +217,12 @@ export default function PhoenixPage() {
   const [fixLoading, setFixLoading] = useState<Set<number>>(new Set());
   const [fixes, setFixes] = useState<Map<number, Fix>>(new Map());
   const [applyLoading, setApplyLoading] = useState<Set<number>>(new Set());
-  const [applied, setApplied] = useState<Set<number>>(new Set());
+  const [applied, setApplied] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem("phoenix_applied_products");
+      return raw ? new Set<number>(JSON.parse(raw)) : new Set<number>();
+    } catch { return new Set<number>(); }
+  });
   const [bulkPublishing, setBulkPublishing] = useState(false);
   const [availableChannels, setAvailableChannels] = useState<{ id: number; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<number>>(new Set());
@@ -254,7 +259,6 @@ export default function PhoenixPage() {
     setScanning(true);
     setScanned(false);
     setFixes(new Map());
-    setApplied(new Set());
     try {
       if (platform === "shopify" && connections.shopify) {
         // FORCE DEEP SCAN: Fetching full catalog to surface 0% trash
@@ -360,7 +364,11 @@ export default function PhoenixPage() {
         });
         if (error) throw error;
       }
-      setApplied((prev) => new Set(prev).add(id));
+      setApplied((prev) => {
+        const next = new Set(prev).add(id);
+        try { localStorage.setItem("phoenix_applied_products", JSON.stringify([...next])); } catch { /* quota */ }
+        return next;
+      });
       toast({ title: "✅ Fixed!", description: "Changes pushed to your store." });
     } catch (err: unknown) {
       const error = err as Error;
@@ -580,13 +588,23 @@ export default function PhoenixPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {platform === "shopify" && [...shopifyProducts]
-                .sort((a, b) => (shopifyScores.get(a.id)?.total ?? 0) - (shopifyScores.get(b.id)?.total ?? 0))
+                .sort((a, b) => {
+                  const aApplied = applied.has(a.id) ? 1 : 0;
+                  const bApplied = applied.has(b.id) ? 1 : 0;
+                  if (aApplied !== bApplied) return aApplied - bApplied;
+                  return (shopifyScores.get(a.id)?.total ?? 0) - (shopifyScores.get(b.id)?.total ?? 0);
+                })
                 .map((p) => {
                   const score = shopifyScores.get(p.id);
                   return score ? renderProductCard(p.id, p.title, p.images?.[0]?.src, score) : null;
                 })}
               {platform === "etsy" && [...etsyListings]
-                .sort((a, b) => (etsyScores.get(a.listing_id)?.total ?? 0) - (etsyScores.get(b.listing_id)?.total ?? 0))
+                .sort((a, b) => {
+                  const aApplied = applied.has(a.listing_id) ? 1 : 0;
+                  const bApplied = applied.has(b.listing_id) ? 1 : 0;
+                  if (aApplied !== bApplied) return aApplied - bApplied;
+                  return (etsyScores.get(a.listing_id)?.total ?? 0) - (etsyScores.get(b.listing_id)?.total ?? 0);
+                })
                 .map((l) => {
                   const score = etsyScores.get(l.listing_id);
                   return score ? renderProductCard(l.listing_id, l.title, l.images?.[0]?.url_170x135, score) : null;

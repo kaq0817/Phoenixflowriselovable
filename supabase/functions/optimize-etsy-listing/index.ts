@@ -114,12 +114,13 @@ TAGS (exactly 13, each max 20 characters INCLUDING spaces):
 - No promotional words: sale, cheap, free, discount, deal, new, best, hot.
 
 DESCRIPTION:
-- First sentence must name the item clearly and include the primary keyword.
+- Write like a real seller talking to one buyer, not a bot filling in a template. You know this item and you're telling them the specific reason they need it — not reciting a spec sheet.
+- First sentence must name the item clearly, include the primary keyword, and say in plain language why this buyer needs it.
 - Put buying-critical details near the top: size, material, color, customization options, production time.
-- Write for the buyer who is one sentence away from clicking Add to Cart.
-- 600-900 characters. Short paragraphs or bullets for readability.
+- 600-900 characters. Short paragraphs or bullets for readability. Vary sentence length like real speech.
 - Work secondary keywords in naturally — do not repeat the title verbatim.
-- End with a practical note (shipping estimate, care instructions, or personalization process) — not a sales pitch.
+- BANNED PATTERNS: "perfect for", "elevate your", "look no further", "whether you're X or Y", "must-have", "in today's world" — these sound like every other Etsy listing and buyers tune them out.
+- End with either a practical note (shipping estimate, care instructions, personalization process) or one honest closing line on why they'll be glad they bought it — whichever fits the product better.
 - No special characters. Plain ASCII only. No exclamation points. No hollow hype.
 
 MATERIALS: Accurate, specific list. Real fiber contents and percentages if known.
