@@ -16,7 +16,14 @@ interface ProductSlot {
   id: string;
   title: string;
   features: string;
+  brand?: string;
 }
+
+const BRAND_VOICE_OPTIONS = [
+  { value: "", label: "Auto / Unset" },
+  { value: "ourphoenixrise", label: "Our Phoenix Rise" },
+  { value: "ironphoenix", label: "Iron Phoenix GHG" },
+];
 
 interface GeneratedDescription {
   title: string;
@@ -45,6 +52,7 @@ const emptySlots: ProductSlot[] = Array.from({ length: 5 }, (_, index) => ({
   id: String(index + 1),
   title: "",
   features: "",
+  brand: "",
 }));
 
 function deriveFeaturesFromProduct(product: ShopifyProductOption): string {
@@ -118,12 +126,14 @@ export default function DescriptionsPage() {
   };
 
   const applyProductToSlot = (product: ShopifyProductOption) => {
+    const connection = storeConnections.find((c) => c.id === selectedConnectionId);
+    const brand = connection?.shop_domain || connection?.shop_name || "";
     setProducts((previous) => {
       const emptyIndex = previous.findIndex((slot) => !slot.title.trim());
       const targetIndex = emptyIndex === -1 ? previous.length - 1 : emptyIndex;
       return previous.map((slot, index) =>
         index === targetIndex
-          ? { ...slot, title: product.title, features: deriveFeaturesFromProduct(product) }
+          ? { ...slot, title: product.title, features: deriveFeaturesFromProduct(product), brand }
           : slot,
       );
     });
@@ -285,7 +295,7 @@ export default function DescriptionsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {products.map((product, index) => (
-            <div key={product.id} className="grid grid-cols-1 gap-3 md:grid-cols-2 p-3 rounded-lg border border-border/10 bg-muted/10">
+            <div key={product.id} className="grid grid-cols-1 gap-3 md:grid-cols-3 p-3 rounded-lg border border-border/10 bg-muted/10">
               <div className="space-y-1">
                 <p className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Title</p>
                 <Input
@@ -303,6 +313,24 @@ export default function DescriptionsPage() {
                   onChange={(event) => handleUpdate(index, "features", event.target.value)}
                   className="bg-background/50"
                 />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Brand Voice</p>
+                <Select
+                  value={product.brand || "auto"}
+                  onValueChange={(value) => handleUpdate(index, "brand", value === "auto" ? "" : value)}
+                >
+                  <SelectTrigger className="bg-background/50">
+                    <SelectValue placeholder="Auto / Unset" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BRAND_VOICE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value || "auto"} value={option.value || "auto"}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           ))}

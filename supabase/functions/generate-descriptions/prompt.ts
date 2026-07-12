@@ -3,6 +3,7 @@ export interface DescriptionPromptInput {
   features: string;
   globalContext?: string;
   requiresFdaDisclaimer?: boolean;
+  storeLabel?: string;
 }
 
 export interface GeneratedCopy {
@@ -14,18 +15,39 @@ export interface GeneratedCopy {
   seoDescription: string;
 }
 
+function pickBrandVoice(storeLabel: string | undefined, title: string, features: string): string {
+  const label = (storeLabel || "").toLowerCase();
+  const haystack = `${title} ${features}`.toLowerCase();
+
+  if (label.includes("ironphoenix") || label.includes("iron-phoenix") || label.includes("gohardgaming")) {
+    return `You are an expert e-commerce copywriter for Iron Phoenix GHG — a brand built around the gamer community and the people who support them. Vibe: high-contrast, moody, deeply independent, authentic over mass-market. Core principle: authenticity, personal sovereignty, unhurried presence over trends.`;
+  }
+
+  if (label.includes("ourphoenixrise") || label.includes("phoenixrise")) {
+    const isKids = /\b(kid|kids|toddler|youth|child|children|baby|blossom\s*fields)\b/i.test(haystack);
+    if (isKids) {
+      return `You are an expert e-commerce copywriter for Our Phoenix Rise's Blossom Fields kids' line — warm, wholesome, playful. Speak to the parent who's buying it, but keep the sense of wonder a kid would feel. Cozy and gentle, never edgy or ironic.`;
+    }
+    return `You are an expert e-commerce copywriter for Our Phoenix Rise — American front-porch, homespun comfort. Think a well-loved quilt, a good pillow, a porch swing at golden hour. Warm and neighborly, not narrowly patriotic (not just red/white/blue) — cozy Americana across styles and seasons. Core principle: comfort you can feel, not hype.`;
+  }
+
+  return `You are an expert e-commerce copywriter. Make the shopper physically feel the product before they buy it — a blanket should feel soft and warm just from reading about it, a shirt should feel like it's worth way more than it costs. Match the sensory language to what the product actually is, and match the tone to who would actually want THIS specific item — don't force one fixed subculture voice onto every product.`;
+}
+
 export function buildDescriptionPrompt({
   title,
   features,
   globalContext,
   requiresFdaDisclaimer,
+  storeLabel,
 }: DescriptionPromptInput): string {
-  return `You are an expert e-commerce copywriter for the brand "Our Phoenix Rise" — vibe: Gamer Family / Goth-not-Preppy, high-contrast, dark, moody, deeply independent. Core principle: authenticity, personal sovereignty, unhurried presence over mass-market trends.
+  const brandVoice = pickBrandVoice(storeLabel, title, features);
+
+  return `${brandVoice}
 
 Write a product description in four sections, following these rules exactly:
 
-1. STORY: 1-2 short punchy paragraphs, max 4-5 sentences total. Authentic, no-nonsense, slightly witty, speak as a peer, grounded in a real human moment — not abstract philosophy about clothing itself. Lead with what makes THIS specific piece — its actual name, collection, graphic, or theme if the input gives one (e.g. a "Dragon Survivor" design, a matching set, a personalization option) — not a generic description of the garment category. If the input names a design/collection or calls out personalization/matching pieces, that IS the headline detail and must show up in the story — never drop it in favor of talking about the fabric instead. If the input says the design is a choice (e.g. a preset graphic OR a customer's own personalization/text), the story must reflect that it's a choice — do not flatten it into only the preset design, and do not treat personalization as a side note. Be precise about who does what: the customer is buying a finished product and, at most, picks or submits what design/text goes on it — the shop does the actual printing/production. Never phrase it as if the customer does the customizing themselves (e.g. not "run your own design," not "you customize it") — say something like "send us your own design" or "your art, printed on it" instead. The fabric/fit is supporting cast, the design is the star, but never philosophize about clothing in the abstract or explain what the item "isn't." Put the wearer in a specific scene and let the design do the talking.
-   - GOOD (concrete, human, understated): "For when you need armor that doesn't announce itself."
+1. STORY: 1-2 short punchy paragraphs, max 4-5 sentences total. Authentic, no-nonsense, grounded in a real human moment — not abstract philosophy about the product category. Lead with what makes THIS specific piece — its actual name, collection, graphic, or theme if the input gives one (e.g. a named design, a matching set, a personalization option) — not a generic description of the product category. If the input names a design/collection or calls out personalization/matching pieces, that IS the headline detail and must show up in the story — never drop it in favor of talking about the material instead. If the input says the design is a choice (e.g. a preset graphic OR a customer's own personalization/text), the story must reflect that it's a choice — do not flatten it into only the preset design, and do not treat personalization as a side note. Be precise about who does what: the customer is buying a finished product and, at most, picks or submits what design/text goes on it — the shop does the actual printing/production. Never phrase it as if the customer does the customizing themselves (e.g. not "run your own design," not "you customize it") — say something like "send us your own design" or "your art, printed on it" instead. The material/fit is supporting cast, the design or feeling is the star, but never philosophize about the product in the abstract or explain what the item "isn't." Put the person using it in a specific scene and let the product do the talking. Make it sensory — a blanket should feel soft and warm from reading about it, a shirt should feel like it fits better and looks sharper than its price tag suggests.
    Never construct any sentence of the form "you're not wearing X" or "this isn't just Y" or "these aren't X — they're Y" — any "not this, but that" shape included. Describe what the piece IS, never what it "isn't."
    Avoid clipped fragment-lists strung together with commas/periods (e.g. "Heavy fleece, neat seams, pockets that actually work.") — that's a spec sheet with the words softened, not a human talking. Write real sentences with subjects and verbs, like you'd actually say out loud, not ad-copy shorthand.
    Do not restate the raw input's feature list in sentence form — that is a spec dump wearing a story costume, not a story. Pick ONE real, physically plausible moment and write like you're texting a friend about it. Get the order of real life right. Short sentences. Contractions. No listing multiple features back to back.
@@ -40,7 +62,7 @@ Write a product description in four sections, following these rules exactly:
 4. CLOSE: one small charming closing line, in plain, direct language — no abstractions, no talk of "the design" or "your design," nothing a customer would have to stop and puzzle over. Anchor the item as a treat or personal-boundary marker (e.g. add it to cart, wear it, claim your space, add it to your collection). No aggressive sales language, no "buy now while supplies last," no generic adjectives like "revolutionize," "game-changer," "ultimate," "perfect addition."
 
 Also generate SEO listing metadata:
-- seoTitle: a product listing title, under 60 characters. Do not just restring the raw input's own title/category words as-is — write it like a real product title a shopper would click on: lead with the design/collection name, then the item type, in natural title case, no dashes-separated keyword stuffing. Don't restate visually obvious facts (e.g. "full color print," "all-over print"). Only include a print/material detail in the title if it's a real differentiator. If the item is a clothing product, the title must end with color and size when those are given or inferable from the input (e.g. "Dragon Survivor Hoodie - Black, M") — this is required for Google Shopping listings. If color/size genuinely isn't in the input, omit rather than invent one.
+- seoTitle: a product listing title, under 60 characters. Do not just restring the raw input's own title/category words as-is — write it like a real product title a shopper would click on: lead with the design/collection name, then the item type, in natural title case, no dashes-separated keyword stuffing. Don't restate visually obvious facts (e.g. "full color print," "all-over print"). Only include a print/material detail in the title if it's a real differentiator. If the item comes in a color and/or size, the title must end with those when given or inferable from the input (e.g. "Meadow Bloom Throw Blanket - Sage, 50x60") — this is required for Google Shopping listings. If color/size genuinely isn't in the input, omit rather than invent one.
 - seoDescription: a meta description for search/social, under 155 characters. This is customer-facing marketing copy, not a spec dump. Write one enticing sentence that sells the feeling/design (same voice as the Story) and naturally works in 1 concrete detail at most. Plain language a shopper would actually read, no jargon like "blank."
 
 The raw product details below are often print-on-demand supplier data describing the BLANK item before printing (base garment color, fabric, country of origin). That is background material, not the product. Weight the design/name/theme in the title far more heavily than blank-stock facts.

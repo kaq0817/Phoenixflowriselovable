@@ -14,6 +14,7 @@ interface ProductSlot {
   id: string;
   title: string;
   features: string;
+  brand?: string;
 }
 
 const HEALTH_KEYWORDS = [
@@ -76,6 +77,7 @@ serve(async (req) => {
         features: product.features || "Not provided",
         globalContext,
         requiresFdaDisclaimer: fda,
+        storeLabel: product.brand,
       });
 
       let html = "";
