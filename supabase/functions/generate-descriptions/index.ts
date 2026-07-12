@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
-import { buildDescriptionPrompt, normalizeGeneratedHtml } from "./prompt.ts";
+import { buildDescriptionPrompt, parseGeneratedCopy, copyToShopifyHtml } from "./prompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,6 +67,9 @@ serve(async (req) => {
 
     const results = await Promise.all(active.map(async (product) => {
       const fda = needsFdaDisclaimer(product.title);
+      const disclaimerHtml = fda
+        ? '<p><em>*These statements have not been evaluated by the Food and Drug Administration. This product is not intended to diagnose, treat, cure, or prevent any disease.</em></p>'
+        : "";
 
       const prompt = buildDescriptionPrompt({
         title: product.title,
@@ -76,49 +79,64 @@ serve(async (req) => {
       });
 
       let html = "";
+      let seoTitle = "";
+      let seoDescription = "";
       let error = "";
 
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
-            }),
-          }
-        );
+      // Model cascade: try the best available model first, fall back on quota/availability errors
+      const GEMINI_MODELS = ["gemini-2.5-flash-preview-04-17", "gemini-2.5-flash"];
 
-        if (response.ok) {
-          const data = await response.json();
-          html = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-          html = normalizeGeneratedHtml(html, product.title, product.features || "", fda);
-        } else {
-          const errText = await response.text();
-          error = `Gemini error ${response.status}: ${errText.slice(0, 150)}`;
+      for (const model of GEMINI_MODELS) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.65, maxOutputTokens: 1536 },
+              }),
+            }
+          );
+
+          if (response.status === 429) {
+            error = `Model ${model} quota exceeded, trying fallback...`;
+            continue;
+          }
+
+          if (response.ok) {
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+            const copy = text ? parseGeneratedCopy(text) : null;
+            if (copy) {
+              html = copyToShopifyHtml(copy, product.title, disclaimerHtml);
+              seoTitle = copy.seoTitle;
+              seoDescription = copy.seoDescription;
+              error = "";
+              break;
+            }
+            error = `Gemini (${model}) returned unparseable output. Finish reason: ${data.candidates?.[0]?.finishReason || "unknown"}`;
+          } else {
+            const errText = await response.text();
+            error = `Gemini error ${response.status}: ${errText.slice(0, 150)}`;
+          }
+        } catch (err) {
+          error = err instanceof Error ? err.message : String(err);
         }
-      } catch (err) {
-        error = err instanceof Error ? err.message : String(err);
       }
 
       if (!html) {
-        html = normalizeGeneratedHtml(
-          `<h3>${product.title}</h3><p>Details for this product are listed below.</p><ul>${(product.features || "")
-            .split(/[\n,]/)
-            .map((f) => f.trim())
-            .filter(Boolean)
-            .slice(0, 6)
-            .map((f) => `<li>${f}</li>`)
-            .join("") || "<li>See product details for full specifications.</li>"}</ul><p>Use this information to confirm fit, size, and everyday use.</p>`,
-          product.title,
-          product.features || "",
-          fda,
-        );
+        html = `<h3>${product.title}</h3><p>Details for this product are listed below.</p><ul>${(product.features || "")
+          .split(/[\n,]/)
+          .map((f) => f.trim())
+          .filter(Boolean)
+          .slice(0, 6)
+          .map((f) => `<li>${f}</li>`)
+          .join("") || "<li>See product details for full specifications.</li>"}</ul><p>Use this information to confirm fit, size, and everyday use.</p>${disclaimerHtml}`;
       }
 
-      return { title: product.title, content: html, error };
+      return { title: product.title, content: html, seoTitle, seoDescription, error };
     }));
 
     return new Response(JSON.stringify({ results }), {
