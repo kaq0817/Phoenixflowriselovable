@@ -54,7 +54,25 @@ verify_jwt = false
 [functions.send-scan-email]
 verify_jwt = false
 
+[functions.shopify-auth]
+verify_jwt = false
+
+[functions.shopify-callback]
+verify_jwt = false
+
 [functions.shopify-manual-connect]
+verify_jwt = false
+
+[functions.shopify-webhook-customers-data-request]
+verify_jwt = false
+
+[functions.shopify-webhook-customers-redact]
+verify_jwt = false
+
+[functions.shopify-webhook-shop-redact]
+verify_jwt = false
+
+[functions.shopify-webhook-app-uninstalled]
 verify_jwt = false
 
 [functions.store-disconnect]

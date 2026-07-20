@@ -1,0 +1,35 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "c1717f6c4d6c45d0acd070eea2cb5265"
+name = "Phoenix Flow"
+application_url = "https://ironphoenixflow.com"
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request" ]
+  uri = "https://nkabxuelejvvdwyvtwmz.supabase.co/functions/v1/shopify-webhook-customers-data-request"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/redact" ]
+  uri = "https://nkabxuelejvvdwyvtwmz.supabase.co/functions/v1/shopify-webhook-customers-redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "shop/redact" ]
+  uri = "https://nkabxuelejvvdwyvtwmz.supabase.co/functions/v1/shopify-webhook-shop-redact"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "https://nkabxuelejvvdwyvtwmz.supabase.co/functions/v1/shopify-webhook-app-uninstalled"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_content,read_files,read_inventory,read_legal_policies,read_locations,read_online_store_navigation,read_products,read_publications,read_themes,write_content,write_files,write_inventory,write_online_store_navigation,write_products,write_publications,write_themes"
+
+[auth]
+redirect_urls = [ "https://nkabxuelejvvdwyvtwmz.supabase.co/functions/v1/shopify-callback" ]

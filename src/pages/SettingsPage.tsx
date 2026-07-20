@@ -37,6 +37,8 @@ export default function SettingsPage() {
   const [shopifyAdminToken, setShopifyAdminToken] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [showTokenHelp, setShowTokenHelp] = useState(false);
+  const [shopifyOAuthConnecting, setShopifyOAuthConnecting] = useState(false);
+  const [showManualToken, setShowManualToken] = useState(false);
 
   // Etsy form
   const [showEtsyForm, setShowEtsyForm] = useState(false);
@@ -79,6 +81,55 @@ export default function SettingsPage() {
     const nextQuery = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
   }, [toast]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shopifyStatus = params.get("shopify");
+    const shopifyMessage = params.get("shopify_message");
+    if (!shopifyStatus) return;
+
+    if (shopifyStatus === "connected") {
+      toast({ title: "Shopify connected", description: shopifyMessage || "Your Shopify store is linked." });
+      void fetchConnections();
+    } else {
+      toast({
+        title: shopifyStatus === "denied" ? "Shopify authorization denied" : "Shopify connection failed",
+        description: shopifyMessage || "The Shopify OAuth flow did not complete.",
+        variant: "destructive",
+      });
+    }
+
+    params.delete("shopify");
+    params.delete("shopify_message");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+  }, [toast]);
+
+  const handleShopifyOAuthConnect = async () => {
+    const domain = shopifyDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    if (!domain.includes(".myshopify.com")) {
+      toast({ title: "Invalid domain", description: "Enter your myshopify.com domain (e.g. mystore.myshopify.com)", variant: "destructive" });
+      return;
+    }
+    if (shopifyConnections.some((c) => c.shop_domain === domain)) {
+      toast({ title: "Already connected", description: "This Shopify store is already linked.", variant: "destructive" });
+      return;
+    }
+
+    setShopifyOAuthConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("shopify-auth", {
+        body: { shop: domain, returnPath: "/settings", appOrigin: window.location.origin },
+      });
+      if (error) throw error;
+      if (!data?.url) throw new Error("Shopify authorization URL was not returned");
+
+      window.location.href = data.url;
+    } catch (error: unknown) {
+      toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Shopify authorization."), variant: "destructive" });
+      setShopifyOAuthConnecting(false);
+    }
+  };
 
   const handleShopifyConnect = async () => {
     const domain = shopifyDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -207,7 +258,7 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4 border border-border/50 rounded-lg p-4">
               <p className="text-sm text-muted-foreground">
-                Connect a Shopify store with domain + Admin API token (no app install required).
+                Connect your Shopify store — you'll be redirected to Shopify to approve access, then sent back here.
               </p>
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -219,52 +270,80 @@ export default function SettingsPage() {
                     onChange={(e) => setShopifyDomain(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">Admin API Access Token</label>
-                    <button
-                      onClick={() => setShowTokenHelp(!showTokenHelp)}
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
-                    >
-                      <HelpCircle className="h-3 w-3" /> How to get this
-                    </button>
-                  </div>
-                  <Input
-                    type="password"
-                    placeholder="shpat_..."
-                    className="bg-muted/50"
-                    value={shopifyAdminToken}
-                    onChange={(e) => setShopifyAdminToken(e.target.value)}
-                  />
-                </div>
-                {showTokenHelp && (
-                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2 text-sm">
-                    <p className="font-medium text-primary">Getting your Admin API token:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-xs">
-                      <li>Open your Shopify admin → <strong>Settings</strong> → <strong>Apps and sales channels</strong></li>
-                      <li>Click <strong>Develop apps</strong> (top-right) → <strong>Create an app</strong></li>
-                      <li>Name it "Phoenix Flow" → click <strong>Configure Admin API scopes</strong></li>
-                      <li>Enable: <code className="bg-muted px-1 rounded">read_products</code>, <code className="bg-muted px-1 rounded">write_products</code></li>
-                      <li>Click <strong>Install app</strong> → copy the <strong>Admin API access token</strong></li>
-                      <li>Paste it above — we'll handle the rest!</li>
-                    </ol>
-                  </div>
-                )}
                 <div className="flex gap-2">
                   <Button
                     className="gradient-phoenix text-primary-foreground flex-1"
+                    disabled={shopifyOAuthConnecting || !shopifyDomain.trim()}
+                    onClick={handleShopifyOAuthConnect}
+                  >
+                    {shopifyOAuthConnecting ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Redirecting to Shopify...</>
+                    ) : (
+                      <><Store className="h-4 w-4 mr-2" /> Connect with Shopify</>
+                    )}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowShopifyForm(false)}>Cancel</Button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowManualToken(!showManualToken)}
+                className="text-xs text-muted-foreground hover:text-primary hover:underline flex items-center gap-1"
+              >
+                <HelpCircle className="h-3 w-3" /> Advanced: connect with a manual Admin API token instead
+              </button>
+
+              {showManualToken && (
+                <div className="space-y-3 pt-2 border-t border-border/50">
+                  <p className="text-xs text-muted-foreground">
+                    Only use this if the button above doesn't work for your store — it requires creating a custom
+                    app yourself in Shopify admin, which Shopify has been restricting on newer stores.
+                  </p>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Admin API Access Token</label>
+                      <button
+                        onClick={() => setShowTokenHelp(!showTokenHelp)}
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                      >
+                        <HelpCircle className="h-3 w-3" /> How to get this
+                      </button>
+                    </div>
+                    <Input
+                      type="password"
+                      placeholder="shpat_..."
+                      className="bg-muted/50"
+                      value={shopifyAdminToken}
+                      onChange={(e) => setShopifyAdminToken(e.target.value)}
+                    />
+                  </div>
+                  {showTokenHelp && (
+                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2 text-sm">
+                      <p className="font-medium text-primary">Getting your Admin API token:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-xs">
+                        <li>Open your Shopify admin → <strong>Settings</strong> → <strong>Apps and sales channels</strong></li>
+                        <li>Click <strong>Develop apps</strong> (top-right) → <strong>Create an app</strong></li>
+                        <li>Name it "Phoenix Flow" → click <strong>Configure Admin API scopes</strong></li>
+                        <li>Enable: <code className="bg-muted px-1 rounded">read_products</code>, <code className="bg-muted px-1 rounded">write_products</code></li>
+                        <li>Click <strong>Install app</strong> → copy the <strong>Admin API access token</strong></li>
+                        <li>Paste it above — we'll handle the rest!</li>
+                      </ol>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full"
                     disabled={connecting || !shopifyDomain.trim() || !shopifyAdminToken.trim()}
                     onClick={handleShopifyConnect}
                   >
                     {connecting ? (
                       <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
                     ) : (
-                      <><Key className="h-4 w-4 mr-2" /> Connect Store</>
+                      <><Key className="h-4 w-4 mr-2" /> Connect with Manual Token</>
                     )}
                   </Button>
-                  <Button variant="ghost" onClick={() => setShowShopifyForm(false)}>Cancel</Button>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </CardContent>
