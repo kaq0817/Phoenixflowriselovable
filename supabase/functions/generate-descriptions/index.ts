@@ -83,6 +83,7 @@ serve(async (req) => {
       let html = "";
       let seoTitle = "";
       let seoDescription = "";
+      let materialDetails = "";
       let error = "";
 
       // Model cascade: try the best available model first, fall back on quota/availability errors
@@ -115,6 +116,7 @@ serve(async (req) => {
               html = copyToShopifyHtml(copy, product.title, disclaimerHtml);
               seoTitle = copy.seoTitle;
               seoDescription = copy.seoDescription;
+              materialDetails = copy.materialDetails;
               error = "";
               break;
             }
@@ -138,7 +140,7 @@ serve(async (req) => {
           .join("") || "<li>See product details for full specifications.</li>"}</ul><p>Use this information to confirm fit, size, and everyday use.</p>${disclaimerHtml}`;
       }
 
-      return { title: product.title, content: html, seoTitle, seoDescription, error };
+      return { title: product.title, content: html, seoTitle, seoDescription, materialDetails, error };
     }));
 
     return new Response(JSON.stringify({ results }), {

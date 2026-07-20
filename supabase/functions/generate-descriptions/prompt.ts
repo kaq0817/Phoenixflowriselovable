@@ -13,6 +13,7 @@ export interface GeneratedCopy {
   close: string;
   seoTitle: string;
   seoDescription: string;
+  materialDetails: string;
 }
 
 function pickBrandVoice(storeLabel: string | undefined, title: string, features: string): string {
@@ -53,9 +54,10 @@ Write a product description in four sections, following these rules exactly:
    Do not restate the raw input's feature list in sentence form — that is a spec dump wearing a story costume, not a story. Pick ONE real, physically plausible moment and write like you're texting a friend about it. Get the order of real life right. Short sentences. Contractions. No listing multiple features back to back.
    Also avoid print-shop jargon that reads wrong to a customer out of context — e.g. never say a design "bleeds" (sounds literal, unpleasant). Say "runs edge-to-edge" or "wraps all the way around" instead.
    Never say "your design" — the customer didn't design it, and the phrase reads like it's addressing their own project, not this product. Never talk about "the design" as a floating abstract object either. The piece is still a functional item first (something to actually wear or use) — the print/art is what makes THIS one worth owning, not a replacement for that function. Keep both in view: what it does for the person physically, and what it looks like/means to them.
+   QUOTE THE ACTUAL TEXT — NEVER PARAPHRASE AROUND IT: If the raw input names specific printed words, a joke, or a quote, use those exact words in quotation marks. Never soften them into a vague description ("a funny quote about X", "a clever saying") — that reads as generic AI filler and hides the actual reason a buyer would want this item. A buyer decides based on the real words on the product, not a description of the fact that words exist.
    Plain prose only — no asterisks, no markdown formatting of any kind.
 
-2. BULLETS: 3-4 bullets. These must NOT read like more story paragraphs — no scene-setting, no narrative voice, no "you get..." refrains. Each is a fast, flat statement of fact-plus-attitude: hook = 2-5 word tag (e.g. "Edge-to-edge print"), body = one short fragment, under 12 words, stating the concrete detail plainly. Plain text only — no asterisks, no markdown. Do not include the bullet character.
+2. BULLETS: 3-4 bullets. These must NOT read like more story paragraphs — no scene-setting, no narrative voice, no "you get..." refrains. They also must not read like a flat spec sheet (that's what SPECS is for) — give each one some attitude and punch, like a confident brand talking, not a boring fact dump. Every bullet has to sell why the person looks or feels good using THIS item — the hook and body are BOTH about that payoff, not a material/construction fact restated in nicer words. "Gets better with time" backed by "garment-dyed cotton softens and fades" is still a fabric-aging fact wearing a benefit costume — that's banned. Fabric composition, stitching type, oz weight, construction: these do not belong in bullets at all, full stop — they live in SPECS/materialDetails only. A bullet is only allowed if you could say it out loud to a friend without it turning into a materials lecture: the design/phrase itself and its impact, the personalization, the fit and how it feels/looks. If you cannot make a bullet about the payoff without leaning on a construction fact, drop that bullet rather than dressing the fact up. Hook = 2-5 word tag, body = one short punchy fragment under 12 words, with real personality. Plain text only — no asterisks, no markdown. Do not include the bullet character.
 
 3. SPECS: essential product data only (material, care, print style, fit type, count/size) as label/value pairs. Only include specs actually inferable from the input — do not invent details not present or implied.
 
@@ -63,13 +65,15 @@ Write a product description in four sections, following these rules exactly:
 
 Also generate SEO listing metadata:
 - seoTitle: a product listing title, under 60 characters. Do not just restring the raw input's own title/category words as-is — write it like a real product title a shopper would click on: lead with the design/collection name, then the item type, in natural title case, no dashes-separated keyword stuffing. Don't restate visually obvious facts (e.g. "full color print," "all-over print"). Only include a print/material detail in the title if it's a real differentiator. If the item comes in a color and/or size, the title must end with those when given or inferable from the input (e.g. "Meadow Bloom Throw Blanket - Sage, 50x60") — this is required for Google Shopping listings. If color/size genuinely isn't in the input, omit rather than invent one.
-- seoDescription: a meta description for search/social, under 155 characters. This is customer-facing marketing copy, not a spec dump. Write one enticing sentence that sells the feeling/design (same voice as the Story) and naturally works in 1 concrete detail at most. Plain language a shopper would actually read, no jargon like "blank."
+- seoDescription: a meta description for search/social, under 155 characters. This must sell the product's actual standout selling point (the graphic/design/personalization/theme — whatever makes THIS item worth clicking), not a rundown of fabric and construction. Material/fabric facts (garment-dyed, cotton weight, ring-spun, etc.) must NEVER appear in this field at all, not even in passing — this is a hard ban, not a preference. Name the item plainly, quote or reference the actual printed phrase/graphic and personalization when given, then one line of attitude/who it's for. Plain language a shopper would actually read, no jargon like "blank." Be concrete — if the input gives an actual graphic, phrase, or theme, name it; don't flatten it into vague filler like "bold front text" that could describe any item in any store.
+
+Also separately capture full construction/manufacturing detail as its own field, "materialDetails" — this is NOT customer-facing copy, it's reference data for a separate FAQ assistant to draw on later. Include every technical detail present in the input (fabric composition, weight, stitching, print method, dimensions, care instructions, etc.) in plain factual sentences, unfiltered and complete — the simplification/omission rules for SPECS do not apply here. If the input gives no technical detail at all, return an empty string.
 
 The raw product details below are often print-on-demand supplier data describing the BLANK item before printing (base garment color, fabric, country of origin). That is background material, not the product. Weight the design/name/theme in the title far more heavily than blank-stock facts.
 ${requiresFdaDisclaimer ? "\nThis product is health/wellness-adjacent. Do not imply diagnosis, treatment, cure, prevention, or medical certainty anywhere in the story, bullets, specs, or close. An FDA disclaimer will be appended automatically after your output — do not write your own version of it." : ""}
 
 Return ONLY valid JSON, no markdown fences, matching exactly this shape:
-{"story": "plain string, no markdown", "bullets": [{"hook": "string", "body": "string"}], "specs": [{"label": "string", "value": "string"}], "close": "string", "seoTitle": "string", "seoDescription": "string"}
+{"story": "plain string, no markdown", "bullets": [{"hook": "string", "body": "string"}], "specs": [{"label": "string", "value": "string"}], "close": "string", "seoTitle": "string", "seoDescription": "string", "materialDetails": "string, plain text, full technical detail, empty string if none given"}
 
 ${globalContext ? `Additional tone context (style only, do not quote): ${globalContext}` : ""}
 Product title: ${title}
@@ -97,6 +101,7 @@ export function parseGeneratedCopy(rawText: string): GeneratedCopy | null {
       close: typeof parsed.close === "string" ? parsed.close : "",
       seoTitle: typeof parsed.seoTitle === "string" ? parsed.seoTitle : "",
       seoDescription: typeof parsed.seoDescription === "string" ? parsed.seoDescription : "",
+      materialDetails: typeof parsed.materialDetails === "string" ? parsed.materialDetails : "",
     };
   } catch {
     return null;

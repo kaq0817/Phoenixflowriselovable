@@ -30,6 +30,7 @@ interface GeneratedDescription {
   content: string;
   seoTitle?: string;
   seoDescription?: string;
+  materialDetails?: string;
 }
 
 interface StoreConnectionOption {
@@ -388,6 +389,14 @@ export default function DescriptionsPage() {
                   value={result.content}
                   onChange={(e) => setResults((prev) => prev.map((r, i) => i === idx ? { ...r, content: e.target.value } : r))}
                 />
+                {result.materialDetails && (
+                  <div className="rounded-md border border-border/20 bg-muted/5 px-3 py-2">
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
+                      FAQ Reference Data (not customer-facing)
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{result.materialDetails}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
