@@ -324,7 +324,7 @@ export default function SettingsPage() {
                         <li>Open your Shopify admin → <strong>Settings</strong> → <strong>Apps and sales channels</strong></li>
                         <li>Click <strong>Develop apps</strong> (top-right) → <strong>Create an app</strong></li>
                         <li>Name it "Phoenix Flow" → click <strong>Configure Admin API scopes</strong></li>
-                        <li>Enable: <code className="bg-muted px-1 rounded">read_products</code>, <code className="bg-muted px-1 rounded">write_products</code></li>
+                        <li>Enable: <code className="bg-muted px-1 rounded">read_products</code>, <code className="bg-muted px-1 rounded">write_products</code>, <code className="bg-muted px-1 rounded">read_metaobjects</code>, <code className="bg-muted px-1 rounded">write_metaobjects</code></li>
                         <li>Click <strong>Install app</strong> → copy the <strong>Admin API access token</strong></li>
                         <li>Paste it above — we'll handle the rest!</li>
                       </ol>
@@ -425,7 +425,6 @@ export default function SettingsPage() {
     </div>
   );
 }
-
 
 
 

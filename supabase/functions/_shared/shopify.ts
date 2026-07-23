@@ -17,6 +17,7 @@ const DEFAULT_SHOPIFY_SCOPES = [
   "read_locations",
   "read_online_store_navigation", "write_online_store_navigation",
   "read_products", "write_products",
+  "read_metaobjects", "write_metaobjects",
   "read_themes", "write_themes",
   "read_publications", "write_publications",
 ] as const;
