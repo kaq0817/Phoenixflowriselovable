@@ -64,6 +64,157 @@ function enforceUniqueAltTexts(
   return unique;
 }
 
+type FaqItem = { question: string; answer: string };
+
+function parseFaqItems(value: unknown): FaqItem[] {
+  const parsed = typeof value === "string" ? JSON.parse(value) : value;
+  if (!Array.isArray(parsed)) throw new Error("FAQ must be a list of questions and answers");
+
+  const items = parsed
+    .map((item) => ({
+      question: typeof item?.question === "string" ? item.question.trim() : "",
+      answer: typeof item?.answer === "string" ? item.answer.trim() : "",
+    }))
+    .filter((item) => item.question && item.answer);
+
+  if (items.length === 0) throw new Error("FAQ has no valid questions and answers");
+  return items;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function faqValueForField(items: FaqItem[], fieldType: string): string {
+  if (fieldType === "rich_text_field") {
+    return JSON.stringify({
+      type: "root",
+      children: items.flatMap((item) => [
+        {
+          type: "paragraph",
+          children: [{ type: "text", value: item.question, bold: true }],
+        },
+        {
+          type: "paragraph",
+          children: [{ type: "text", value: item.answer }],
+        },
+      ]),
+    });
+  }
+
+  // The store's FAQ tab renders this metaobject text as HTML. Details elements
+  // stay compact on a product page and work without theme JavaScript.
+  return items
+    .map((item) =>
+      `<details class="product-faq-item"><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`
+    )
+    .join("\n");
+}
+
+async function updateReferencedFaqMetaobject(input: {
+  shop: string;
+  accessToken: string;
+  productMetafields: Array<{
+    type?: string;
+    value?: string;
+  }>;
+  faqItems: FaqItem[];
+}): Promise<{ id: string; handle: string }> {
+  const referencedIds = new Set<string>();
+
+  for (const metafield of input.productMetafields) {
+    if (!metafield.type?.includes("metaobject_reference") || !metafield.value) continue;
+    if (metafield.type.startsWith("list.")) {
+      try {
+        const values = JSON.parse(metafield.value);
+        if (Array.isArray(values)) {
+          for (const value of values) {
+            if (typeof value === "string") referencedIds.add(value);
+          }
+        }
+      } catch { /* ignore a malformed reference list */ }
+    } else {
+      referencedIds.add(metafield.value);
+    }
+  }
+
+  if (referencedIds.size === 0) {
+    throw new Error("This product does not have a referenced Shopify FAQ metaobject");
+  }
+
+  const graphqlUrl = `https://${input.shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const graphql = async (query: string, variables: Record<string, unknown>) => {
+    const response = await fetch(graphqlUrl, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": input.accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const body = await response.json();
+    if (!response.ok || body.errors?.length) {
+      const message = body.errors?.map((error: { message?: string }) => error.message).filter(Boolean).join("; ");
+      throw new Error(message || "Shopify could not read the FAQ metaobject");
+    }
+    return body.data;
+  };
+
+  const candidateData = await graphql(
+    `query FindFaqMetaobjects($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        ... on Metaobject {
+          id
+          type
+          handle
+          fields { key type }
+        }
+      }
+    }`,
+    { ids: [...referencedIds] },
+  );
+
+  const candidates = (candidateData?.nodes || []).filter(
+    (node: { id?: string; type?: string; fields?: Array<{ key: string; type: string }> } | null) =>
+      node?.id && node.fields?.some((field) => field.key.toLowerCase() === "faq"),
+  );
+  const faqMetaobject = candidates.find((node: { type?: string }) => /faq/i.test(node.type || ""))
+    || candidates[0];
+
+  if (!faqMetaobject) {
+    throw new Error("Phoenix Flow found the product's metaobjects, but none contains an FAQ field");
+  }
+
+  const faqField = faqMetaobject.fields.find(
+    (field: { key: string; type: string }) => field.key.toLowerCase() === "faq",
+  );
+  const faqValue = faqValueForField(input.faqItems, faqField.type);
+  const updateData = await graphql(
+    `mutation UpdateProductFaq($id: ID!, $metaobject: MetaobjectUpdateInput!) {
+      metaobjectUpdate(id: $id, metaobject: $metaobject) {
+        metaobject { id handle }
+        userErrors { field message code }
+      }
+    }`,
+    {
+      id: faqMetaobject.id,
+      metaobject: { fields: [{ key: faqField.key, value: faqValue }] },
+    },
+  );
+
+  const result = updateData?.metaobjectUpdate;
+  if (result?.userErrors?.length) {
+    throw new Error(result.userErrors.map((error: { message: string }) => error.message).join("; "));
+  }
+  if (!result?.metaobject) throw new Error("Shopify did not update the FAQ metaobject");
+  return result.metaobject;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -156,7 +307,13 @@ serve(async (req) => {
       { headers: { "X-Shopify-Access-Token": accessToken } }
     );
     const existingMfData = existingMfRes.ok ? await existingMfRes.json() : { metafields: [] };
-    const existingMetafields: { id: number; namespace: string; key: string }[] = existingMfData.metafields || [];
+    const existingMetafields: {
+      id: number;
+      namespace: string;
+      key: string;
+      type?: string;
+      value?: string;
+    }[] = existingMfData.metafields || [];
 
     const findMetafield = (namespace: string, key: string) =>
       existingMetafields.find((m) => m.namespace === namespace && m.key === key);
@@ -190,11 +347,14 @@ serve(async (req) => {
     if (optimizedData.seo_description) {
       await upsertMetafield("global", "description_tag", optimizedData.seo_description, "single_line_text_field");
     }
+    let updatedFaqMetaobject: { id: string; handle: string } | null = null;
     if (optimizedData.faq_json) {
-      const faqValue = typeof optimizedData.faq_json === "string"
-        ? optimizedData.faq_json
-        : JSON.stringify(optimizedData.faq_json);
-      await upsertMetafield("custom", "faq", faqValue, "json");
+      updatedFaqMetaobject = await updateReferencedFaqMetaobject({
+        shop,
+        accessToken,
+        productMetafields: existingMetafields,
+        faqItems: parseFaqItems(optimizedData.faq_json),
+      });
     }
 
     // Update image alt text — prefer explicit imageAltEdits map, fall back to optimizedData.image_alts JSON string
@@ -234,7 +394,11 @@ serve(async (req) => {
 
     const updatedProduct = await updateRes.json();
 
-    return new Response(JSON.stringify({ success: true, product: updatedProduct.product }), {
+    return new Response(JSON.stringify({
+      success: true,
+      product: updatedProduct.product,
+      faqMetaobject: updatedFaqMetaobject,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
@@ -244,7 +408,6 @@ serve(async (req) => {
     });
   }
 });
-
 
 
 
