@@ -46,6 +46,14 @@ interface ShopifySuggestions {
   product_schema_status?: 'valid' | 'missing_fields';
 }
 
+interface MockupDraft {
+  data: string;
+  mimeType: string;
+  style: "lifestyle" | "human" | "styled";
+  quality: { approved: boolean; issues: string[] };
+  uploaded?: boolean;
+}
+
 interface StoreConnectionOption {
   id: string;
   platform: string;
@@ -148,6 +156,10 @@ export default function OptimizerPage() {
   const [altScanLoading, setAltScanLoading] = useState(false);
   const [altsAIFilled, setAltsAIFilled] = useState(0);
   const [convertingImageId, setConvertingImageId] = useState<number | null>(null);
+  const [mockupSourceImageId, setMockupSourceImageId] = useState<number | null>(null);
+  const [generatingMockupStyle, setGeneratingMockupStyle] = useState<MockupDraft["style"] | null>(null);
+  const [mockupDrafts, setMockupDrafts] = useState<MockupDraft[]>([]);
+  const [uploadingMockupIndex, setUploadingMockupIndex] = useState<number | null>(null);
 
   const [salesChannels, setSalesChannels] = useState<{ id: number; name: string }[]>([]);
   const [publishedChannelIds, setPublishedChannelIds] = useState<number[]>([]);
@@ -299,6 +311,10 @@ export default function OptimizerPage() {
     const storeLabel = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
     setImageFilenameDrafts(buildUniqueFilenameDrafts(product, storeLabel));
     setAltTextExpanded(false);
+    setMockupSourceImageId(product.images?.[0]?.id ?? null);
+    setMockupDrafts([]);
+    setGeneratingMockupStyle(null);
+    setUploadingMockupIndex(null);
     fetchSalesChannels(product.id, selectedShopifyConnectionId);
   };
 
@@ -561,6 +577,72 @@ export default function OptimizerPage() {
     }
   };
 
+  const generateMockup = async (style: MockupDraft["style"]) => {
+    if (!selectedProduct || !selectedShopifyConnectionId || !mockupSourceImageId) return;
+    setGeneratingMockupStyle(style);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-product-mockup", {
+        body: {
+          connectionId: selectedShopifyConnectionId,
+          productId: selectedProduct.id,
+          imageId: mockupSourceImageId,
+          style,
+        },
+      });
+      if (error) throw error;
+      if (!data?.mockup?.data) throw new Error("Phoenix Flow did not receive a mockup.");
+      setMockupDrafts((current) => [data.mockup as MockupDraft, ...current].slice(0, 6));
+      toast({
+        title: "Mockup ready to review",
+        description: "Compare the product and lettering with the source, then approve or discard it.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Mockup generation failed";
+      toast({ title: "Mockup generation failed", description: message, variant: "destructive" });
+    } finally {
+      setGeneratingMockupStyle(null);
+    }
+  };
+
+  const uploadMockup = async (draft: MockupDraft, index: number) => {
+    if (!selectedProduct || !selectedShopifyConnectionId || !draft.quality.approved) return;
+    setUploadingMockupIndex(index);
+    try {
+      const activeConnection = storeConnections.find((connection) => connection.id === selectedShopifyConnectionId);
+      const storeLabel = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
+      const productSlug = slugifyForFilename(selectedProduct.title) || `product-${selectedProduct.id}`;
+      const storeSlug = slugifyForFilename(storeLabel) || "store";
+      const filename = `${productSlug}-${draft.style}-mockup-${storeSlug}.webp`;
+      const alt = `${selectedProduct.title} - ${draft.style} lifestyle mockup | ${storeLabel}`.slice(0, 125);
+      const { data, error } = await supabase.functions.invoke("upload-shopify-webp", {
+        body: {
+          connectionId: selectedShopifyConnectionId,
+          productId: selectedProduct.id,
+          attachment: draft.data,
+          filename,
+          alt,
+        },
+      });
+      if (error) throw error;
+      if (!data?.image) throw new Error("Shopify did not return the uploaded mockup.");
+
+      const updatedProduct = { ...selectedProduct, images: [...selectedProduct.images, data.image] };
+      setSelectedProduct(updatedProduct);
+      setShopifyProducts((current) => current.map((product) => (
+        product.id === updatedProduct.id ? updatedProduct : product
+      )));
+      setMockupDrafts((current) => current.map((entry, draftIndex) => (
+        draftIndex === index ? { ...entry, uploaded: true } : entry
+      )));
+      toast({ title: "Mockup added to Shopify", description: "The source image remains untouched." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Mockup upload failed";
+      toast({ title: "Mockup upload failed", description: message, variant: "destructive" });
+    } finally {
+      setUploadingMockupIndex(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -742,6 +824,131 @@ export default function OptimizerPage() {
                       >
                         <Sparkles className="h-4 w-4 mr-2" /> Start Optimization
                       </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {selectedProduct.images?.length > 0 && (
+                  <Card className="bg-card/50 border-primary/30 overflow-hidden">
+                    <CardContent className="p-4 space-y-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <h3 className="text-sm font-semibold">Generate Product Mockups</h3>
+                          <Badge variant="outline" className="ml-auto text-[10px]">OpenAI</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Pick the most accurate source image, then create one low-cost draft. Nothing uploads until you approve it.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">1. Source product image</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {selectedProduct.images.map((image, index) => (
+                            <button
+                              key={image.id}
+                              type="button"
+                              onClick={() => setMockupSourceImageId(image.id)}
+                              className={`relative shrink-0 rounded-lg border-2 p-0.5 transition-colors ${
+                                mockupSourceImageId === image.id ? "border-primary" : "border-border/30"
+                              }`}
+                              aria-label={`Use product image ${index + 1} as the mockup source`}
+                            >
+                              <img src={image.src} alt={image.alt || ""} className="h-16 w-16 rounded-md object-cover" />
+                              <span className="absolute bottom-1 right-1 rounded bg-background/90 px-1 text-[9px]">{index + 1}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">2. Create one draft</p>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {([
+                            ["lifestyle", "Lifestyle Scene"],
+                            ["human", "Person Using It"],
+                            ["styled", "Styled Close-up"],
+                          ] as const).map(([style, label]) => (
+                            <Button
+                              key={style}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={generatingMockupStyle !== null || !mockupSourceImageId}
+                              onClick={() => void generateMockup(style)}
+                            >
+                              {generatingMockupStyle === style
+                                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Creating...</>
+                                : label}
+                            </Button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Creates one 1024px WebP draft per click. OpenAI charges usage separately.</p>
+                      </div>
+
+                      {mockupDrafts.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Review before Shopify</p>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {mockupDrafts.map((draft, index) => (
+                              <div key={`${draft.style}-${index}`} className="rounded-lg border border-border/40 bg-background/40 p-2 space-y-2">
+                                <img
+                                  src={`data:${draft.mimeType};base64,${draft.data}`}
+                                  alt={`${selectedProduct.title} generated ${draft.style} mockup draft`}
+                                  className="w-full aspect-square rounded-md object-cover"
+                                />
+                                <div className="flex items-center justify-between gap-2">
+                                  <Badge variant="outline" className="text-[10px] capitalize">{draft.style}</Badge>
+                                  <Badge className={draft.quality.approved
+                                    ? "bg-emerald-500/10 text-emerald-300"
+                                    : "bg-amber-500/10 text-amber-300"}>
+                                    {draft.quality.approved ? "You approved it" : "Approval required"}
+                                  </Badge>
+                                </div>
+                                {!draft.quality.approved && draft.quality.issues?.length > 0 && (
+                                  <p className="text-[11px] text-amber-300">{draft.quality.issues.join(" ")}</p>
+                                )}
+                                {!draft.quality.approved && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="w-full"
+                                    onClick={() => setMockupDrafts((current) => current.map((entry, draftIndex) => (
+                                      draftIndex === index ? { ...entry, quality: { ...entry.quality, approved: true } } : entry
+                                    )))}
+                                  >
+                                    I Checked It - Product Is Accurate
+                                  </Button>
+                                )}
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="flex-1"
+                                    disabled={!draft.quality.approved || draft.uploaded || uploadingMockupIndex !== null}
+                                    onClick={() => void uploadMockup(draft, index)}
+                                  >
+                                    {uploadingMockupIndex === index
+                                      ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading...</>
+                                      : draft.uploaded ? "Uploaded" : "Add to Shopify"}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={uploadingMockupIndex !== null}
+                                    onClick={() => setMockupDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))}
+                                  >
+                                    Discard
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}
