@@ -104,7 +104,7 @@ function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string):
   for (let i = 0; i < (product.images || []).length; i += 1) {
     const img = product.images[i];
     const detail = FILENAME_ANGLE_SLUGS[i] ?? `view-${i + 1}`;
-    drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.jpg`;
+    drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.webp`;
   }
   return drafts;
 }
@@ -198,7 +198,15 @@ export default function OptimizerPage() {
         } catch { return new Set<number>(); }
       })();
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 50, connectionId: selectedShopifyConnectionId, pageInfoCursor: cursor },
+        body: {
+          limit: 50,
+          connectionId: selectedShopifyConnectionId,
+          pageInfoCursor: cursor,
+          excludeProductIds: [
+            ...Array.from(currentDoneIds),
+            ...(append ? shopifyProducts.map((product) => product.id) : []),
+          ],
+        },
       });
       if (error) throw error;
       const incoming: ShopifyProduct[] = (data.products || []).filter(
@@ -212,7 +220,7 @@ export default function OptimizerPage() {
       setShopifyDoneIds(currentDoneIds);
       const nextCursor: string | null = data.nextPageInfo ?? null;
       setShopifyNextCursor(nextCursor);
-      setShopifyHasMore(!!nextCursor);
+      setShopifyHasMore(Boolean(data.hasMore || nextCursor));
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
     } catch (err: unknown) {
       const errorObj = err as Error;

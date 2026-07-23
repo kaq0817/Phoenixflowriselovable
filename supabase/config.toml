@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.apply-shopify-changes]
 verify_jwt = false
 
+[functions.upload-shopify-webp]
+verify_jwt = false
+
 [functions.apply-theme-fixes]
 verify_jwt = false
 
@@ -89,4 +92,3 @@ verify_jwt = false
 
 [functions.keepalive]
 verify_jwt = false
-

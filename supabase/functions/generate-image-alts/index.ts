@@ -66,15 +66,15 @@ RULES — violation = GMC suspension:
 4. Do NOT use generic words like "product", "item", "view", "detail". Name the actual object.
 5. Do NOT include vendor names like "Iron Phoenix", "Iron Phoenix GHG".
 6. Alt text must be under 125 characters. Format: "[object] [color/detail] [angle] | ${storeName}"
-7. Filename: all lowercase, hyphens only, ends in .jpg. Format: "[object]-[color]-[angle]-${storeSlug}.jpg"
+7. Filename: all lowercase, hyphens only, ends in .webp. Format: "[object]-[color]-[angle]-${storeSlug}.webp"
 
 Examples of CORRECT output:
-- alt: "Silver rose pendant necklace on white background | ${storeName}"  filename: "silver-rose-pendant-necklace-front-${storeSlug}.jpg"
-- alt: "Pink soap flower in red heart gift box open lid | ${storeName}"   filename: "pink-soap-flower-red-heart-gift-box-${storeSlug}.jpg"
-- alt: "Gold rotating jewelry display stand close-up | ${storeName}"     filename: "gold-rotating-jewelry-display-stand-${storeSlug}.jpg"
+- alt: "Silver rose pendant necklace on white background | ${storeName}"  filename: "silver-rose-pendant-necklace-front-${storeSlug}.webp"
+- alt: "Pink soap flower in red heart gift box open lid | ${storeName}"   filename: "pink-soap-flower-red-heart-gift-box-${storeSlug}.webp"
+- alt: "Gold rotating jewelry display stand close-up | ${storeName}"     filename: "gold-rotating-jewelry-display-stand-${storeSlug}.webp"
 
 Return ONLY this JSON object, nothing else:
-{"image_id": ${imageId}, "alt": "<your alt text>", "filename": "<your filename>.jpg"}`;
+{"image_id": ${imageId}, "alt": "<your alt text>", "filename": "<your filename>.webp"}`;
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${apiKey}`,
@@ -179,7 +179,7 @@ serve(async (req) => {
             return {
               image_id: img.id,
               alt: `Product image ${img.index + 1} | ${storeName}`.slice(0, 125),
-              filename: `product-image-${img.index + 1}-${storeSlug}.jpg`,
+              filename: `product-image-${img.index + 1}-${storeSlug}.webp`,
             };
           }
           try {
@@ -188,7 +188,7 @@ serve(async (req) => {
             return {
               image_id: img.id,
               alt: `Product image ${img.index + 1} | ${storeName}`.slice(0, 125),
-              filename: `product-image-${img.index + 1}-${storeSlug}.jpg`,
+              filename: `product-image-${img.index + 1}-${storeSlug}.webp`,
             };
           }
         })

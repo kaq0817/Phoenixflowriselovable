@@ -25,7 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-type MediaFilter = "all" | "needs-attention" | "missing-images" | "thin-gallery" | "missing-alt" | "ready";
+type MediaFilter = "all" | "needs-attention" | "missing-images" | "weak-gallery" | "missing-alt" | "needs-webp" | "ready";
 
 interface ShopifyConnection {
   id: string;
@@ -40,7 +40,8 @@ interface ShopifyProduct {
   vendor: string;
   product_type: string;
   handle: string;
-  images: { id: number; src: string; alt?: string | null }[];
+  images: { id: number; src: string; alt?: string | null; width?: number; height?: number }[];
+  mediaIssues?: string[];
 }
 
 interface MediaRecord {
@@ -50,8 +51,9 @@ interface MediaRecord {
   imageSrc?: string;
   imageCount: number;
   missingImages: boolean;
-  thinGallery: boolean;
+  weakGallery: boolean;
   missingAlt: boolean;
+  needsWebp: boolean;
   ready: boolean;
 }
 
@@ -111,7 +113,7 @@ function buildUniqueFilenameDrafts(product: ShopifyProduct, storeLabel: string):
   for (let i = 0; i < (product.images || []).length; i += 1) {
     const img = product.images[i];
     const detail = i === 0 ? "primary-view" : `detail-${i + 1}`;
-    drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.jpg`;
+    drafts[img.id] = `${productSlug}-${detail}-${storeSlug}.webp`;
   }
 
   return drafts;
@@ -131,6 +133,7 @@ export default function MediaPage() {
   const [altEdits, setAltEdits] = useState<Record<number, Record<number, string>>>({});
   const [filenameDrafts, setFilenameDrafts] = useState<Record<number, Record<number, string>>>({});
   const [savingAlt, setSavingAlt] = useState<number | null>(null);
+  const [convertingImageId, setConvertingImageId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -157,7 +160,7 @@ export default function MediaPage() {
     setRefreshing(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 50, connectionId },
+        body: { limit: 500, connectionId, mode: "media" },
       });
       if (error) throw error;
       setProducts((data?.products || []) as ShopifyProduct[]);
@@ -205,12 +208,85 @@ export default function MediaPage() {
     }
   };
 
+  const createWebpCopy = async (
+    product: ShopifyProduct,
+    image: ShopifyProduct["images"][number],
+    filename: string,
+    alt: string,
+  ) => {
+    setConvertingImageId(image.id);
+    try {
+      const sourceResponse = await fetch(image.src);
+      if (!sourceResponse.ok) throw new Error("Phoenix Flow could not read this Shopify image.");
+      const sourceBlob = await sourceResponse.blob();
+      const bitmap = await createImageBitmap(sourceBlob);
+      const maxDimension = 2000;
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Your browser could not prepare the WebP image.");
+      context.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      const webpBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error("WebP conversion failed.")),
+          "image/webp",
+          0.84,
+        );
+      });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("WebP conversion failed."));
+        reader.readAsDataURL(webpBlob);
+      });
+      const attachment = dataUrl.split(",")[1];
+      if (!attachment) throw new Error("WebP conversion failed.");
+
+      const { data, error } = await supabase.functions.invoke("upload-shopify-webp", {
+        body: {
+          connectionId: selectedConnectionId,
+          productId: product.id,
+          attachment,
+          filename,
+          alt,
+        },
+      });
+      if (error) throw error;
+      if (!data?.image) throw new Error("Shopify did not return the uploaded image.");
+
+      setProducts((current) => current.map((entry) => (
+        entry.id === product.id
+          ? { ...entry, images: [...entry.images, data.image] }
+          : entry
+      )));
+      toast({
+        title: "WebP copy uploaded",
+        description: "The original remains in place until you review the new Shopify image.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "WebP conversion failed";
+      toast({ title: "WebP conversion failed", description: message, variant: "destructive" });
+    } finally {
+      setConvertingImageId(null);
+    }
+  };
+
   const mediaRecords = useMemo<MediaRecord[]>(() => {
     return products.map((product) => {
       const imageCount = product.images?.length || 0;
       const missingImages = imageCount === 0;
-      const thinGallery = imageCount > 0 && imageCount < 3;
+      const weakGallery = imageCount > 0 && imageCount < 5;
       const missingAlt = imageCount > 0 && product.images.some((image) => !image.alt?.trim());
+      const needsWebp = imageCount > 0 && product.images.some((image) => {
+        const cleanSrc = image.src.split("?")[0].toLowerCase();
+        return !cleanSrc.endsWith(".webp");
+      });
 
       return {
         id: product.id,
@@ -219,24 +295,27 @@ export default function MediaPage() {
         imageSrc: product.images?.[0]?.src,
         imageCount,
         missingImages,
-        thinGallery,
+        weakGallery,
         missingAlt,
-        ready: !missingImages && !thinGallery && !missingAlt,
+        needsWebp,
+        ready: !missingImages && !weakGallery && !missingAlt && !needsWebp,
       };
     });
   }, [products]);
 
   const metrics = useMemo(() => {
     const missingImages = mediaRecords.filter((item) => item.missingImages).length;
-    const thinGallery = mediaRecords.filter((item) => item.thinGallery).length;
+    const weakGallery = mediaRecords.filter((item) => item.weakGallery).length;
     const missingAlt = mediaRecords.filter((item) => item.missingAlt).length;
+    const needsWebp = mediaRecords.filter((item) => item.needsWebp).length;
     const ready = mediaRecords.filter((item) => item.ready).length;
 
     return {
       total: mediaRecords.length,
       missingImages,
-      thinGallery,
+      weakGallery,
       missingAlt,
+      needsWebp,
       ready,
       averageImages: formatAverageImageCount(mediaRecords),
     };
@@ -246,14 +325,16 @@ export default function MediaPage() {
     switch (filter) {
       case "missing-images":
         return mediaRecords.filter((item) => item.missingImages);
-      case "thin-gallery":
-        return mediaRecords.filter((item) => item.thinGallery);
+      case "weak-gallery":
+        return mediaRecords.filter((item) => item.weakGallery);
       case "missing-alt":
         return mediaRecords.filter((item) => item.missingAlt);
+      case "needs-webp":
+        return mediaRecords.filter((item) => item.needsWebp);
       case "ready":
         return mediaRecords.filter((item) => item.ready);
       case "needs-attention":
-        return mediaRecords.filter((item) => item.missingImages || item.thinGallery || item.missingAlt);
+        return mediaRecords.filter((item) => item.missingImages || item.weakGallery || item.missingAlt || item.needsWebp);
       default:
         return mediaRecords;
     }
@@ -262,8 +343,9 @@ export default function MediaPage() {
   const filterOptions: { value: MediaFilter; label: string }[] = [
     { value: "needs-attention", label: "Needs Attention" },
     { value: "missing-images", label: "Missing Images" },
-    { value: "thin-gallery", label: "Thin Gallery" },
+    { value: "weak-gallery", label: "Weak Gallery" },
     { value: "missing-alt", label: "Missing Alt" },
+    { value: "needs-webp", label: "Needs WebP" },
     { value: "ready", label: "Ready" },
     { value: "all", label: "All" },
   ];
@@ -279,13 +361,22 @@ export default function MediaPage() {
       icon: Type,
     },
     {
-      title: "Thin Gallery Queue",
-      description: "Products with only 1-2 images and weak photo coverage.",
-      value: `${metrics.thinGallery}`,
-      cta: "Review Thin Galleries",
-      onClick: () => setFilter("thin-gallery"),
-      disabled: metrics.thinGallery === 0,
+      title: "Weak Gallery Queue",
+      description: "Products with fewer than five useful images. Generic supplier galleries still need visual review.",
+      value: `${metrics.weakGallery}`,
+      cta: "Review Weak Galleries",
+      onClick: () => setFilter("weak-gallery"),
+      disabled: metrics.weakGallery === 0,
       icon: Images,
+    },
+    {
+      title: "WebP Queue",
+      description: "Products whose current Shopify images are not WebP files.",
+      value: `${metrics.needsWebp}`,
+      cta: "Review WebP Gaps",
+      onClick: () => setFilter("needs-webp"),
+      disabled: metrics.needsWebp === 0,
+      icon: RefreshCw,
     },
     {
       title: "Missing Images",
@@ -528,19 +619,22 @@ export default function MediaPage() {
 
                     <div className="flex flex-wrap gap-2">
                       {item.missingImages && <Badge className="bg-destructive/10 text-destructive">No Images</Badge>}
-                      {item.thinGallery && <Badge className="bg-amber-500/10 text-amber-400">Thin Gallery</Badge>}
+                      {item.weakGallery && <Badge className="bg-amber-500/10 text-amber-400">Weak Gallery</Badge>}
                       {item.missingAlt && <Badge className="bg-blue-500/10 text-blue-300">Missing Alt Text</Badge>}
+                      {item.needsWebp && <Badge className="bg-purple-500/10 text-purple-300">Needs WebP</Badge>}
                       {item.ready && <Badge className="bg-emerald-500/10 text-emerald-300">Media Ready</Badge>}
                     </div>
 
                     <p className="text-sm text-muted-foreground">
                 {item.missingImages
                   ? "Add images first."
-                  : item.thinGallery
-                   ? "Add more image variety."
+                  : item.weakGallery
+                  ? "Add more image variety."
                   : item.missingAlt
                   ? "Fix image alt text."
-                : "Images look complete."}
+                  : item.needsWebp
+                  ? "Convert approved images to WebP."
+                  : "Images look complete."}
               </p>
 
                     {(() => {
@@ -648,6 +742,22 @@ export default function MediaPage() {
                                         className="w-full h-8 rounded-md border border-input bg-muted/30 px-3 text-xs text-muted-foreground"
                                         value={filenames[img.id] || ""}
                                       />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={convertingImageId !== null || img.src.split("?")[0].toLowerCase().endsWith(".webp")}
+                                        onClick={() => void createWebpCopy(
+                                          product,
+                                          img,
+                                          filenames[img.id] || buildUniqueFilenameDrafts(product, selectedStoreLabel)[img.id],
+                                          edits[img.id] ?? img.alt ?? "",
+                                        )}
+                                      >
+                                        {convertingImageId === img.id
+                                          ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Converting...</>
+                                          : "Create WebP Copy"}
+                                      </Button>
                                     </div>
                                   </div>
                                 ))}
