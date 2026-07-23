@@ -201,10 +201,15 @@ serve(async (req: Request) => {
       });
 
       for (const product of scoredProducts) {
-        const searchable = `${product.title || ""} ${product.id} ${(product as ShopifyProduct & { handle?: string }).handle || ""}`.toLowerCase();
+        const searchableVariants = ((product as ShopifyProduct & {
+          variants?: Array<{ id?: number; title?: string; sku?: string }>;
+        }).variants || [])
+          .map((variant) => `${variant.id || ""} ${variant.title || ""} ${variant.sku || ""}`)
+          .join(" ");
+        const searchable = `${product.title || ""} ${product.id} ${(product as ShopifyProduct & { handle?: string }).handle || ""} ${searchableVariants}`.toLowerCase();
         const matchesSearch = !normalizedSearch || searchable.includes(normalizedSearch);
         const score = mediaMode ? (product.mediaPriority || 0) : (product.trashPriority || 0);
-        if (!excludedIds.has(Number(product.id)) && matchesSearch && score > 0) {
+        if (!excludedIds.has(Number(product.id)) && matchesSearch && (score > 0 || Boolean(normalizedSearch))) {
           foundTrash.push(product);
         }
       }

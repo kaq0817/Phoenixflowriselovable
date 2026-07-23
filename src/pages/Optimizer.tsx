@@ -132,6 +132,8 @@ export default function OptimizerPage() {
   const [shopifyNextCursor, setShopifyNextCursor] = useState<string | null>(null);
   const [shopifyHasMore, setShopifyHasMore] = useState(false);
   const [shopifyDoneIds, setShopifyDoneIds] = useState<Set<number>>(new Set());
+  const [productSearch, setProductSearch] = useState("");
+  const [activeProductSearch, setActiveProductSearch] = useState("");
   const [seoTitleDraft, setSeoTitleDraft] = useState("");
   const [seoDescDraft, setSeoDescDraft] = useState("");
   const [titleDraft, setTitleDraft] = useState("");
@@ -145,6 +147,7 @@ export default function OptimizerPage() {
   const [savingAltText, setSavingAltText] = useState(false);
   const [altScanLoading, setAltScanLoading] = useState(false);
   const [altsAIFilled, setAltsAIFilled] = useState(0);
+  const [convertingImageId, setConvertingImageId] = useState<number | null>(null);
 
   const [salesChannels, setSalesChannels] = useState<{ id: number; name: string }[]>([]);
   const [publishedChannelIds, setPublishedChannelIds] = useState<number[]>([]);
@@ -184,13 +187,18 @@ export default function OptimizerPage() {
     }
   }, [shopifySuggestions]);
 
-  const fetchShopifyProducts = async (cursor: string | null = null, append = false) => {
+  const fetchShopifyProducts = async (
+    cursor: string | null = null,
+    append = false,
+    searchTerm = "",
+  ) => {
     if (!selectedShopifyConnectionId) {
       toast({ title: "Select a store", description: "Choose a Shopify store before loading products." });
       return;
     }
     setShopifyLoading(true);
     try {
+      const directSearch = searchTerm.trim().length > 0;
       const currentDoneIds = (() => {
         try {
           const raw = localStorage.getItem(`optimizer-done-ids:${selectedShopifyConnectionId}`);
@@ -202,16 +210,20 @@ export default function OptimizerPage() {
           limit: 50,
           connectionId: selectedShopifyConnectionId,
           pageInfoCursor: cursor,
-          excludeProductIds: [
-            ...Array.from(currentDoneIds),
-            ...(append ? shopifyProducts.map((product) => product.id) : []),
-          ],
+          search: searchTerm.trim(),
+          excludeProductIds: directSearch
+            ? []
+            : [
+                ...Array.from(currentDoneIds),
+                ...(append ? shopifyProducts.map((product) => product.id) : []),
+              ],
         },
       });
       if (error) throw error;
-      const incoming: ShopifyProduct[] = (data.products || []).filter(
-        (p: ShopifyProduct) => !currentDoneIds.has(p.id),
-      );
+      const incoming: ShopifyProduct[] = directSearch
+        ? (data.products || [])
+        : (data.products || []).filter((p: ShopifyProduct) => !currentDoneIds.has(p.id));
+      setActiveProductSearch(searchTerm.trim());
       setShopifyProducts((prev) => {
         if (!append) return incoming;
         const existingIds = new Set(prev.map((p) => p.id));
@@ -220,7 +232,7 @@ export default function OptimizerPage() {
       setShopifyDoneIds(currentDoneIds);
       const nextCursor: string | null = data.nextPageInfo ?? null;
       setShopifyNextCursor(nextCursor);
-      setShopifyHasMore(Boolean(data.hasMore || nextCursor));
+      setShopifyHasMore(!directSearch && Boolean(data.hasMore || nextCursor));
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
     } catch (err: unknown) {
       const errorObj = err as Error;
@@ -474,6 +486,81 @@ export default function OptimizerPage() {
     }
   };
 
+  const createWebpCopy = async (img: { id: number; src: string; alt: string | null }) => {
+    if (!selectedProduct || !selectedShopifyConnectionId) return;
+    setConvertingImageId(img.id);
+    try {
+      const sourceResponse = await fetch(img.src);
+      if (!sourceResponse.ok) throw new Error("Phoenix Flow could not read this Shopify image.");
+      const sourceBlob = await sourceResponse.blob();
+      const bitmap = await createImageBitmap(sourceBlob);
+      const maxDimension = 2000;
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Your browser could not prepare the WebP image.");
+      context.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      const webpBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error("WebP conversion failed.")),
+          "image/webp",
+          0.84,
+        );
+      });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("WebP conversion failed."));
+        reader.readAsDataURL(webpBlob);
+      });
+      const attachment = dataUrl.split(",")[1];
+      if (!attachment) throw new Error("WebP conversion failed.");
+
+      const { data, error } = await supabase.functions.invoke("upload-shopify-webp", {
+        body: {
+          connectionId: selectedShopifyConnectionId,
+          productId: selectedProduct.id,
+          attachment,
+          filename: imageFilenameDrafts[img.id] || `product-image-${img.id}.webp`,
+          alt: imageAltEdits[img.id] ?? img.alt ?? "",
+        },
+      });
+      if (error) throw error;
+      if (!data?.image) throw new Error("Shopify did not return the uploaded image.");
+
+      const updatedProduct = {
+        ...selectedProduct,
+        images: [...selectedProduct.images, data.image],
+      };
+      setSelectedProduct(updatedProduct);
+      setShopifyProducts((current) => current.map((product) => (
+        product.id === updatedProduct.id ? updatedProduct : product
+      )));
+      setImageAltEdits((current) => ({
+        ...current,
+        [data.image.id]: data.image.alt || imageAltEdits[img.id] || "",
+      }));
+      const activeConnection = storeConnections.find((connection) => connection.id === selectedShopifyConnectionId);
+      const storeLabel = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
+      setImageFilenameDrafts(buildUniqueFilenameDrafts(updatedProduct, storeLabel));
+      toast({
+        title: "WebP copy uploaded",
+        description: "The original remains in Shopify until you approve the new image.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "WebP conversion failed";
+      toast({ title: "WebP conversion failed", description: message, variant: "destructive" });
+    } finally {
+      setConvertingImageId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -578,6 +665,8 @@ export default function OptimizerPage() {
                   setShopifyNextCursor(null);
                   setShopifyHasMore(false);
                   setShopifyDoneIds(new Set());
+                  setProductSearch("");
+                  setActiveProductSearch("");
                 }}
               >
                 <option value="">Select a Shopify store</option>
@@ -693,6 +782,17 @@ export default function OptimizerPage() {
                               : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Scan Images for Alt + Names</>
                             }
                           </Button>
+                          {selectedProduct.images.length < 5 && (
+                            <Badge className="bg-amber-500/10 text-amber-400">
+                              Weak Gallery: {selectedProduct.images.length}/5 images
+                            </Badge>
+                          )}
+                          {selectedProduct.images.some((image) => !image.alt?.trim()) && (
+                            <Badge className="bg-blue-500/10 text-blue-300">Missing Alt Text</Badge>
+                          )}
+                          {selectedProduct.images.some((image) => !image.src.split("?")[0].toLowerCase().endsWith(".webp")) && (
+                            <Badge className="bg-purple-500/10 text-purple-300">Needs WebP</Badge>
+                          )}
                         </div>
                         {selectedProduct.images.map((img, i) => (
                           <div key={img.id} className="flex gap-3 items-start">
@@ -713,6 +813,17 @@ export default function OptimizerPage() {
                                 className="w-full h-8 rounded-md border border-input bg-muted/30 px-3 text-xs text-muted-foreground"
                                 value={imageFilenameDrafts[img.id] || ""}
                               />
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={convertingImageId !== null || img.src.split("?")[0].toLowerCase().endsWith(".webp")}
+                                onClick={() => void createWebpCopy(img)}
+                              >
+                                {convertingImageId === img.id
+                                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Converting...</>
+                                  : "Create WebP Copy"}
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -865,9 +976,72 @@ export default function OptimizerPage() {
             </AnimatePresence>
           ) : (
             <>
+              <Card className="border-primary/20 bg-card/50">
+                <CardContent className="space-y-3 p-4">
+                  <div>
+                    <p className="font-medium">Find Any Product</p>
+                    <p className="text-xs text-muted-foreground">
+                      Search the entire Shopify store. The product does not need to appear in the priority 50.
+                    </p>
+                  </div>
+                  <form
+                    className="flex flex-col gap-2 sm:flex-row"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void fetchShopifyProducts(null, false, productSearch);
+                    }}
+                  >
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="search"
+                        value={productSearch}
+                        onChange={(event) => setProductSearch(event.target.value)}
+                        placeholder="Product title, SKU, handle, or ID"
+                        className="h-11 w-full rounded-md border border-input bg-background pl-10 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="h-11"
+                      disabled={!selectedShopifyConnectionId || !productSearch.trim() || shopifyLoading}
+                    >
+                      Find Product
+                    </Button>
+                    {productSearch && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11"
+                        onClick={() => {
+                          setProductSearch("");
+                          setActiveProductSearch("");
+                          void fetchShopifyProducts(null, false);
+                        }}
+                      >
+                        Return to Priority Queue
+                      </Button>
+                    )}
+                  </form>
+                </CardContent>
+              </Card>
+
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{selectedShopifyConnectionId ? `${shopifyProducts.length} products` : "Select a store."}</p>
-                <Button variant="outline" size="sm" onClick={() => void fetchShopifyProducts(null, false)} disabled={!selectedShopifyConnectionId}>Refresh</Button>
+                <p className="text-sm text-muted-foreground">
+                  {selectedShopifyConnectionId
+                    ? activeProductSearch
+                      ? `${shopifyProducts.length} matching products`
+                      : `${shopifyProducts.length} priority products`
+                    : "Select a store."}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void fetchShopifyProducts(null, false, productSearch)}
+                  disabled={!selectedShopifyConnectionId}
+                >
+                  Refresh
+                </Button>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {shopifyProducts.map((product) => (
