@@ -19,8 +19,17 @@ interface ShopifyProduct {
   body_html: string;
   status: string;
   tags: string | string[];
-  images: Array<{ alt?: string | null }>;
+  images: Array<{
+    id?: number;
+    src?: string;
+    alt?: string | null;
+    width?: number;
+    height?: number;
+    position?: number;
+  }>;
   trashPriority?: number;
+  mediaPriority?: number;
+  mediaIssues?: string[];
 }
 
 function normalizeTags(tags: string | string[] | null | undefined): string[] {
@@ -63,6 +72,9 @@ serve(async (req: Request) => {
       limit = 50,
       connectionId,
       pageInfoCursor = null,
+      mode = "optimizer",
+      excludeProductIds = [],
+      search = "",
     } = await req.json().catch(() => ({}));
 
     if (!connectionId) {
@@ -93,7 +105,14 @@ serve(async (req: Request) => {
     const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
     const oldestFirstOrder = "created_at+asc";
     const MAX_PAGES = 20; // Safety cap: 20 × 250 = 5,000 products max
-    const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+    const mediaMode = mode === "media";
+    const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, mediaMode ? 500 : 200));
+    const excludedIds = new Set(
+      (Array.isArray(excludeProductIds) ? excludeProductIds : [])
+        .map((id) => Number(id))
+        .filter(Number.isFinite),
+    );
+    const normalizedSearch = `${search || ""}`.trim().toLowerCase();
     const scanLimitPerPage = 250; // Shopify's maximum per page
     const foundTrash: ShopifyProduct[] = [];
     // Start from the cursor the client sent, or from the beginning
@@ -129,30 +148,68 @@ serve(async (req: Request) => {
 
       const scoredProducts = batch.map((p) => {
         let priority = 0;
+        let mediaPriority = 0;
+        const mediaIssues: string[] = [];
         const title = p.title || "";
         const body = stripHtml(p.body_html);
         const tagCount = normalizeTags(p.tags).length;
-        const hasImages = Array.isArray(p.images) && p.images.length > 0;
+        const imageCount = Array.isArray(p.images) ? p.images.length : 0;
+        const hasImages = imageCount > 0;
         const hasMissingAlts = (p.images || []).some((img) => !img?.alt || img.alt.trim() === "");
         const normalizedAlts = (p.images || [])
           .map((img) => `${img?.alt || ""}`.trim().toLowerCase())
           .filter(Boolean);
         const hasDuplicateAlts = normalizedAlts.length > 1 && new Set(normalizedAlts).size !== normalizedAlts.length;
+        const nonWebpImages = (p.images || []).filter((img) => {
+          const cleanSrc = `${img?.src || ""}`.split("?")[0].toLowerCase();
+          return cleanSrc && !cleanSrc.endsWith(".webp");
+        }).length;
+
+        if (!hasImages) {
+          mediaPriority += 100;
+          mediaIssues.push("missing-images");
+        } else {
+          if (imageCount < 5) {
+            mediaPriority += 60;
+            mediaIssues.push("weak-gallery");
+          }
+          if (hasMissingAlts) {
+            mediaPriority += 50;
+            mediaIssues.push("missing-alt");
+          }
+          if (hasDuplicateAlts) {
+            mediaPriority += 35;
+            mediaIssues.push("duplicate-alt");
+          }
+          if (nonWebpImages > 0) {
+            mediaPriority += 25;
+            mediaIssues.push("needs-webp");
+          }
+        }
 
         if (/iron\s*phoenix\s*ghg/i.test(title)) priority += 50; // Critical Identity Risk
         if (/\b(inc|llc|ghg\s*customs?)\b/i.test(title)) priority += 35; // Identity mismatch terms in title
         if ((p.status || "").toLowerCase() === "draft") priority += 30; // Hidden item
         if (tagCount < 5) priority += 25; // Missing/empty tags
         if (body.length < 150) priority += 20; // Thin content
-        if (!hasImages) priority += 20; // Missing product image
-        if (hasMissingAlts) priority += 15; // Missing image alts
-        if (hasDuplicateAlts) priority += 15; // Duplicate image alts
+        if (!hasImages) priority += 100; // Missing product image is always critical
+        if (imageCount > 0 && imageCount < 5) priority += 60; // Weak gallery
+        if (hasMissingAlts) priority += 50; // Missing image alts
+        if (hasDuplicateAlts) priority += 35; // Duplicate image alts
         
-        return { ...p, trashPriority: priority };
+        return { ...p, trashPriority: priority, mediaPriority, mediaIssues };
       });
 
-      for (const product of scoredProducts.sort((a, b) => (b.trashPriority || 0) - (a.trashPriority || 0))) {
-        if ((product.trashPriority || 0) > 0) {
+      for (const product of scoredProducts) {
+        const searchableVariants = ((product as ShopifyProduct & {
+          variants?: Array<{ id?: number; title?: string; sku?: string }>;
+        }).variants || [])
+          .map((variant) => `${variant.id || ""} ${variant.title || ""} ${variant.sku || ""}`)
+          .join(" ");
+        const searchable = `${product.title || ""} ${product.id} ${(product as ShopifyProduct & { handle?: string }).handle || ""} ${searchableVariants}`.toLowerCase();
+        const matchesSearch = !normalizedSearch || searchable.includes(normalizedSearch);
+        const score = mediaMode ? (product.mediaPriority || 0) : (product.trashPriority || 0);
+        if (!excludedIds.has(Number(product.id)) && matchesSearch && (score > 0 || Boolean(normalizedSearch))) {
           foundTrash.push(product);
         }
       }
@@ -160,11 +217,17 @@ serve(async (req: Request) => {
       if (!nextPageInfo) break;
     }
 
+    const sortedProducts = foundTrash.sort((a, b) => {
+      const aScore = mediaMode ? (a.mediaPriority || 0) : (a.trashPriority || 0);
+      const bScore = mediaMode ? (b.mediaPriority || 0) : (b.trashPriority || 0);
+      return bScore - aScore || Number(a.id) - Number(b.id);
+    });
+
     return new Response(JSON.stringify({
-      products: foundTrash
-        .sort((a, b) => (b.trashPriority || 0) - (a.trashPriority || 0))
-        .slice(0, requestedLimit),
-      nextPageInfo,
+      products: sortedProducts.slice(0, requestedLimit),
+      nextPageInfo: null,
+      hasMore: sortedProducts.length > requestedLimit,
+      totalMatching: sortedProducts.length,
       optimizerUsage: {
         used: connection.optimizer_runs ?? 0,
         limit: 50,

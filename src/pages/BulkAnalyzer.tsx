@@ -217,7 +217,15 @@ export default function BulkAnalyzerPage() {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
-        body: { limit: 50, connectionId: selectedConnectionId, pageInfoCursor: cursor },
+        body: {
+          limit: 50,
+          connectionId: selectedConnectionId,
+          pageInfoCursor: cursor,
+          excludeProductIds: [
+            ...Array.from(doneIds),
+            ...(append ? listings.map((listing) => listing.id) : []),
+          ],
+        },
       });
       if (error) throw error;
       const incoming: ShopifyProduct[] = (data.products || []).filter(
@@ -234,7 +242,7 @@ export default function BulkAnalyzerPage() {
       }
       const nextCursor: string | null = data.nextPageInfo ?? null;
       setNextPageInfoCursor(nextCursor);
-      setHasMore(!!nextCursor);
+      setHasMore(Boolean(data.hasMore || nextCursor));
     } catch (err) {
       const error = err as Error;
       toast({ title: "Error", description: error.message, variant: "destructive" });
