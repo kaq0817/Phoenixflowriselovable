@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   BarChart3, Sparkles, Store, Loader2, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Tag, FileText, Palette,
-  Radio, Layers, Search, Lightbulb,
+  Radio, Layers, Search, Lightbulb, Upload,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,7 +24,7 @@ interface ShopifyProduct {
   tags: string;
   status?: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; option3?: string }[];
-  images: { id: number; src: string; alt: string | null; position: number }[];
+  images: { id: number; src: string; alt: string | null; position: number; width?: number; height?: number }[];
   handle: string;
   metafields_global_title_tag?: string;
   metafields_global_description_tag?: string;
@@ -161,6 +161,11 @@ export default function OptimizerPage() {
   const [generatingMockupStyle, setGeneratingMockupStyle] = useState<MockupDraft["style"] | null>(null);
   const [mockupDrafts, setMockupDrafts] = useState<MockupDraft[]>([]);
   const [uploadingMockupIndex, setUploadingMockupIndex] = useState<number | null>(null);
+  const [missingMockupFile, setMissingMockupFile] = useState<File | null>(null);
+  const [missingMockupPreview, setMissingMockupPreview] = useState("");
+  const [missingMockupAlt, setMissingMockupAlt] = useState("");
+  const [missingMockupMode, setMissingMockupMode] = useState<"fit" | "crop">("fit");
+  const [uploadingMissingMockup, setUploadingMissingMockup] = useState(false);
 
   const [salesChannels, setSalesChannels] = useState<{ id: number; name: string }[]>([]);
   const [publishedChannelIds, setPublishedChannelIds] = useState<number[]>([]);
@@ -317,6 +322,12 @@ export default function OptimizerPage() {
     setMockupDrafts([]);
     setGeneratingMockupStyle(null);
     setUploadingMockupIndex(null);
+    if (missingMockupPreview) URL.revokeObjectURL(missingMockupPreview);
+    setMissingMockupFile(null);
+    setMissingMockupPreview("");
+    setMissingMockupAlt(`${cleanProductTitle(product.title)} alternate product view`.slice(0, 125));
+    setMissingMockupMode("fit");
+    setUploadingMissingMockup(false);
     fetchSalesChannels(product.id, selectedShopifyConnectionId);
   };
 
@@ -593,6 +604,87 @@ export default function OptimizerPage() {
     }
   };
 
+  const uploadMissingMockup = async () => {
+    if (!selectedProduct || !selectedShopifyConnectionId || !missingMockupFile) return;
+    setUploadingMissingMockup(true);
+    try {
+      const bitmap = await createImageBitmap(missingMockupFile);
+      const targetSize = 2048;
+      const canvas = document.createElement("canvas");
+      canvas.width = targetSize;
+      canvas.height = targetSize;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Your browser could not prepare this mockup.");
+
+      context.clearRect(0, 0, targetSize, targetSize);
+      const scale = missingMockupMode === "crop"
+        ? Math.max(targetSize / bitmap.width, targetSize / bitmap.height)
+        : Math.min(targetSize / bitmap.width, targetSize / bitmap.height);
+      const drawWidth = Math.max(1, Math.round(bitmap.width * scale));
+      const drawHeight = Math.max(1, Math.round(bitmap.height * scale));
+      const drawX = Math.round((targetSize - drawWidth) / 2);
+      const drawY = Math.round((targetSize - drawHeight) / 2);
+      context.drawImage(bitmap, drawX, drawY, drawWidth, drawHeight);
+      bitmap.close();
+
+      const webpBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error("WebP conversion failed.")),
+          "image/webp",
+          0.88,
+        );
+      });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Phoenix Flow could not read the processed mockup."));
+        reader.readAsDataURL(webpBlob);
+      });
+      const attachment = dataUrl.split(",")[1];
+      if (!attachment) throw new Error("WebP conversion failed.");
+
+      const activeConnection = storeConnections.find((connection) => connection.id === selectedShopifyConnectionId);
+      const storeLabel = activeConnection?.shop_name || activeConnection?.shop_domain || "store";
+      const productSlug = slugifyForFilename(selectedProduct.title) || `product-${selectedProduct.id}`;
+      const storeSlug = slugifyForFilename(storeLabel) || "store";
+      const filename = `${productSlug}-alternate-view-${storeSlug}.webp`;
+      const alt = missingMockupAlt.trim() || `${selectedProduct.title} alternate product view`;
+
+      const { data, error } = await supabase.functions.invoke("upload-shopify-webp", {
+        body: {
+          connectionId: selectedShopifyConnectionId,
+          productId: selectedProduct.id,
+          attachment,
+          filename,
+          alt: alt.slice(0, 512),
+        },
+      });
+      if (error) throw error;
+      if (!data?.image) throw new Error("Shopify did not return the uploaded mockup.");
+
+      const updatedProduct = { ...selectedProduct, images: [...selectedProduct.images, data.image] };
+      setSelectedProduct(updatedProduct);
+      setShopifyProducts((current) => current.map((product) => (
+        product.id === updatedProduct.id ? updatedProduct : product
+      )));
+      setImageAltEdits((current) => ({ ...current, [data.image.id]: data.image.alt || alt }));
+      setImageFilenameDrafts((current) => ({ ...current, [data.image.id]: filename }));
+      if (missingMockupPreview) URL.revokeObjectURL(missingMockupPreview);
+      setMissingMockupFile(null);
+      setMissingMockupPreview("");
+      setMissingMockupAlt(`${cleanProductTitle(selectedProduct.title)} alternate product view`.slice(0, 125));
+      toast({
+        title: "Missing mockup added",
+        description: "The new 2048 x 2048 WebP view is now in Shopify. Existing images were not changed.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Mockup upload failed";
+      toast({ title: "Mockup upload failed", description: message, variant: "destructive" });
+    } finally {
+      setUploadingMissingMockup(false);
+    }
+  };
+
   const generateMockup = async (style: MockupDraft["style"]) => {
     if (!selectedProduct || !selectedShopifyConnectionId || !mockupSourceImageId) return;
     setGeneratingMockupStyle(style);
@@ -844,6 +936,120 @@ export default function OptimizerPage() {
                     </CardContent>
                   </Card>
                 )}
+
+                <Card className="bg-card/50 border-primary/30 overflow-hidden">
+                  <CardContent className="p-4 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-lg bg-primary/10 p-2">
+                        <Upload className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold">Add Missing Mockup</h3>
+                          <Badge variant="outline" className="text-[10px]">
+                            {selectedProduct.images?.length || 0} currently in Shopify
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Download another view from your POD, then add it here. Phoenix Flow will create a 2048 x 2048 WebP and upload it to this Shopify product.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="block rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 cursor-pointer hover:bg-primary/10 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        disabled={uploadingMissingMockup}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] || null;
+                          if (missingMockupPreview) URL.revokeObjectURL(missingMockupPreview);
+                          setMissingMockupFile(file);
+                          setMissingMockupPreview(file ? URL.createObjectURL(file) : "");
+                        }}
+                      />
+                      <div className="flex items-center justify-center gap-2 text-sm font-medium">
+                        <Upload className="h-4 w-4" />
+                        {missingMockupFile ? "Choose a different mockup" : "Choose POD mockup"}
+                      </div>
+                      <p className="mt-1 text-center text-[10px] text-muted-foreground">PNG, JPG, or WebP</p>
+                    </label>
+
+                    {missingMockupFile && (
+                      <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+                        <div className="space-y-1">
+                          <div className="aspect-square overflow-hidden rounded-lg border border-border/40 bg-[linear-gradient(45deg,hsl(var(--muted))_25%,transparent_25%),linear-gradient(-45deg,hsl(var(--muted))_25%,transparent_25%),linear-gradient(45deg,transparent_75%,hsl(var(--muted))_75%),linear-gradient(-45deg,transparent_75%,hsl(var(--muted))_75%)] bg-[length:16px_16px]">
+                            <img
+                              src={missingMockupPreview}
+                              alt="Missing mockup preview"
+                              className={`h-full w-full ${missingMockupMode === "crop" ? "object-cover" : "object-contain"}`}
+                            />
+                          </div>
+                          <p className="text-[10px] text-center text-muted-foreground">2048 x 2048 preview</p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">Sizing</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={missingMockupMode === "fit" ? "default" : "outline"}
+                                onClick={() => setMissingMockupMode("fit")}
+                                disabled={uploadingMissingMockup}
+                              >
+                                Fit - Full Product
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={missingMockupMode === "crop" ? "default" : "outline"}
+                                onClick={() => setMissingMockupMode("crop")}
+                                disabled={uploadingMissingMockup}
+                              >
+                                Crop - Fill Square
+                              </Button>
+                            </div>
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              Fit is safest. Crop can cut off edges.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label htmlFor="missing-mockup-alt" className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                              Alt text
+                            </label>
+                            <input
+                              id="missing-mockup-alt"
+                              type="text"
+                              className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                              value={missingMockupAlt}
+                              onChange={(event) => setMissingMockupAlt(event.target.value)}
+                              maxLength={512}
+                              placeholder="Describe this exact product view"
+                            />
+                          </div>
+
+                          <Button
+                            type="button"
+                            className="w-full"
+                            disabled={uploadingMissingMockup}
+                            onClick={() => void uploadMissingMockup()}
+                          >
+                            {uploadingMissingMockup
+                              ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Processing and uploading...</>
+                              : <><Upload className="mr-1.5 h-4 w-4" /> Process and Add to Shopify</>}
+                          </Button>
+                          <p className="text-[10px] text-muted-foreground">
+                            This adds a new image. It never replaces or deletes the current Shopify images.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
                 {selectedProduct.images?.length > 0 && (
                   <Card className="bg-card/50 border-primary/30 overflow-hidden">
