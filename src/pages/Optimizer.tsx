@@ -50,6 +50,8 @@ interface MockupDraft {
   data: string;
   mimeType: string;
   style: "lifestyle" | "human" | "styled";
+  aspect?: "square" | "portrait" | "landscape";
+  outputSize?: string;
   quality: { approved: boolean; issues: string[] };
   uploaded?: boolean;
 }
@@ -161,6 +163,7 @@ export default function OptimizerPage() {
   const [generatingMockupStyle, setGeneratingMockupStyle] = useState<MockupDraft["style"] | null>(null);
   const [mockupDrafts, setMockupDrafts] = useState<MockupDraft[]>([]);
   const [uploadingMockupIndex, setUploadingMockupIndex] = useState<number | null>(null);
+  const [mockupAspect, setMockupAspect] = useState<"square" | "portrait" | "landscape">("square");
   const [missingMockupFile, setMissingMockupFile] = useState<File | null>(null);
   const [missingMockupPreview, setMissingMockupPreview] = useState("");
   const [missingMockupAlt, setMissingMockupAlt] = useState("");
@@ -322,6 +325,7 @@ export default function OptimizerPage() {
     setMockupDrafts([]);
     setGeneratingMockupStyle(null);
     setUploadingMockupIndex(null);
+    setMockupAspect("square");
     if (missingMockupPreview) URL.revokeObjectURL(missingMockupPreview);
     setMissingMockupFile(null);
     setMissingMockupPreview("");
@@ -696,6 +700,7 @@ export default function OptimizerPage() {
           imageId: mockupSourceImageId,
           sourceNote: mockupSourceNotes[mockupSourceImageId] || "",
           style,
+          aspect: mockupAspect,
         },
       });
       if (error) throw error;
@@ -1111,7 +1116,36 @@ export default function OptimizerPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Create one draft</p>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Choose finished shape</p>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {([
+                            ["square", "Square", "1024 x 1024"],
+                            ["portrait", "Portrait", "1024 x 1536"],
+                            ["landscape", "Landscape", "1536 x 1024"],
+                          ] as const).map(([aspect, label, dimensions]) => (
+                            <button
+                              key={aspect}
+                              type="button"
+                              disabled={generatingMockupStyle !== null}
+                              onClick={() => setMockupAspect(aspect)}
+                              className={`rounded-lg border p-3 text-left transition-colors ${
+                                mockupAspect === aspect
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border/40 bg-background/30 hover:border-primary/40"
+                              }`}
+                            >
+                              <span className="block text-sm font-medium">{label}</span>
+                              <span className="block text-[10px] text-muted-foreground">{dimensions}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Choose before generating. Phoenix Flow sends this exact shape to OpenAI, so the product is not stretched afterward.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">4. Create one draft</p>
                         <div className="grid gap-2 sm:grid-cols-3">
                           {([
                             ["lifestyle", "Lifestyle Scene"],
@@ -1137,7 +1171,7 @@ export default function OptimizerPage() {
 
                       {mockupDrafts.length > 0 && (
                         <div className="space-y-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">4. Review before Shopify</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">5. Review before Shopify</p>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {mockupDrafts.map((draft, index) => (
                               <div key={`${draft.style}-${index}`} className="rounded-lg border border-border/40 bg-background/40 p-2 space-y-2">
@@ -1147,7 +1181,12 @@ export default function OptimizerPage() {
                                   className="w-full aspect-square rounded-md object-cover"
                                 />
                                 <div className="flex items-center justify-between gap-2">
-                                  <Badge variant="outline" className="text-[10px] capitalize">{draft.style}</Badge>
+                                  <div className="flex flex-wrap gap-1">
+                                    <Badge variant="outline" className="text-[10px] capitalize">{draft.style}</Badge>
+                                    <Badge variant="outline" className="text-[10px] capitalize">
+                                      {draft.aspect || "square"}{draft.outputSize ? ` · ${draft.outputSize}` : ""}
+                                    </Badge>
+                                  </div>
                                   <Badge className={draft.quality.approved
                                     ? "bg-emerald-500/10 text-emerald-300"
                                     : "bg-amber-500/10 text-amber-300"}>
