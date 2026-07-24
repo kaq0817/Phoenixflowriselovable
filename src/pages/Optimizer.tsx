@@ -50,8 +50,6 @@ interface MockupDraft {
   data: string;
   mimeType: string;
   style: "lifestyle" | "human" | "styled";
-  aspect?: "square" | "portrait" | "landscape";
-  outputSize?: string;
   quality: { approved: boolean; issues: string[] };
   uploaded?: boolean;
 }
@@ -163,7 +161,6 @@ export default function OptimizerPage() {
   const [generatingMockupStyle, setGeneratingMockupStyle] = useState<MockupDraft["style"] | null>(null);
   const [mockupDrafts, setMockupDrafts] = useState<MockupDraft[]>([]);
   const [uploadingMockupIndex, setUploadingMockupIndex] = useState<number | null>(null);
-  const [mockupAspect, setMockupAspect] = useState<"square" | "portrait" | "landscape">("square");
   const [missingMockupFile, setMissingMockupFile] = useState<File | null>(null);
   const [missingMockupPreview, setMissingMockupPreview] = useState("");
   const [missingMockupAlt, setMissingMockupAlt] = useState("");
@@ -325,7 +322,6 @@ export default function OptimizerPage() {
     setMockupDrafts([]);
     setGeneratingMockupStyle(null);
     setUploadingMockupIndex(null);
-    setMockupAspect("square");
     if (missingMockupPreview) URL.revokeObjectURL(missingMockupPreview);
     setMissingMockupFile(null);
     setMissingMockupPreview("");
@@ -700,7 +696,6 @@ export default function OptimizerPage() {
           imageId: mockupSourceImageId,
           sourceNote: mockupSourceNotes[mockupSourceImageId] || "",
           style,
-          aspect: mockupAspect,
         },
       });
       if (error) throw error;
@@ -728,11 +723,39 @@ export default function OptimizerPage() {
       const storeSlug = slugifyForFilename(storeLabel) || "store";
       const filename = `${productSlug}-${draft.style}-mockup-${storeSlug}.webp`;
       const alt = `${selectedProduct.title} - ${draft.style} lifestyle mockup | ${storeLabel}`.slice(0, 125);
+
+      const sourceBytes = Uint8Array.from(atob(draft.data), (character) => character.charCodeAt(0));
+      const sourceBlob = new Blob([sourceBytes], { type: draft.mimeType || "image/webp" });
+      const bitmap = await createImageBitmap(sourceBlob);
+      const canvas = document.createElement("canvas");
+      canvas.width = 2048;
+      canvas.height = 2048;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Your browser could not increase the mockup size.");
+      context.drawImage(bitmap, 0, 0, 2048, 2048);
+      bitmap.close();
+
+      const enlargedBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error("Phoenix Flow could not create the larger WebP.")),
+          "image/webp",
+          0.88,
+        );
+      });
+      const enlargedDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Phoenix Flow could not prepare the larger WebP."));
+        reader.readAsDataURL(enlargedBlob);
+      });
+      const enlargedAttachment = enlargedDataUrl.split(",")[1];
+      if (!enlargedAttachment) throw new Error("Phoenix Flow could not prepare the larger WebP.");
+
       const { data, error } = await supabase.functions.invoke("upload-shopify-webp", {
         body: {
           connectionId: selectedShopifyConnectionId,
           productId: selectedProduct.id,
-          attachment: draft.data,
+          attachment: enlargedAttachment,
           filename,
           alt,
         },
@@ -1116,36 +1139,7 @@ export default function OptimizerPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Choose finished shape</p>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          {([
-                            ["square", "Square", "1024 x 1024"],
-                            ["portrait", "Portrait", "1024 x 1536"],
-                            ["landscape", "Landscape", "1536 x 1024"],
-                          ] as const).map(([aspect, label, dimensions]) => (
-                            <button
-                              key={aspect}
-                              type="button"
-                              disabled={generatingMockupStyle !== null}
-                              onClick={() => setMockupAspect(aspect)}
-                              className={`rounded-lg border p-3 text-left transition-colors ${
-                                mockupAspect === aspect
-                                  ? "border-primary bg-primary/10"
-                                  : "border-border/40 bg-background/30 hover:border-primary/40"
-                              }`}
-                            >
-                              <span className="block text-sm font-medium">{label}</span>
-                              <span className="block text-[10px] text-muted-foreground">{dimensions}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          Choose before generating. Phoenix Flow sends this exact shape to OpenAI, so the product is not stretched afterward.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">4. Create one draft</p>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Create one draft</p>
                         <div className="grid gap-2 sm:grid-cols-3">
                           {([
                             ["lifestyle", "Lifestyle Scene"],
@@ -1171,7 +1165,7 @@ export default function OptimizerPage() {
 
                       {mockupDrafts.length > 0 && (
                         <div className="space-y-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">5. Review before Shopify</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">4. Review before Shopify</p>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {mockupDrafts.map((draft, index) => (
                               <div key={`${draft.style}-${index}`} className="rounded-lg border border-border/40 bg-background/40 p-2 space-y-2">
@@ -1183,9 +1177,7 @@ export default function OptimizerPage() {
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex flex-wrap gap-1">
                                     <Badge variant="outline" className="text-[10px] capitalize">{draft.style}</Badge>
-                                    <Badge variant="outline" className="text-[10px] capitalize">
-                                      {draft.aspect || "square"}{draft.outputSize ? ` · ${draft.outputSize}` : ""}
-                                    </Badge>
+                                    <Badge variant="outline" className="text-[10px]">Uploads at 2048 x 2048 WebP</Badge>
                                   </div>
                                   <Badge className={draft.quality.approved
                                     ? "bg-emerald-500/10 text-emerald-300"
@@ -1218,8 +1210,8 @@ export default function OptimizerPage() {
                                     onClick={() => void uploadMockup(draft, index)}
                                   >
                                     {uploadingMockupIndex === index
-                                      ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading...</>
-                                      : draft.uploaded ? "Uploaded" : "Add to Shopify"}
+                                      ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Increasing size and uploading...</>
+                                      : draft.uploaded ? "Uploaded at 2048" : "Increase to 2048 + Add to Shopify"}
                                   </Button>
                                   <Button
                                     type="button"
