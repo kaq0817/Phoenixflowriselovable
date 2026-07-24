@@ -190,18 +190,31 @@ async function updateReferencedFaqMetaobject(input: {
 
   const candidates = (candidateData?.nodes || []).filter(
     (node: { id?: string; type?: string; fields?: Array<{ key: string; type: string }> } | null) =>
-      node?.id && node.fields?.some((field) => field.key.toLowerCase() === "faq"),
+      node?.id && Array.isArray(node.fields) && node.fields.length > 0,
   );
-  const faqMetaobject = candidates.find((node: { type?: string }) => /faq/i.test(node.type || ""))
-    || candidates[0];
+  const faqMetaobject = candidates.find(
+    (node: { type?: string; fields: Array<{ key: string; type: string }> }) =>
+      /faq/i.test(node.type || "") && node.fields.some((field) =>
+        field.key.toLowerCase() === "faq" || field.type === "multi_line_text_field"
+      ),
+  ) || candidates.find(
+    (node: { fields: Array<{ key: string; type: string }> }) =>
+      node.fields.some((field) => field.key.toLowerCase() === "faq"),
+  );
 
   if (!faqMetaobject) {
-    throw new Error("Phoenix Flow found the product's metaobjects, but none contains an FAQ field");
+    throw new Error("Phoenix Flow found the product's metaobjects, but none matches the FAQ entry");
   }
 
   const faqField = faqMetaobject.fields.find(
     (field: { key: string; type: string }) => field.key.toLowerCase() === "faq",
-  );
+  ) || faqMetaobject.fields.find(
+    (field: { key: string; type: string }) => field.type === "multi_line_text_field",
+  ) || (faqMetaobject.fields.length === 1 ? faqMetaobject.fields[0] : null);
+
+  if (!faqField) {
+    throw new Error("Phoenix Flow found the FAQ entry, but could not identify its text field");
+  }
   const faqValue = faqValueForField(input.faqItems, faqField.type);
   const updateData = await graphql(
     `mutation UpdateProductFaq($id: ID!, $metaobject: MetaobjectUpdateInput!) {
@@ -417,5 +430,4 @@ serve(async (req) => {
     });
   }
 });
-
 
