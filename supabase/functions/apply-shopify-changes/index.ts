@@ -36,6 +36,15 @@ function enforceUniqueAltTexts(
     const [imageId, inputAlt] = entries[i];
     const raw = `${inputAlt || ""}`.trim();
     if (!raw) continue;
+    const description = raw.split("|")[0].trim().toLowerCase();
+    if (
+      /^product image(?:\s+\d+)?$/.test(description) ||
+      /^image(?:\s+\d+)?$/.test(description) ||
+      /^(product|item)(\s+(image|photo|view|detail))?(\s+\d+)?$/.test(description)
+    ) {
+      console.warn(`Skipped generic alt text for image ${imageId}`);
+      continue;
+    }
 
     const [leftRaw, rightRaw] = raw.split("|");
     const left = leftRaw.trim();
@@ -408,6 +417,5 @@ serve(async (req) => {
     });
   }
 });
-
 
 

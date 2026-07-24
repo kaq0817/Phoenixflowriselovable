@@ -435,6 +435,8 @@ export default function OptimizerPage() {
       if (results[0]) {
         setImageAltEdits(prev => ({ ...prev, [img.id]: results[0].alt }));
         setImageFilenameDrafts(prev => ({ ...prev, [img.id]: results[0].filename }));
+      } else {
+        throw new Error(data.message || "This image could not be scanned. Its existing alt text was preserved.");
       }
     } catch (err: unknown) {
       const errorObj = err as Error;
@@ -467,10 +469,16 @@ export default function OptimizerPage() {
           filenameDrafts[r.image_id] = r.filename || "";
         }
       }
-      setImageAltEdits(altEdits);
-      setImageFilenameDrafts(filenameDrafts);
+      setImageAltEdits((previous) => ({ ...previous, ...altEdits }));
+      setImageFilenameDrafts((previous) => ({ ...previous, ...filenameDrafts }));
       setAltsAIFilled(results.length);
-      toast({ title: "Images scanned", description: `Generated alt text for ${results.length} images.` });
+      if (results.length === 0) {
+        throw new Error(data.message || "The images could not be scanned. Existing alt text was preserved.");
+      }
+      toast({
+        title: data.failedImageIds?.length ? "Scan partly completed" : "Images scanned",
+        description: data.message || `Generated specific alt text for ${results.length} images.`,
+      });
     } catch (err: unknown) {
       const errorObj = err as Error;
       toast({ title: "Scan failed", description: errorObj.message, variant: "destructive" });

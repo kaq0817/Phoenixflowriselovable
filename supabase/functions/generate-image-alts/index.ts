@@ -20,15 +20,31 @@ interface ImageAltResult {
   filename: string;
 }
 
+function isGenericAlt(value: string): boolean {
+  const normalized = value
+    .split("|")[0]
+    .trim()
+    .toLowerCase();
+  return (
+    /^product image(?:\s+\d+)?$/.test(normalized) ||
+    /^image(?:\s+\d+)?$/.test(normalized) ||
+    /^(product|item)(\s+(image|photo|view|detail))?(\s+\d+)?$/.test(normalized)
+  );
+}
+
 async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const imageUrl = new URL(url);
+    if (imageUrl.hostname.includes("cdn.shopify.com")) {
+      imageUrl.searchParams.set("width", "1200");
+    }
+    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") || "image/jpeg";
     const mimeType = contentType.split(";")[0].trim();
     if (!mimeType.startsWith("image/")) return null;
     const buffer = await res.arrayBuffer();
-    if (buffer.byteLength > 4 * 1024 * 1024) return null;
+    if (buffer.byteLength > 10 * 1024 * 1024) return null;
     const bytes = new Uint8Array(buffer);
     let binary = "";
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -46,14 +62,14 @@ function slugify(value: string): string {
     .trim();
 }
 
-// Analyze ONE image — no product title in the prompt so Gemini must use its eyes
+// Analyze ONE image — no product title in the prompt so the model must use its eyes
 async function analyzeOneImage(
   imageId: number,
   base64: string,
   mimeType: string,
   storeName: string,
   storeSlug: string,
-  apiKey: string,
+  openAiApiKey: string,
 ): Promise<ImageAltResult> {
   const prompt = `You are a Google Merchant Center compliance auditor. GMC will SUSPEND this listing if the image alt text does not accurately describe what is PHYSICALLY VISIBLE in the image.
 
@@ -76,35 +92,59 @@ Examples of CORRECT output:
 Return ONLY this JSON object, nothing else:
 {"image_id": ${imageId}, "alt": "<your alt text>", "filename": "<your filename>.webp"}`;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: base64 } },
-            { text: prompt },
-          ],
-        }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 256 },
-      }),
-    }
-  );
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openAiApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: prompt },
+          {
+            type: "input_image",
+            image_url: `data:${mimeType};base64,${base64}`,
+            detail: "low",
+          },
+        ],
+      }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "shopify_image_alt",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              image_id: { type: "number" },
+              alt: { type: "string" },
+              filename: { type: "string" },
+            },
+            required: ["image_id", "alt", "filename"],
+            additionalProperties: false,
+          },
+        },
+      },
+      max_output_tokens: 256,
+    }),
+  });
 
   if (!response.ok) {
-    throw new Error(`Gemini ${response.status}: ${await response.text().then(t => t.slice(0, 100))}`);
+    throw new Error(`OpenAI ${response.status}: ${await response.text().then(t => t.slice(0, 160))}`);
   }
 
   const data = await response.json();
-  let raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-  raw = raw.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+  const raw = (data.output || [])
+    .flatMap((item: { content?: Array<{ type?: string; text?: string }> }) => item.content || [])
+    .find((item: { type?: string }) => item.type === "output_text")
+    ?.text?.trim() || "";
 
   try {
     const parsed = JSON.parse(raw);
-    if (parsed.image_id && parsed.alt && parsed.filename) {
+    if (parsed.image_id && parsed.alt && parsed.filename && !isGenericAlt(String(parsed.alt))) {
       return {
         image_id: parsed.image_id,
         alt: String(parsed.alt).slice(0, 125),
@@ -113,7 +153,7 @@ Return ONLY this JSON object, nothing else:
     }
   } catch { /* fall through */ }
 
-  throw new Error("Gemini returned unparseable response");
+  throw new Error("The image scanner did not return a specific visual description");
 }
 
 serve(async (req) => {
@@ -140,8 +180,8 @@ serve(async (req) => {
       });
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
 
     const { images, storeName } = await req.json() as {
       images: ImageInput[];
@@ -166,37 +206,39 @@ serve(async (req) => {
       })
     );
 
-    // Process each image individually — one Gemini call per image for accuracy
+    // Process each image individually — one OpenAI vision call per image for accuracy
     // Run in parallel batches of 5 to balance speed vs. rate limits
     const CONCURRENCY = 5;
     const allResults: ImageAltResult[] = [];
+    const failedImageIds: number[] = [];
 
     for (let i = 0; i < fetched.length; i += CONCURRENCY) {
       const chunk = fetched.slice(i, i + CONCURRENCY);
       const chunkResults = await Promise.all(
         chunk.map(async (img) => {
           if (img.failed) {
-            return {
-              image_id: img.id,
-              alt: `Product image ${img.index + 1} | ${storeName}`.slice(0, 125),
-              filename: `product-image-${img.index + 1}-${storeSlug}.webp`,
-            };
+            failedImageIds.push(img.id);
+            return null;
           }
           try {
-            return await analyzeOneImage(img.id, img.base64, img.mimeType, storeName, storeSlug, GEMINI_API_KEY);
-          } catch {
-            return {
-              image_id: img.id,
-              alt: `Product image ${img.index + 1} | ${storeName}`.slice(0, 125),
-              filename: `product-image-${img.index + 1}-${storeSlug}.webp`,
-            };
+            return await analyzeOneImage(img.id, img.base64, img.mimeType, storeName, storeSlug, OPENAI_API_KEY);
+          } catch (error) {
+            console.error(`Alt scan failed for image ${img.id}:`, error);
+            failedImageIds.push(img.id);
+            return null;
           }
         })
       );
-      allResults.push(...chunkResults);
+      allResults.push(...chunkResults.filter((result): result is ImageAltResult => result !== null));
     }
 
-    return new Response(JSON.stringify({ results: allResults }), {
+    return new Response(JSON.stringify({
+      results: allResults,
+      failedImageIds,
+      message: failedImageIds.length > 0
+        ? `${failedImageIds.length} image${failedImageIds.length === 1 ? "" : "s"} could not be scanned. Existing alt text was preserved.`
+        : undefined,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
