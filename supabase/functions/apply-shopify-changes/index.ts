@@ -366,13 +366,20 @@ serve(async (req) => {
       await upsertMetafield("global", "description_tag", optimizedData.seo_description, "single_line_text_field");
     }
     let updatedFaqMetaobject: { id: string; handle: string } | null = null;
+    const warnings: string[] = [];
     if (optimizedData.faq_json) {
-      updatedFaqMetaobject = await updateReferencedFaqMetaobject({
-        shop,
-        accessToken,
-        productMetafields: existingMetafields,
-        faqItems: parseFaqItems(optimizedData.faq_json),
-      });
+      try {
+        updatedFaqMetaobject = await updateReferencedFaqMetaobject({
+          shop,
+          accessToken,
+          productMetafields: existingMetafields,
+          faqItems: parseFaqItems(optimizedData.faq_json),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "FAQ metaobject could not be updated";
+        console.error("FAQ update warning:", error);
+        warnings.push(`Product saved, but FAQ needs review: ${message}`);
+      }
     }
 
     // Update image alt text — prefer explicit imageAltEdits map, fall back to optimizedData.image_alts JSON string
@@ -416,6 +423,7 @@ serve(async (req) => {
       success: true,
       product: updatedProduct.product,
       faqMetaobject: updatedFaqMetaobject,
+      warnings,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

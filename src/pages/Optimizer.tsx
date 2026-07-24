@@ -383,7 +383,7 @@ export default function OptimizerPage() {
     if (!selectedProduct || !shopifySuggestions) return;
     setShopifyApplying(true);
     try {
-      const { error } = await supabase.functions.invoke("apply-shopify-changes", {
+      const { data, error } = await supabase.functions.invoke("apply-shopify-changes", {
         body: {
           productId: selectedProduct.id,
           optimizedData: shopifySuggestions,
@@ -392,6 +392,7 @@ export default function OptimizerPage() {
         },
       });
       if (error) throw error;
+      const warnings: string[] = Array.isArray(data?.warnings) ? data.warnings : [];
       const appliedId = selectedProduct.id;
       setShopifyDoneIds((prev) => {
         const next = new Set(prev);
@@ -402,7 +403,12 @@ export default function OptimizerPage() {
         return next;
       });
       setShopifyProducts((prev) => prev.filter((p) => p.id !== appliedId));
-      toast({ title: "Done!", description: "Changes applied to your Shopify store." });
+      toast({
+        title: warnings.length > 0 ? "Product saved; FAQ needs review" : "Done!",
+        description: warnings.length > 0
+          ? warnings.join(" ")
+          : "Changes applied to your Shopify store.",
+      });
       setSelectedProduct(null);
       setShopifySuggestions(null);
     } catch (err: unknown) {
