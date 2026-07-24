@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { isGenericAlt } from "../_shared/genericAlt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,18 +19,6 @@ interface ImageAltResult {
   image_id: number;
   alt: string;
   filename: string;
-}
-
-function isGenericAlt(value: string): boolean {
-  const normalized = value
-    .split("|")[0]
-    .trim()
-    .toLowerCase();
-  return (
-    /^product image(?:\s+\d+)?$/.test(normalized) ||
-    /^image(?:\s+\d+)?$/.test(normalized) ||
-    /^(product|item)(\s+(image|photo|view|detail))?(\s+\d+)?$/.test(normalized)
-  );
 }
 
 async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
