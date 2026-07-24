@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
+import { isGenericAlt } from "../_shared/genericAlt.ts";
 import { getShopifyApiVersion } from "../_shared/shopify.ts";
 
 const SHOPIFY_API_VERSION = getShopifyApiVersion();
@@ -36,12 +37,7 @@ function enforceUniqueAltTexts(
     const [imageId, inputAlt] = entries[i];
     const raw = `${inputAlt || ""}`.trim();
     if (!raw) continue;
-    const description = raw.split("|")[0].trim().toLowerCase();
-    if (
-      /^product image(?:\s+\d+)?$/.test(description) ||
-      /^image(?:\s+\d+)?$/.test(description) ||
-      /^(product|item)(\s+(image|photo|view|detail))?(\s+\d+)?$/.test(description)
-    ) {
+    if (isGenericAlt(raw)) {
       console.warn(`Skipped generic alt text for image ${imageId}`);
       continue;
     }
@@ -430,4 +426,3 @@ serve(async (req) => {
     });
   }
 });
-
