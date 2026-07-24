@@ -48,7 +48,7 @@ serve(async (req: Request) => {
       });
     }
 
-    const { connectionId, productId, imageId, style = "lifestyle" } = await req.json();
+    const { connectionId, productId, imageId, sourceNote = "", style = "lifestyle" } = await req.json();
     if (!connectionId || !productId || !imageId || !styleDirections[style]) {
       return new Response(JSON.stringify({ error: "Missing or invalid mockup details" }), {
         status: 400,
@@ -84,9 +84,17 @@ serve(async (req: Request) => {
     const openAiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openAiKey) throw new Error("OpenAI image generation is not configured");
 
+    const cleanSourceNote = typeof sourceNote === "string"
+      ? sourceNote.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300)
+      : "";
+    const sourceNoteBlock = cleanSourceNote
+      ? `\nMERCHANT SOURCE IMAGE NOTE:\n"${cleanSourceNote}"\nTreat this note as the correct product orientation. If it says the image shows the back, keep the artwork on the back and pose the product or person so the back is visible. Never move back artwork to the front.\n`
+      : "";
+
     const prompt = `Create one square, photorealistic Shopify lifestyle mockup for "${product.title}".
 
 ${styleDirections[style]}
+${sourceNoteBlock}
 
 PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
 - Use the supplied image as the exact product reference, not loose inspiration.
