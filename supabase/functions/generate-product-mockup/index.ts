@@ -13,6 +13,14 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+const outputSizes = {
+  square: "1024x1024",
+  portrait: "1024x1536",
+  landscape: "1536x1024",
+} as const;
+
+type MockupAspect = keyof typeof outputSizes;
+
 const styleDirections: Record<string, string> = {
   lifestyle:
     "Place the exact product in a realistic, inviting lifestyle scene where a shopper would naturally use it. Avoid a blank white catalog background.",
@@ -48,8 +56,21 @@ serve(async (req: Request) => {
       });
     }
 
-    const { connectionId, productId, imageId, sourceNote = "", style = "lifestyle" } = await req.json();
-    if (!connectionId || !productId || !imageId || !styleDirections[style]) {
+    const {
+      connectionId,
+      productId,
+      imageId,
+      sourceNote = "",
+      style = "lifestyle",
+      aspect = "square",
+    } = await req.json();
+    if (
+      !connectionId ||
+      !productId ||
+      !imageId ||
+      !styleDirections[style] ||
+      !Object.prototype.hasOwnProperty.call(outputSizes, aspect)
+    ) {
       return new Response(JSON.stringify({ error: "Missing or invalid mockup details" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -91,7 +112,14 @@ serve(async (req: Request) => {
       ? `\nMERCHANT SOURCE IMAGE NOTE:\n"${cleanSourceNote}"\nTreat this note as the correct product orientation. If it says the image shows the back, keep the artwork on the back and pose the product or person so the back is visible. Never move back artwork to the front.\n`
       : "";
 
-    const prompt = `Create one square, photorealistic Shopify lifestyle mockup for "${product.title}".
+    const safeAspect = aspect as MockupAspect;
+    const shapeDirection = safeAspect === "portrait"
+      ? "Create one portrait, photorealistic Shopify lifestyle mockup. Use the taller frame naturally and keep the full sellable product visible."
+      : safeAspect === "landscape"
+        ? "Create one landscape, photorealistic Shopify lifestyle mockup. Use the wider frame naturally and keep the full sellable product visible."
+        : "Create one square, photorealistic Shopify lifestyle mockup. Keep the full sellable product visible.";
+
+    const prompt = `${shapeDirection} The product is "${product.title}".
 
 ${styleDirections[style]}
 ${sourceNoteBlock}
@@ -109,7 +137,7 @@ PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
     generationForm.append("model", "gpt-image-2");
     generationForm.append("prompt", prompt);
     generationForm.append("image[]", new Blob([sourceBytes], { type: sourceMime }), `source-${imageId}`);
-    generationForm.append("size", "1024x1024");
+    generationForm.append("size", outputSizes[safeAspect]);
     generationForm.append("quality", "low");
     generationForm.append("output_format", "webp");
     generationForm.append("output_compression", "84");
@@ -132,6 +160,8 @@ PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
         data: generatedBase64,
         mimeType: "image/webp",
         style,
+        aspect: safeAspect,
+        outputSize: outputSizes[safeAspect],
         quality: {
           approved: false,
           issues: ["Compare the product, lettering, artwork, colors, and direction with the source before approving."],
