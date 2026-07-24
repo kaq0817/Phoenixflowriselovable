@@ -62,6 +62,21 @@ function slugify(value: string): string {
     .trim();
 }
 
+function retryDelayMs(response: Response, attempt: number): number {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1000, 10000);
+    }
+  }
+  return Math.min(600 * (2 ** attempt) + Math.random() * 400, 5000);
+}
+
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Analyze ONE image — no product title in the prompt so the model must use its eyes
 async function analyzeOneImage(
   imageId: number,
@@ -92,13 +107,7 @@ Examples of CORRECT output:
 Return ONLY this JSON object, nothing else:
 {"image_id": ${imageId}, "alt": "<your alt text>", "filename": "<your filename>.webp"}`;
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openAiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const requestBody = JSON.stringify({
       model: "gpt-4.1-mini",
       input: [{
         role: "user",
@@ -129,9 +138,30 @@ Return ONLY this JSON object, nothing else:
         },
       },
       max_output_tokens: 256,
-    }),
   });
 
+  let response: Response | null = null;
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openAiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: requestBody,
+    });
+
+    const retryable = response.status === 429 || response.status >= 500;
+    if (response.ok || !retryable || attempt === maxAttempts - 1) break;
+
+    const delay = retryDelayMs(response, attempt);
+    console.warn(`OpenAI ${response.status} for image ${imageId}; retrying in ${Math.round(delay)}ms`);
+    await response.body?.cancel();
+    await wait(delay);
+  }
+
+  if (!response) throw new Error("OpenAI request did not start");
   if (!response.ok) {
     throw new Error(`OpenAI ${response.status}: ${await response.text().then(t => t.slice(0, 160))}`);
   }
