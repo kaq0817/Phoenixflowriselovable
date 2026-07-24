@@ -157,6 +157,7 @@ export default function OptimizerPage() {
   const [altsAIFilled, setAltsAIFilled] = useState(0);
   const [convertingImageId, setConvertingImageId] = useState<number | null>(null);
   const [mockupSourceImageId, setMockupSourceImageId] = useState<number | null>(null);
+  const [mockupSourceNotes, setMockupSourceNotes] = useState<Record<number, string>>({});
   const [generatingMockupStyle, setGeneratingMockupStyle] = useState<MockupDraft["style"] | null>(null);
   const [mockupDrafts, setMockupDrafts] = useState<MockupDraft[]>([]);
   const [uploadingMockupIndex, setUploadingMockupIndex] = useState<number | null>(null);
@@ -312,6 +313,7 @@ export default function OptimizerPage() {
     setImageFilenameDrafts(buildUniqueFilenameDrafts(product, storeLabel));
     setAltTextExpanded(false);
     setMockupSourceImageId(product.images?.[0]?.id ?? null);
+    setMockupSourceNotes({});
     setMockupDrafts([]);
     setGeneratingMockupStyle(null);
     setUploadingMockupIndex(null);
@@ -600,6 +602,7 @@ export default function OptimizerPage() {
           connectionId: selectedShopifyConnectionId,
           productId: selectedProduct.id,
           imageId: mockupSourceImageId,
+          sourceNote: mockupSourceNotes[mockupSourceImageId] || "",
           style,
         },
       });
@@ -877,7 +880,32 @@ export default function OptimizerPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">2. Create one draft</p>
+                        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium" htmlFor="mockup-source-note">
+                          2. Describe this source image (optional)
+                        </label>
+                        <textarea
+                          id="mockup-source-note"
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                          rows={2}
+                          maxLength={300}
+                          disabled={!mockupSourceImageId}
+                          placeholder="Example: This is the back of the shirt. Keep the artwork on the back. Do not move it to the front."
+                          value={mockupSourceImageId ? (mockupSourceNotes[mockupSourceImageId] || "") : ""}
+                          onChange={(event) => {
+                            if (!mockupSourceImageId) return;
+                            setMockupSourceNotes((current) => ({
+                              ...current,
+                              [mockupSourceImageId]: event.target.value,
+                            }));
+                          }}
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Saved separately for each source image. Use it for front, back, sleeve, scale, or product orientation.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Create one draft</p>
                         <div className="grid gap-2 sm:grid-cols-3">
                           {([
                             ["lifestyle", "Lifestyle Scene"],
@@ -903,7 +931,7 @@ export default function OptimizerPage() {
 
                       {mockupDrafts.length > 0 && (
                         <div className="space-y-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Review before Shopify</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">4. Review before Shopify</p>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {mockupDrafts.map((draft, index) => (
                               <div key={`${draft.style}-${index}`} className="rounded-lg border border-border/40 bg-background/40 p-2 space-y-2">
