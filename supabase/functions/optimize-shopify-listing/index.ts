@@ -249,7 +249,7 @@ serve(async (req) => {
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const OPENAI_API_KEY: string | undefined = undefined; // disabled until OpenAI billing is active
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const { product: rawProduct, connectionId, productContext } = await req.json() as { product?: ShopifyProductLike & { id?: number }; connectionId?: string; productContext?: string };
     let product: ShopifyProductLike & { id?: number } = rawProduct ?? {};
 
@@ -546,10 +546,11 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
     let suggestions: ShopifySuggestionShape | null = null;
     let geminiError = "";
 
-    // Model cascade: try the best available model first, fall back on 429 rate limit
+    // Cost-controlled model cascade. The preview model is economical; the stable
+    // Flash-Lite model protects production when a preview is retired or rate-limited.
     const GEMINI_MODELS = [
-      "gemini-2.5-flash-preview-04-17",  // best quality, lower quota
-      "gemini-2.5-flash",                 // stable, higher quota — reliable fallback
+      "gemini-3-flash-preview",
+      "gemini-3.5-flash-lite",
     ];
 
     // Images come FIRST so Gemini visually identifies the product before reading
@@ -585,7 +586,8 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
           }
         }]
       }],
-      toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] } }
+      toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["suggest_shopify_optimizations"] } },
+      generationConfig: { maxOutputTokens: 8192, temperature: 0.4 },
     };
 
     if (GEMINI_API_KEY) {
@@ -651,6 +653,7 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: openAiMessages,
+            max_tokens: 8192,
             tools: [{
               type: "function",
               function: {
@@ -702,9 +705,15 @@ Return all optimizations using the suggest_shopify_optimizations function.`;
     }
 
     if (!suggestions) {
-      const fallback = buildFallbackSuggestions(product);
-      if (geminiError) fallback.reasoning = `AI error: ${geminiError} — ${fallback.reasoning}`;
-      suggestions = normalizeShopifySuggestions(product, fallback);
+      const detail = geminiError || "No configured AI provider returned a valid optimization";
+      console.error("Product optimization failed:", detail);
+      return new Response(
+        JSON.stringify({
+          error: "AI optimization failed. Your existing Shopify content was not changed.",
+          detail,
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
       // Hard-guarantee: collection name keywords must appear in the final tag list.
