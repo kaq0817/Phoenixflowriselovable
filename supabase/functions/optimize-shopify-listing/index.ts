@@ -428,6 +428,19 @@ serve(async (req) => {
       variantDesignSummary = `\n⚠️ MULTI-STYLE PRODUCT: This product has ${option2Values.length} style options (${option2Values.slice(0, 6).join(", ")}). Write the SEO description to cover the range. Populate variant_suggestions.`;
     }
 
+    // Preserve inclusive apparel sizing. A mixed standard-to-extended range is one
+    // product range, not a reason to relabel the item as a plus-size product.
+    const apparelSizeValues = option1IsSize ? option1Values : option2IsSize ? option2Values : [];
+    const hasStandardApparelSize = apparelSizeValues.some((value) => /^(xxs|xs|s|m|l|xl)$/i.test(value));
+    const hasExtendedApparelSize = apparelSizeValues.some((value) => /^(2xl|xxl|3xl|xxxl|4xl|5xl|6xl)$/i.test(value));
+    if (hasStandardApparelSize && hasExtendedApparelSize) {
+      variantDesignSummary += `\n🚨 INCLUSIVE SIZE RANGE — CRITICAL RULES:\n` +
+        `This product serves the complete size range: ${apparelSizeValues.join(", ")}. ` +
+        `Market it to every available size as one inclusive product. State the complete range naturally in apparel titles and useful fit copy. ` +
+        `NEVER call it "plus size", "standard size", "straight size", "regular size", "skinny", "curvy", or use any other body-type label. ` +
+        `Do not imply one part of the range is the intended customer. Occasions and styling ideas are welcome when supported by the product.`;
+    }
+
     const productImages = product.images || [];
     const imageInfo = productImages.length > 0
       ? `\nImages (${productImages.length}):\n${productImages.map((img, i) => `Image ${i + 1} (id: ${img.id}, position: ${img.position ?? i + 1}): current_alt="${img.alt || "none"}" url="${img.src}"`).join("\n")}`
@@ -491,7 +504,9 @@ Rules: Only include variants whose option values suggest a truly different buyer
 - IMAGE FILENAMES: For every image, suggest a clean SEO-rich filename. Rules: all lowercase, hyphen-separated, no special chars, end in .webp; Format: "[clean-product-name]-[detail]-[store-slug].webp" where store-slug = "${storeName ? storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "store"}"; Image 1 = full product slug + store slug (e.g. "block-world-pixelated-travel-mug-phoenix-rise.webp"); Images 2+ = product slug + detail + store slug (e.g. "block-world-pixelated-travel-mug-handle-detail-phoenix-rise.webp"); NEVER use generic names like "image-1.webp", vendor names, or LLC suffixes. Return as a JSON-encoded string in image_filenames: [{"image_id": <id>, "filename": "<name>.webp"}].
 
 GOOGLE MERCHANT CENTER COMPLIANCE (CRITICAL):
-- APPAREL TITLES MUST include color and size range (e.g. "Black XS-4XL").
+- APPAREL TITLES MUST include color and the complete available size range (e.g. "Black XS-4XL").
+- INCLUSIVE SIZING: When apparel spans standard and extended sizes, market the whole range together. Never introduce "plus size", "standard size", "straight size", "regular size", "skinny", "curvy", or another body-type category in the title, SEO fields, description, tags, FAQ, image text, or reasoning. Use the exact range supplied by the variants instead. Only preserve a size-category term when the seller explicitly supplied it and the entire offered range belongs to that category.
+- Do not discuss internal size-based costs or pricing strategy in customer-facing copy.
 - NEVER use special characters (curly quotes, em dashes, symbols, Unicode, emojis).
 - ONLY use plain ASCII: quotes (" "), hyphens (-), commas, periods, &, +, /.
 - NO ALL CAPS (except USB/LED). NO promotional text ("FREE SHIPPING", "SALE").
