@@ -334,19 +334,33 @@ export default function OptimizerPage() {
     };
 
     try {
-      const { data, error } = await supabase.functions.invoke("optimize-shopify-listing", {
+      const { data, error, response } = await supabase.functions.invoke("optimize-shopify-listing", {
         body: { product: productToSend, connectionId: selectedShopifyConnectionId, productContext: productContextNote.trim() || undefined },
       });
       if (error) {
-        const detail = (error as { message?: string }).message || "";
-        if (detail.includes("free_limit_reached")) {
+        const status = response?.status;
+        let body: { error?: string } = {};
+        try { body = response ? await response.json() : {}; } catch { /* ignore non-JSON body */ }
+
+        if (body.error === "free_limit_reached") {
           navigate("/pricing");
           return;
         }
-        if (detail.includes("Monthly limit reached") || detail.includes("429")) {
+        if (status === 429 && body.error === "Monthly limit reached") {
           toast({ title: "Monthly limit reached", description: "You have used all 50 optimizations for this store this month.", variant: "destructive" });
           if (optimizerUsage) setOptimizerUsage({ ...optimizerUsage, used: optimizerUsage.limit });
           setSelectedProduct(null);
+          setShopifyOptimizing(false);
+          return;
+        }
+        if (status === 503) {
+          // Total AI-provider failure (quota/rate-limit exhausted on every model).
+          // Keep the product open and untouched so the user can retry once quota resets.
+          toast({
+            title: "AI quota reached",
+            description: "No product content changed. Add quota or wait for it to reset, then try this product again.",
+            variant: "destructive",
+          });
           setShopifyOptimizing(false);
           return;
         }
