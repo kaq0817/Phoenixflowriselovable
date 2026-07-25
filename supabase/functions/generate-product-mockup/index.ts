@@ -48,8 +48,19 @@ serve(async (req: Request) => {
       });
     }
 
-    const { connectionId, productId, imageId, sourceNote = "", style = "lifestyle" } = await req.json();
-    if (!connectionId || !productId || !imageId || !styleDirections[style]) {
+    const {
+      connectionId,
+      productId,
+      imageId,
+      sourceAttachment = "",
+      sourceMimeType = "",
+      sourceFilename = "",
+      sourceNote = "",
+      style = "lifestyle",
+    } = await req.json();
+    const hasShopifySource = Boolean(imageId);
+    const hasTemporarySource = typeof sourceAttachment === "string" && sourceAttachment.length > 0;
+    if (!connectionId || !productId || (!hasShopifySource && !hasTemporarySource) || !styleDirections[style]) {
       return new Response(JSON.stringify({ error: "Missing or invalid mockup details" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -72,14 +83,38 @@ serve(async (req: Request) => {
     );
     if (!productResponse.ok) throw new Error("Phoenix Flow could not load this Shopify product");
     const { product } = await productResponse.json();
-    const sourceImage = (product.images || []).find((image: { id: number }) => Number(image.id) === Number(imageId));
-    if (!sourceImage?.src) throw new Error("The selected Shopify image was not found");
+    let sourceBytes: Uint8Array;
+    let sourceMime: string;
+    let safeSourceFilename: string;
 
-    const sourceResponse = await fetch(sourceImage.src);
-    if (!sourceResponse.ok) throw new Error("Phoenix Flow could not read the selected product image");
-    const sourceBytes = new Uint8Array(await sourceResponse.arrayBuffer());
-    if (sourceBytes.byteLength > MAX_SOURCE_BYTES) throw new Error("The selected image is too large for mockup generation");
-    const sourceMime = sourceResponse.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+    if (hasTemporarySource) {
+      if (sourceAttachment.length > 16_500_000) {
+        throw new Error("The uploaded POD source image is too large");
+      }
+      const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+      sourceMime = allowedMimeTypes.has(sourceMimeType) ? sourceMimeType : "image/jpeg";
+      try {
+        sourceBytes = Uint8Array.from(atob(sourceAttachment), (character) => character.charCodeAt(0));
+      } catch {
+        throw new Error("Phoenix Flow could not read the uploaded POD source image");
+      }
+      if (sourceBytes.byteLength === 0 || sourceBytes.byteLength > MAX_SOURCE_BYTES) {
+        throw new Error("The uploaded POD source image must be under 12 MB");
+      }
+      safeSourceFilename = `${sourceFilename || "pod-source-image"}`
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .slice(0, 100) || "pod-source-image";
+    } else {
+      const sourceImage = (product.images || []).find((image: { id: number }) => Number(image.id) === Number(imageId));
+      if (!sourceImage?.src) throw new Error("The selected Shopify image was not found");
+
+      const sourceResponse = await fetch(sourceImage.src);
+      if (!sourceResponse.ok) throw new Error("Phoenix Flow could not read the selected product image");
+      sourceBytes = new Uint8Array(await sourceResponse.arrayBuffer());
+      if (sourceBytes.byteLength > MAX_SOURCE_BYTES) throw new Error("The selected image is too large for mockup generation");
+      sourceMime = sourceResponse.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+      safeSourceFilename = `shopify-source-${imageId}`;
+    }
 
     const openAiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openAiKey) throw new Error("OpenAI image generation is not configured");
@@ -108,7 +143,7 @@ PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
     const generationForm = new FormData();
     generationForm.append("model", "gpt-image-2");
     generationForm.append("prompt", prompt);
-    generationForm.append("image[]", new Blob([sourceBytes], { type: sourceMime }), `source-${imageId}`);
+    generationForm.append("image[]", new Blob([sourceBytes], { type: sourceMime }), safeSourceFilename);
     generationForm.append("size", "1024x1024");
     generationForm.append("quality", "low");
     generationForm.append("output_format", "webp");
