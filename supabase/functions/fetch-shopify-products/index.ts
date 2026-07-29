@@ -125,7 +125,7 @@ serve(async (req: Request) => {
         // Cursor-based: only limit + page_info allowed by Shopify
         apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimitPerPage}&page_info=${encodeURIComponent(nextPageInfo)}`;
       } else {
-        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimitPerPage}&published_status=any&order=${oldestFirstOrder}&fields=${encodeURIComponent(fields)}`;
+        apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${scanLimitPerPage}&status=active&order=${oldestFirstOrder}&fields=${encodeURIComponent(fields)}`;
       }
 
       const response = await fetch(apiUrl, {
