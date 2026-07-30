@@ -34,6 +34,9 @@ const COLOR_WORDS = [
   "charcoal", "lavender", "mint", "coral", "turquoise", "bronze", "rose gold",
 ];
 
+export const AI_IMAGE_DISCLOSURE_TEXT = "Product photos may include AI-generated or digitally altered imagery.";
+const AI_IMAGE_DISCLOSURE_HTML = `<p><em>${AI_IMAGE_DISCLOSURE_TEXT}</em></p>`;
+
 const SIZE_ORDER = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "2xl", "xxxl", "3xl", "4xl", "5xl", "6xl"];
 const BANNED_TAGS = [
   // Dropshipping platforms
@@ -431,9 +434,15 @@ export function normalizeEtsySuggestions(listing: EtsyListingLike, raw: EtsySugg
 
   const baseDescription = sanitizePlainText(raw.description || listing.description || buildDefaultEtsyDescription(listing), 900);
   const leadCheck = ensureEtsyDescriptionLead(title, baseDescription);
-  const description = sanitizePlainText(leadCheck.description, 900);
+  let description = sanitizePlainText(leadCheck.description, 900);
   if (!raw.description) notes.push("description filled from existing listing context");
   if (leadCheck.addedLead) notes.push("first sentence now clearly states the item");
+
+  // NY disclosure requirement: every listing must state photos may be AI-generated.
+  // Guard against duplicating it on re-optimize runs where the existing listing already carries it.
+  if (!description.includes(AI_IMAGE_DISCLOSURE_TEXT)) {
+    description = `${description}\n\n${AI_IMAGE_DISCLOSURE_TEXT}`;
+  }
 
   let tags = dedupeBySignature([...(Array.isArray(raw.tags) ? raw.tags : []), ...buildEtsyFallbackTags(listing)], 20).slice(0, 13);
   if (tags.length < 13) {
@@ -509,7 +518,12 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
 
   // Prefer AI-generated body. Only fall back to product.body_html if AI returned nothing,
   // and even then sanitizeHtml will strip any supplier-hosted images.
-  const body_html = sanitizeHtml(raw.body_html || product.body_html || "");
+  let body_html = sanitizeHtml(raw.body_html || product.body_html || "");
+  // NY disclosure requirement: every listing must state photos may be AI-generated.
+  // Guard against duplicating it on re-optimize runs where product.body_html already carries it.
+  if (!body_html.includes(AI_IMAGE_DISCLOSURE_TEXT)) {
+    body_html = `${body_html}${AI_IMAGE_DISCLOSURE_HTML}`;
+  }
   const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 255);
 
   // Apparel Logic: Re-inject color/size if they were accidentally scrubbed

@@ -27,6 +27,9 @@ function needsFdaDisclaimer(title: string): boolean {
   return HEALTH_KEYWORDS.some((k) => title.toLowerCase().includes(k));
 }
 
+// NY disclosure requirement: every generated listing must state photos may be AI-generated.
+const AI_IMAGE_DISCLOSURE_HTML = '<p><em>Product photos may include AI-generated or digitally altered imagery.</em></p>';
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -68,9 +71,9 @@ serve(async (req) => {
 
     const results = await Promise.all(active.map(async (product) => {
       const fda = needsFdaDisclaimer(product.title);
-      const disclaimerHtml = fda
+      const disclaimerHtml = (fda
         ? '<p><em>*These statements have not been evaluated by the Food and Drug Administration. This product is not intended to diagnose, treat, cure, or prevent any disease.</em></p>'
-        : "";
+        : "") + AI_IMAGE_DISCLOSURE_HTML;
 
       const prompt = buildDescriptionPrompt({
         title: product.title,
