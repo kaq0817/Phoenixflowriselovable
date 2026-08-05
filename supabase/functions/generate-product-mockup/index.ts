@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 import { getShopifyApiVersion } from "../_shared/shopify.ts";
+import { buildMockupContextNote } from "../_shared/mockupPromptHelpers.ts";
 
 const SHOPIFY_API_VERSION = getShopifyApiVersion();
 const MAX_SOURCE_BYTES = 12_000_000;
@@ -90,10 +91,16 @@ serve(async (req: Request) => {
     const sourceNoteBlock = cleanSourceNote
       ? `\nMERCHANT SOURCE IMAGE NOTE:\n"${cleanSourceNote}"\nTreat this note as the correct product orientation. If it says the image shows the back, keep the artwork on the back and pose the product or person so the back is visible. Never move back artwork to the front.\n`
       : "";
+    const productContextNote = buildMockupContextNote({
+      title: product.title,
+      product_type: product.product_type,
+      tags: product.tags,
+    });
 
     const prompt = `Create one square, photorealistic Shopify lifestyle mockup for "${product.title}".
 
 ${styleDirections[style]}
+${productContextNote}
 ${sourceNoteBlock}
 
 PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
