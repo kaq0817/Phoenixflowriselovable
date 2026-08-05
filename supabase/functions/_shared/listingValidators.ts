@@ -55,6 +55,8 @@ const BANNED_TAGS = [
   "frumpy business dress", "mental calm dress", "magic dress", "gaming stream style",
 ];
 
+const PRINT_TECHNIQUE_RE = /\b(all over print|all-over print|aop|sublimation print|sublimation|dtg print|dtg|screen print|screen printing|print on demand|print-on-demand|pod)\b/gi;
+
 export interface EtsyListingLike {
   title?: string;
   description?: string;
@@ -222,6 +224,29 @@ function keywordSignature(value: string): string {
     .map(singularizeToken)
     .sort()
     .join(" ");
+}
+
+function normalizeProductType(rawType: string, fallbackTitle: string): string {
+  const cleaned = sanitizePlainText(rawType || "", 255)
+    .replace(PRINT_TECHNIQUE_RE, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (cleaned) return cleaned;
+
+  const fallback = sanitizePlainText(fallbackTitle || "", 255)
+    .replace(PRINT_TECHNIQUE_RE, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!fallback) return "";
+
+  const matchedApparel = APPAREL_KEYWORDS.find((word) => {
+    const re = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    return re.test(fallback);
+  });
+
+  return matchedApparel || "";
 }
 
 function trimPhraseToLength(value: string, maxLength: number): string {
@@ -524,7 +549,7 @@ export function normalizeShopifySuggestions(product: ShopifyProductLike, raw: Sh
   if (!body_html.includes(AI_IMAGE_DISCLOSURE_TEXT)) {
     body_html = `${body_html}${AI_IMAGE_DISCLOSURE_HTML}`;
   }
-  const product_type = sanitizePlainText(raw.product_type || product.product_type || "", 255);
+  const product_type = normalizeProductType(raw.product_type || product.product_type || "", raw.title || product.title || "");
 
   // Apparel Logic: Re-inject color/size if they were accidentally scrubbed
   if (apparel && requiredSuffix) {
