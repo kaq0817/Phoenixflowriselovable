@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { isEtsyConnected } from "@/lib/etsyConnections";
 import { isEtsyPlatform } from "@/lib/storePlatforms";
+import { getFunctionErrorMessage } from "@/lib/functionsError";
 
 interface EtsyListing {
   listing_id: number;
@@ -100,10 +101,14 @@ export default function EtsyOptimizer() {
   const [copying, setCopying] = useState(false);
 
   const loadConnections = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("store_connections")
       .select("id, platform, shop_domain, shop_name, scopes, created_at")
       .order("created_at", { ascending: false });
+    if (error) {
+      toast({ title: "Couldn't load Etsy shops", description: error.message || "Could not load your connected Etsy shops.", variant: "destructive" });
+      return;
+    }
     const etsyRows = (data || []).filter((c) => isEtsyPlatform(c.platform) && isEtsyConnected(c));
     const eligibleRows = etsyRows.filter((c) => (c.scopes || "").trim() !== "public_read");
 
@@ -165,7 +170,7 @@ export default function EtsyOptimizer() {
       if (error) throw error;
       setListings(data.results || []);
     } catch (err: unknown) {
-      toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Error", description: await getFunctionErrorMessage(err, "Could not fetch Etsy listings."), variant: "destructive" });
     } finally {
       setListingsLoading(false);
     }
@@ -181,7 +186,7 @@ export default function EtsyOptimizer() {
       if (!data?.url) throw new Error("Etsy authorization URL was not returned");
       window.location.href = data.url;
     } catch (err: unknown) {
-      toast({ title: "Connection failed", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Connection failed", description: await getFunctionErrorMessage(err, "Could not start Etsy authorization."), variant: "destructive" });
       setEtsyOAuthStarting(false);
     }
   };
@@ -195,7 +200,7 @@ export default function EtsyOptimizer() {
       if (error) throw error;
       setSuggestions(data.suggestions);
     } catch (err: unknown) {
-      toast({ title: "Optimization failed", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Optimization failed", description: await getFunctionErrorMessage(err, "Could not optimize this listing."), variant: "destructive" });
       setSelectedListing(null);
     } finally {
       setOptimizing(false);
@@ -225,7 +230,7 @@ export default function EtsyOptimizer() {
       setSuggestions(null);
       void fetchListings();
     } catch (err: unknown) {
-      const message = (err as Error).message;
+      const message = await getFunctionErrorMessage(err, "Could not apply changes to Etsy.");
       const needsReconnect = /reconnect|token expired|unauthorized/i.test(message);
       toast({
         title: "Apply failed",

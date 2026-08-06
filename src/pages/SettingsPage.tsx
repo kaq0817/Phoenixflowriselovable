@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { getFunctionErrorMessage } from "@/lib/functionsError";
 
 interface StoreConnection {
   id: string;
@@ -16,11 +17,6 @@ interface StoreConnection {
   shop_name: string | null;
   scopes: string | null;
   created_at: string;
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
 }
 
 export default function SettingsPage() {
@@ -48,7 +44,11 @@ export default function SettingsPage() {
     const { data, error } = await supabase
       .from("store_connections")
       .select("id, platform, shop_domain, shop_name, scopes, created_at");
-    if (!error && data) setConnections(data);
+    if (error) {
+      toast({ title: "Couldn't load connections", description: error.message || "Could not load your connected stores.", variant: "destructive" });
+    } else if (data) {
+      setConnections(data);
+    }
     setLoading(false);
   };
 
@@ -126,7 +126,7 @@ export default function SettingsPage() {
 
       window.location.href = data.url;
     } catch (error: unknown) {
-      toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Shopify authorization."), variant: "destructive" });
+      toast({ title: "Connection failed", description: await getFunctionErrorMessage(error, "Could not start Shopify authorization."), variant: "destructive" });
       setShopifyOAuthConnecting(false);
     }
   };
@@ -159,7 +159,7 @@ export default function SettingsPage() {
       setShowShopifyForm(false);
       fetchConnections();
     } catch (error: unknown) {
-      toast({ title: "Connection failed", description: getErrorMessage(error, "Could not connect Shopify store."), variant: "destructive" });
+      toast({ title: "Connection failed", description: await getFunctionErrorMessage(error, "Could not connect Shopify store."), variant: "destructive" });
     } finally {
       setConnecting(false);
     }
@@ -177,7 +177,7 @@ export default function SettingsPage() {
       setShowEtsyForm(false);
       window.location.href = data.url;
     } catch (error: unknown) {
-      toast({ title: "Connection failed", description: getErrorMessage(error, "Could not start Etsy authorization."), variant: "destructive" });
+      toast({ title: "Connection failed", description: await getFunctionErrorMessage(error, "Could not start Etsy authorization."), variant: "destructive" });
       setEtsyConnecting(false);
     }
   };
@@ -194,7 +194,7 @@ export default function SettingsPage() {
       toast({ title: "Disconnected", description: `${platform} store has been disconnected.` });
       fetchConnections();
     } catch (error: unknown) {
-      toast({ title: "Error", description: getErrorMessage(error, "Could not disconnect store."), variant: "destructive" });
+      toast({ title: "Error", description: await getFunctionErrorMessage(error, "Could not disconnect store."), variant: "destructive" });
     } finally {
       setDisconnecting(null);
     }

@@ -108,8 +108,9 @@ serve(async (req) => {
     const refreshToken = tokenData.refresh_token as string;
     const expiresIn = Number(tokenData.expires_in || 3600);
 
-    let shopName = "Etsy Shop";
+    let shopName: string | null = null;
     let shopId: string | null = null;
+    let shopLookupDetail = "";
 
     const etsyUserId = await getEtsyUserId(accessToken);
     if (!etsyUserId) {
@@ -135,18 +136,28 @@ serve(async (req) => {
       const shopData = await shopRes.json().catch(() => null) as { results?: Array<{ shop_name?: string; shop_id?: number | string }> } | null;
       const first = shopData?.results?.[0];
       if (first) {
-        shopName = first.shop_name || shopName;
+        shopName = first.shop_name || null;
         shopId = first.shop_id ? String(first.shop_id) : null;
+      } else {
+        shopLookupDetail = "Etsy returned no shops for this account.";
+        console.error("Etsy shop lookup returned no results:", JSON.stringify(shopData));
       }
     } else {
-      console.error("Etsy shop lookup failed:", await shopRes.text());
+      shopLookupDetail = await shopRes.text();
+      console.error("Etsy shop lookup failed:", shopLookupDetail);
     }
 
-    if (!shopId) {
+    // A connection is only meaningful once we have both a real shop id (used to call the
+    // Listings API) and a real shop name (shown to the user). Previously this fell back to
+    // the literal string "Etsy Shop" and still reported success, which silently saved a
+    // broken connection that looked connected but couldn't be used for anything.
+    if (!shopId || !shopName) {
       return Response.redirect(
         buildAppRedirect({
           status: "error",
-          message: "Etsy OAuth succeeded, but no shop was found for this account. Make sure your Etsy account has an active shop, then try again.",
+          message: shopLookupDetail
+            ? `Etsy OAuth succeeded, but the shop lookup failed: ${shopLookupDetail.slice(0, 160)}`
+            : "Etsy OAuth succeeded, but no shop was found for this account. Make sure your Etsy account has an active shop, then try again.",
           origin: state.appOrigin,
           path: state.returnPath,
         }),
@@ -184,7 +195,7 @@ serve(async (req) => {
       buildAppRedirect({
         status: "connected",
         path: state.returnPath,
-        message: shopName === "Etsy Shop" ? "Etsy OAuth connected." : `Connected ${shopName}.`,
+        message: `Connected ${shopName}.`,
         origin: state.appOrigin,
       }),
       302,
