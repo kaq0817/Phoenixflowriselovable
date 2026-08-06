@@ -171,6 +171,15 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Clean up any broken records (null shop_domain or shop_name) for this user
+    // so stale broken connections don't shadow the new good one.
+    await supabase
+      .from("store_connections")
+      .delete()
+      .eq("user_id", state.userId)
+      .eq("platform", "etsy")
+      .or("shop_domain.is.null,shop_name.is.null");
+
     const { error: upsertError } = await supabase.from("store_connections").upsert(
       {
         user_id: state.userId,
