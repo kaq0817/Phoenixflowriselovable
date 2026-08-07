@@ -127,8 +127,16 @@ PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
       body: generationForm,
     });
     if (!generationResponse.ok) {
-      console.error("OpenAI mockup generation failed:", await generationResponse.text());
-      throw new Error("OpenAI could not create this mockup");
+      const errText = await generationResponse.text();
+      console.error("OpenAI mockup generation failed:", errText);
+      let detail = errText;
+      try {
+        const parsed = JSON.parse(errText) as { error?: { message?: string } };
+        detail = parsed.error?.message || errText;
+      } catch {
+        // Not JSON — use the raw text.
+      }
+      throw new Error(`OpenAI could not create this mockup: ${detail.slice(0, 200)}`);
     }
     const generation = await generationResponse.json();
     const generatedBase64 = generation?.data?.[0]?.b64_json;
