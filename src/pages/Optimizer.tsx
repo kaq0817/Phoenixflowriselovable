@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { isShopifyPlatform } from "@/lib/storePlatforms";
+import { getFunctionErrorMessage } from "@/lib/functionsError";
 
 interface ShopifyProduct {
   id: number;
@@ -248,8 +249,7 @@ export default function OptimizerPage() {
       setShopifyHasMore(!directSearch && Boolean(data.hasMore || nextCursor));
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Error", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Error", description: await getFunctionErrorMessage(err, "Could not fetch Shopify products."), variant: "destructive" });
     } finally {
       setShopifyLoading(false);
     }
@@ -288,8 +288,7 @@ export default function OptimizerPage() {
       );
       toast({ title: action === "publish" ? "Published" : "Unpublished", description: `Product ${action === "publish" ? "added to" : "removed from"} sales channel.` });
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Error", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Error", description: await getFunctionErrorMessage(err, "Could not update sales channel."), variant: "destructive" });
     } finally {
       setChannelTogglingId(null);
     }
@@ -387,8 +386,7 @@ export default function OptimizerPage() {
       if (data.optimizerUsage) setOptimizerUsage(data.optimizerUsage);
       setExpandedSection("title");
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Optimization failed", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Optimization failed", description: await getFunctionErrorMessage(err, "Could not optimize this product."), variant: "destructive" });
       setSelectedProduct(null);
     } finally {
       setShopifyOptimizing(false);
@@ -428,8 +426,7 @@ export default function OptimizerPage() {
       setSelectedProduct(null);
       setShopifySuggestions(null);
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Apply failed", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Apply failed", description: await getFunctionErrorMessage(err, "Could not apply changes to Shopify."), variant: "destructive" });
     } finally {
       setShopifyApplying(false);
     }
@@ -461,8 +458,7 @@ export default function OptimizerPage() {
         throw new Error(data.message || "This image could not be scanned. Its existing alt text was preserved.");
       }
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Rescan failed", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Rescan failed", description: await getFunctionErrorMessage(err, "Could not rescan this image."), variant: "destructive" });
     } finally {
       setRescanningImageId(null);
     }
@@ -502,8 +498,7 @@ export default function OptimizerPage() {
         description: data.message || `Generated specific alt text for ${results.length} images.`,
       });
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Scan failed", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Scan failed", description: await getFunctionErrorMessage(err, "Could not scan images."), variant: "destructive" });
     } finally {
       setAltScanLoading(false);
     }
@@ -525,8 +520,7 @@ export default function OptimizerPage() {
       setAltsAIFilled(0);
       toast({ title: "Alt text saved", description: "Image alt text updated on Shopify." });
     } catch (err: unknown) {
-      const errorObj = err as Error;
-      toast({ title: "Save failed", description: errorObj.message, variant: "destructive" });
+      toast({ title: "Save failed", description: await getFunctionErrorMessage(err, "Could not save alt text."), variant: "destructive" });
     } finally {
       setSavingAltText(false);
     }
@@ -600,8 +594,7 @@ export default function OptimizerPage() {
         description: "The original remains in Shopify until you approve the new image.",
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "WebP conversion failed";
-      toast({ title: "WebP conversion failed", description: message, variant: "destructive" });
+      toast({ title: "WebP conversion failed", description: await getFunctionErrorMessage(error, "WebP conversion failed"), variant: "destructive" });
     } finally {
       setConvertingImageId(null);
     }
@@ -628,8 +621,7 @@ export default function OptimizerPage() {
         description: "Compare the product and lettering with the source, then approve or discard it.",
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mockup generation failed";
-      toast({ title: "Mockup generation failed", description: message, variant: "destructive" });
+      toast({ title: "Mockup generation failed", description: await getFunctionErrorMessage(error, "Mockup generation failed"), variant: "destructive" });
     } finally {
       setGeneratingMockupStyle(null);
     }
@@ -667,8 +659,7 @@ export default function OptimizerPage() {
       )));
       toast({ title: "Mockup added to Shopify", description: "The source image remains untouched." });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mockup upload failed";
-      toast({ title: "Mockup upload failed", description: message, variant: "destructive" });
+      toast({ title: "Mockup upload failed", description: await getFunctionErrorMessage(error, "Mockup upload failed"), variant: "destructive" });
     } finally {
       setUploadingMockupIndex(null);
     }
