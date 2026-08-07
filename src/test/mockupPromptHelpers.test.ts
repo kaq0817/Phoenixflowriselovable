@@ -22,4 +22,16 @@ describe("buildMockupContextNote", () => {
 
     expect(note).toBe("");
   });
+
+  it("handles Shopify's comma-separated tags string without throwing", () => {
+    // Shopify's REST Admin API returns product.tags as a single string, not an
+    // array — this must not throw "(product.tags || []).map is not a function".
+    const note = buildMockupContextNote({
+      title: "Organic Whole Bean Coffee",
+      product_type: "coffee",
+      tags: "Organic, Fair Trade, Whole Bean",
+    });
+
+    expect(note).toContain("grinder");
+  });
 });
