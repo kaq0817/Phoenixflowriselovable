@@ -10,9 +10,12 @@ import {
 } from "../_shared/etsy.ts";
 
 async function getEtsyUserId(accessToken: string): Promise<string | null> {
-  const prefix = accessToken.split(".")[0]?.trim() || "";
-  if (/^\d+$/.test(prefix)) return prefix;
-
+  // Always resolve via Etsy's own /users/me endpoint rather than trusting the numeric
+  // prefix of the access token. The token-shape shortcut this used to take (treating
+  // `token.split(".")[0]` as the user id whenever it looked numeric) can silently resolve
+  // to the wrong id if that assumption doesn't hold, which then makes the shop lookup
+  // legitimately return zero shops for a real, valid shop owner. /users/me is the
+  // authoritative source, so always use it.
   const apiKeyHeader = getEtsyApiKeyHeader();
   const meRes = await fetch("https://api.etsy.com/v3/application/users/me", {
     headers: {
