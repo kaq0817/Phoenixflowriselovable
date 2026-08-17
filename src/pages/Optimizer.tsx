@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   BarChart3, Sparkles, Store, Loader2, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Tag, FileText, Palette,
-  Radio, Layers, Search, Lightbulb,
+  Radio, Layers, Search, Lightbulb, Upload,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,6 +53,13 @@ interface MockupDraft {
   style: "lifestyle" | "human" | "styled";
   quality: { approved: boolean; issues: string[] };
   uploaded?: boolean;
+}
+
+interface TemporaryMockupSource {
+  data: string;
+  mimeType: string;
+  filename: string;
+  previewUrl: string;
 }
 
 interface StoreConnectionOption {
@@ -159,6 +166,8 @@ export default function OptimizerPage() {
   const [convertingImageId, setConvertingImageId] = useState<number | null>(null);
   const [mockupSourceImageId, setMockupSourceImageId] = useState<number | null>(null);
   const [mockupSourceNotes, setMockupSourceNotes] = useState<Record<number, string>>({});
+  const [temporaryMockupSource, setTemporaryMockupSource] = useState<TemporaryMockupSource | null>(null);
+  const [temporaryMockupSourceNote, setTemporaryMockupSourceNote] = useState("");
   const [generatingMockupStyle, setGeneratingMockupStyle] = useState<MockupDraft["style"] | null>(null);
   const [mockupDrafts, setMockupDrafts] = useState<MockupDraft[]>([]);
   const [uploadingMockupIndex, setUploadingMockupIndex] = useState<number | null>(null);
@@ -313,6 +322,8 @@ export default function OptimizerPage() {
     setAltTextExpanded(false);
     setMockupSourceImageId(product.images?.[0]?.id ?? null);
     setMockupSourceNotes({});
+    setTemporaryMockupSource(null);
+    setTemporaryMockupSourceNote("");
     setMockupDrafts([]);
     setGeneratingMockupStyle(null);
     setUploadingMockupIndex(null);
@@ -601,15 +612,24 @@ export default function OptimizerPage() {
   };
 
   const generateMockup = async (style: MockupDraft["style"]) => {
-    if (!selectedProduct || !selectedShopifyConnectionId || !mockupSourceImageId) return;
+    if (
+      !selectedProduct ||
+      !selectedShopifyConnectionId ||
+      (!mockupSourceImageId && !temporaryMockupSource)
+    ) return;
     setGeneratingMockupStyle(style);
     try {
       const { data, error } = await supabase.functions.invoke("generate-product-mockup", {
         body: {
           connectionId: selectedShopifyConnectionId,
           productId: selectedProduct.id,
-          imageId: mockupSourceImageId,
-          sourceNote: mockupSourceNotes[mockupSourceImageId] || "",
+          imageId: mockupSourceImageId || undefined,
+          sourceAttachment: temporaryMockupSource?.data || undefined,
+          sourceMimeType: temporaryMockupSource?.mimeType || undefined,
+          sourceFilename: temporaryMockupSource?.filename || undefined,
+          sourceNote: mockupSourceImageId
+            ? (mockupSourceNotes[mockupSourceImageId] || "")
+            : temporaryMockupSourceNote,
           style,
         },
       });
@@ -850,8 +870,7 @@ export default function OptimizerPage() {
                   </Card>
                 )}
 
-                {selectedProduct.images?.length > 0 && (
-                  <Card className="bg-card/50 border-primary/30 overflow-hidden">
+                <Card className="bg-card/50 border-primary/30 overflow-hidden">
                     <CardContent className="p-4 space-y-4">
                       <div>
                         <div className="flex items-center gap-2">
@@ -860,7 +879,7 @@ export default function OptimizerPage() {
                           <Badge variant="outline" className="ml-auto text-[10px]">OpenAI</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Pick the most accurate source image, then create one low-cost draft. Nothing uploads until you approve it.
+                          Pick an existing Shopify image or upload a basic POD product image. The source stays temporary; only an approved finished mockup can upload to Shopify.
                         </p>
                       </div>
 
@@ -881,7 +900,82 @@ export default function OptimizerPage() {
                               <span className="absolute bottom-1 right-1 rounded bg-background/90 px-1 text-[9px]">{index + 1}</span>
                             </button>
                           ))}
+                          {temporaryMockupSource && (
+                            <button
+                              type="button"
+                              onClick={() => setMockupSourceImageId(null)}
+                              className={`relative shrink-0 rounded-lg border-2 p-0.5 transition-colors ${
+                                mockupSourceImageId === null ? "border-primary" : "border-border/30"
+                              }`}
+                              aria-label="Use uploaded POD image as the mockup source"
+                            >
+                              <img
+                                src={temporaryMockupSource.previewUrl}
+                                alt="Uploaded temporary POD source"
+                                className="h-16 w-16 rounded-md object-cover"
+                              />
+                              <span className="absolute bottom-1 right-1 rounded bg-background/90 px-1 text-[9px]">Upload</span>
+                            </button>
+                          )}
+                          <label className="flex h-[70px] w-[70px] shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 text-center transition-colors hover:bg-primary/10">
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="sr-only"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                event.target.value = "";
+                                if (!file) return;
+                                if (file.size > 12_000_000) {
+                                  toast({
+                                    title: "Source image is too large",
+                                    description: "Choose a PNG, JPG, or WebP image under 12 MB.",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  const dataUrl = String(reader.result || "");
+                                  const attachment = dataUrl.split(",")[1] || "";
+                                  if (!attachment) {
+                                    toast({
+                                      title: "Upload failed",
+                                      description: "Phoenix Flow could not read this source image.",
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
+                                  setTemporaryMockupSource({
+                                    data: attachment,
+                                    mimeType: file.type || "image/jpeg",
+                                    filename: file.name || "pod-source-image",
+                                    previewUrl: dataUrl,
+                                  });
+                                  setTemporaryMockupSourceNote("");
+                                  setMockupSourceImageId(null);
+                                  setMockupDrafts([]);
+                                };
+                                reader.onerror = () => toast({
+                                  title: "Upload failed",
+                                  description: "Phoenix Flow could not read this source image.",
+                                  variant: "destructive",
+                                });
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                            <Upload className="h-4 w-4 text-primary" />
+                            <span className="mt-1 text-[9px] font-medium leading-tight">Upload Source</span>
+                          </label>
                         </div>
+                        {selectedProduct.images.length === 0 && !temporaryMockupSource && (
+                          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                            This product has no Shopify images. Upload a basic POD product image to begin.
+                          </p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground">
+                          Uploaded source images are temporary. They are not added to Shopify.
+                        </p>
                       </div>
 
                       <div className="space-y-2">
@@ -893,15 +987,20 @@ export default function OptimizerPage() {
                           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                           rows={2}
                           maxLength={300}
-                          disabled={!mockupSourceImageId}
+                          disabled={!mockupSourceImageId && !temporaryMockupSource}
                           placeholder="Example: This is the back of the shirt. Keep the artwork on the back. Do not move it to the front."
-                          value={mockupSourceImageId ? (mockupSourceNotes[mockupSourceImageId] || "") : ""}
+                          value={mockupSourceImageId
+                            ? (mockupSourceNotes[mockupSourceImageId] || "")
+                            : temporaryMockupSourceNote}
                           onChange={(event) => {
-                            if (!mockupSourceImageId) return;
-                            setMockupSourceNotes((current) => ({
-                              ...current,
-                              [mockupSourceImageId]: event.target.value,
-                            }));
+                            if (mockupSourceImageId) {
+                              setMockupSourceNotes((current) => ({
+                                ...current,
+                                [mockupSourceImageId]: event.target.value,
+                              }));
+                            } else if (temporaryMockupSource) {
+                              setTemporaryMockupSourceNote(event.target.value);
+                            }
                           }}
                         />
                         <p className="text-[10px] text-muted-foreground">
@@ -922,7 +1021,7 @@ export default function OptimizerPage() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              disabled={generatingMockupStyle !== null || !mockupSourceImageId}
+                              disabled={generatingMockupStyle !== null || (!mockupSourceImageId && !temporaryMockupSource)}
                               onClick={() => void generateMockup(style)}
                             >
                               {generatingMockupStyle === style
@@ -998,7 +1097,6 @@ export default function OptimizerPage() {
                       )}
                     </CardContent>
                   </Card>
-                )}
 
                 {shopifyOptimizing && (
                   <Card className="bg-card/50 border-border/30">
