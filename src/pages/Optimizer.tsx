@@ -911,10 +911,9 @@ export default function OptimizerPage() {
 
                       <div className="space-y-2">
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">3. Create one draft</p>
-                        <div className="grid gap-2 sm:grid-cols-3">
+                        <div className="grid gap-2 sm:grid-cols-2">
                           {([
                             ["lifestyle", "Lifestyle Scene"],
-                            ["human", "Person Using It"],
                             ["styled", "Styled Close-up"],
                           ] as const).map(([style, label]) => (
                             <Button

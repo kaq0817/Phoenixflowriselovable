@@ -16,11 +16,9 @@ const corsHeaders = {
 
 const styleDirections: Record<string, string> = {
   lifestyle:
-    "Place the exact product in a realistic, inviting lifestyle scene styled to feel gift-worthy and desirable — the kind of shot that makes a shopper want to buy it for themselves or give it as a present. Where it fits the product naturally, include tasteful gift-giving staging around the product — loose ribbon, tissue paper, wrapping paper, or a gift bag arranged as if a shopper is about to wrap or present it themselves — without hiding or overwhelming the product. This is staging only: never show the product already sealed inside a box, sleeve, or wrapped parcel, and never imply any box, wrapping, or packaging ships with or is included in the purchase — the product itself must remain fully visible and unpackaged. Use warm, flattering, editorial-style lighting and a setting that feels curated and intentional for this specific product, not a generic backdrop. Avoid a blank white catalog background.",
-  human:
-    "Show one believable adult naturally wearing, holding, or using the exact product. Keep the product fully visible and make the scene feel like a premium ecommerce photograph. The person must have completely normal, anatomically correct proportions — exactly two arms and two legs, correctly jointed hands with five fingers each, no fused, missing, extra, or malformed limbs. Frame the shot (e.g. cropped at the waist or thigh, or focused on the hands and torso) so that any limb shown is fully and cleanly visible rather than awkwardly cut off. If you cannot render the person with correct anatomy, favor a tighter crop over showing more of the body.",
+    "Place the exact product in a realistic, inviting lifestyle scene, shown in the setting where it would actually be used, that feels aspirational and desirable — the kind of shot that makes a shopper want to buy it. Use warm, flattering, editorial-style lighting and a setting that feels curated and intentional for this specific product, not a generic backdrop. Avoid a blank white catalog background. Do NOT add gift wrap, ribbon, tissue paper, gift bags, or gift boxes — by default the scene has none of these at all. The one exception: if the product is itself explicitly gift-oriented (e.g. its title, type, or tags mention it being a gift, present, or holiday item), a small, understated ribbon or wrapping accent may appear, still never implying it ships with the product.",
   styled:
-    "Create a styled close-up ecommerce scene with useful environmental context, natural depth, and room around the product, framed to feel premium and gift-ready — like a boutique product photo shot to sell, not a plain product-on-a-surface shot. Where it fits the product naturally, a hint of gift-giving staging (loose ribbon, tissue paper, wrapping paper in frame) is welcome as long as it stays secondary and the product stays fully visible and unpackaged — this is mood staging only, never a sealed box or parcel, and never implies packaging is included in the purchase. The exact product remains the hero.",
+    "Create a styled close-up ecommerce scene with useful environmental context, natural depth, and room around the product, framed to feel premium — like a boutique product photo shot to sell, not a plain product-on-a-surface shot. The exact product remains the hero. Do NOT add gift wrap, ribbon, tissue paper, gift bags, or gift boxes — by default the scene has none of these at all. The one exception: if the product is itself explicitly gift-oriented (e.g. its title, type, or tags mention it being a gift, present, or holiday item), a small, understated ribbon or wrapping accent may appear, still never implying it ships with the product.",
 };
 
 const GENERIC_SCENE_BAN =
@@ -103,7 +101,7 @@ serve(async (req: Request) => {
     const prompt = `Create one square, photorealistic Shopify lifestyle mockup for "${product.title}".
 
 ${styleDirections[style]}
-${style === "human" ? "" : GENERIC_SCENE_BAN}
+${GENERIC_SCENE_BAN}
 ${productContextNote}
 ${sourceNoteBlock}
 
@@ -121,7 +119,7 @@ PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
     generationForm.append("prompt", prompt);
     generationForm.append("image[]", new Blob([sourceBytes], { type: sourceMime }), `source-${imageId}`);
     generationForm.append("size", "1024x1024");
-    generationForm.append("quality", style === "human" ? "high" : "medium");
+    generationForm.append("quality", "medium");
     generationForm.append("output_format", "webp");
     generationForm.append("output_compression", "84");
 
