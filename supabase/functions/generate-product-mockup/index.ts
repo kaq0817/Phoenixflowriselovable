@@ -22,7 +22,7 @@ const styleDirections: Record<string, string> = {
 };
 
 const GENERIC_SCENE_BAN =
-  "Do not default to the generic AI-staged-apartment look (rattan/wicker planter with a leafy houseplant, jute or sisal rug, beige linen couch corner, bare white wall). Choose props, surface, and background color that are specific and intentional for this exact product instead of a templated interior corner.";
+  "Do not fall back on a generic go-to AI scene template — most commonly either the staged-apartment corner (rattan/wicker planter, jute or sisal rug, beige linen couch, bare white wall) or the cozy warm-lit reading nook (table lamp, bookshelf, throw blanket, couch, dark wood furniture). Every product should get a scene chosen specifically for it, not a recycled backdrop: consider the room, location, time of day, light color, surface material, and color palette that actually fit this exact product's use case, style, and any print/graphic theme on it, and vary these choices meaningfully from one product to the next rather than defaulting to the same warm indoor living-room look every time.";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
