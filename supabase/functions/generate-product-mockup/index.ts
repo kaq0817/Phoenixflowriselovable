@@ -24,6 +24,9 @@ const styleDirections: Record<string, string> = {
 const GENERIC_SCENE_BAN =
   "Do not fall back on a generic go-to AI scene template — most commonly either the staged-apartment corner (rattan/wicker planter, jute or sisal rug, beige linen couch, bare white wall) or the cozy warm-lit reading nook (table lamp, bookshelf, throw blanket, couch, dark wood furniture). Every product should get a scene chosen specifically for it, not a recycled backdrop: consider the room, location, time of day, light color, surface material, and color palette that actually fit this exact product's use case, style, and any print/graphic theme on it, and vary these choices meaningfully from one product to the next rather than defaulting to the same warm indoor living-room look every time.";
 
+const NO_THIRD_PARTY_BRANDS =
+  "Do not include any other company's branded, logoed, or trademark-recognizable products or packaging anywhere in the scene — no visible sneaker/shoe brand logos (e.g. Nike, Adidas), no branded electronics, no branded packaging or labels, no other apparel with a visible brand mark. Any incidental props (shoes, bags, mugs, books, etc.) must be plain and unbranded so nothing in the shot implies a partnership with, or endorsement by, another company.";
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -102,6 +105,7 @@ serve(async (req: Request) => {
 
 ${styleDirections[style]}
 ${GENERIC_SCENE_BAN}
+${NO_THIRD_PARTY_BRANDS}
 ${productContextNote}
 ${sourceNoteBlock}
 
