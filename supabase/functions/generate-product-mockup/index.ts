@@ -80,7 +80,13 @@ serve(async (req: Request) => {
     const sourceImage = (product.images || []).find((image: { id: number }) => Number(image.id) === Number(imageId));
     if (!sourceImage?.src) throw new Error("The selected Shopify image was not found");
 
-    const sourceResponse = await fetch(sourceImage.src);
+    // gpt-image-2 always processes the reference image at high fidelity and bills
+    // input image tokens by resolution, but the output is only ever 1024x1024 —
+    // so anything beyond a modest reference size is pure wasted cost. Shopify's CDN
+    // can downscale for us via a `width` query param before the bytes ever leave Shopify.
+    const resizedSourceUrl = new URL(sourceImage.src);
+    resizedSourceUrl.searchParams.set("width", "1600");
+    const sourceResponse = await fetch(resizedSourceUrl.toString());
     if (!sourceResponse.ok) throw new Error("Phoenix Flow could not read the selected product image");
     const sourceBytes = new Uint8Array(await sourceResponse.arrayBuffer());
     if (sourceBytes.byteLength > MAX_SOURCE_BYTES) throw new Error("The selected image is too large for mockup generation");
