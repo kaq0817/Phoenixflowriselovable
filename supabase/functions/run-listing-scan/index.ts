@@ -491,23 +491,28 @@ serve(async (req: Request) => {
       }
 
       // 1b. Photo count/angle coverage — Etsy's seller handbook specifically recommends
-      // using multiple photos showing different angles so a buyer can see the whole
-      // product without touching it. Etsy allows up to 10 photos per listing.
-      if (listing._platform === "etsy") {
+      // (and general ecommerce best practice agrees) using multiple photos showing
+      // different angles so a buyer can see the whole product without touching it.
+      // Etsy caps listings at 10 photos; Shopify has no fixed cap, so word the
+      // Shopify message without referencing a slot count.
+      {
         const photoCount = (listing.images || []).length;
+        const isEtsy = listing._platform === "etsy";
         if (photoCount <= 1) {
           listingFindings.push({
             type: "insufficient_photo_angles",
             severity: "critical",
             field: "images",
-            message: `Only ${photoCount} photo${photoCount === 1 ? "" : "s"} on this listing. Etsy recommends showing the product from multiple angles (front, back, side, scale/size reference, in use) so buyers can see the entire item before purchasing — add more photos.`,
+            message: `Only ${photoCount} photo${photoCount === 1 ? "" : "s"} on this listing. Buyers should be able to see the product from multiple angles (front, back, side, scale/size reference, in use) before purchasing — add more photos.`,
           });
         } else if (photoCount < 5) {
           listingFindings.push({
             type: "insufficient_photo_angles",
             severity: "warning",
             field: "images",
-            message: `Only ${photoCount}/10 photo slots used. Etsy recommends covering different angles (front, back, side, scale, in use) — you have room for more views that help buyers see the whole product.`,
+            message: isEtsy
+              ? `Only ${photoCount}/10 photo slots used. Etsy recommends covering different angles (front, back, side, scale, in use) — you have room for more views that help buyers see the whole product.`
+              : `Only ${photoCount} photos on this listing. Consider adding more angles (front, back, side, scale, in use) so buyers can see the whole product before purchasing.`,
           });
         }
       }
