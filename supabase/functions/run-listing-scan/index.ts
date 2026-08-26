@@ -490,6 +490,28 @@ serve(async (req: Request) => {
         });
       }
 
+      // 1b. Photo count/angle coverage — Etsy's seller handbook specifically recommends
+      // using multiple photos showing different angles so a buyer can see the whole
+      // product without touching it. Etsy allows up to 10 photos per listing.
+      if (listing._platform === "etsy") {
+        const photoCount = (listing.images || []).length;
+        if (photoCount <= 1) {
+          listingFindings.push({
+            type: "insufficient_photo_angles",
+            severity: "critical",
+            field: "images",
+            message: `Only ${photoCount} photo${photoCount === 1 ? "" : "s"} on this listing. Etsy recommends showing the product from multiple angles (front, back, side, scale/size reference, in use) so buyers can see the entire item before purchasing — add more photos.`,
+          });
+        } else if (photoCount < 5) {
+          listingFindings.push({
+            type: "insufficient_photo_angles",
+            severity: "warning",
+            field: "images",
+            message: `Only ${photoCount}/10 photo slots used. Etsy recommends covering different angles (front, back, side, scale, in use) — you have room for more views that help buyers see the whole product.`,
+          });
+        }
+      }
+
       // 2. Spelling check
       const titleSpelling = findSpellingIssues(title);
       const descSpelling = findSpellingIssues(description);
