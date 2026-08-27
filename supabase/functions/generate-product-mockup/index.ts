@@ -30,6 +30,13 @@ const NO_THIRD_PARTY_BRANDS =
 const ANIMAL_ANATOMY_GUARD =
   "If any live animal (a pet, etc.) appears anywhere in the scene, it must have completely normal, anatomically correct proportions for its species — the exact right number of legs and paws, no extra, missing, fused, or duplicated limbs or feet. This applies just as much as human anatomy: an extra paw or leg is just as broken as an extra hand. If the animal cannot be rendered with correct anatomy, pose or crop it so the ambiguous area is naturally hidden (tucked under itself, behind the person or product, partly out of frame) rather than showing a malformed limb.";
 
+// Not tied to any one style: the source photo itself often already shows a person
+// wearing/using the product (common for print-on-demand base mockups), so a human
+// can end up in a Lifestyle or Styled scene even though there's no dedicated
+// "person" style anymore. Anatomy correctness for that person still has to hold.
+const HUMAN_ANATOMY_GUARD =
+  "If any person appears anywhere in the scene (including because the source image already shows someone wearing or using the product), they must have completely normal, anatomically correct proportions — exactly two arms and two legs, no extra, missing, fused, or duplicated limbs or feet, and correctly jointed hands with five fingers each. Hands are the single most common failure point: avoid close-ups of a hand lying flat and splayed on a surface with individual fingers in sharp detail — keep hands relaxed and naturally posed instead. If a body part cannot be rendered correctly, keep it out of frame, behind the body or product, or naturally tucked away rather than showing a malformed limb or extra foot.";
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -115,6 +122,7 @@ serve(async (req: Request) => {
 ${styleDirections[style]}
 ${GENERIC_SCENE_BAN}
 ${NO_THIRD_PARTY_BRANDS}
+${HUMAN_ANATOMY_GUARD}
 ${ANIMAL_ANATOMY_GUARD}
 ${productContextNote}
 ${sourceNoteBlock}
