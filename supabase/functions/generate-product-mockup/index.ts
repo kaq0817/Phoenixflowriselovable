@@ -27,6 +27,9 @@ const GENERIC_SCENE_BAN =
 const NO_THIRD_PARTY_BRANDS =
   "Do not include any other company's branded, logoed, or trademark-recognizable products or packaging anywhere in the scene — no visible sneaker/shoe brand logos (e.g. Nike, Adidas), no branded electronics, no branded packaging or labels, no other apparel with a visible brand mark. Any incidental props (shoes, bags, mugs, books, etc.) must be plain and unbranded so nothing in the shot implies a partnership with, or endorsement by, another company.";
 
+const ANIMAL_ANATOMY_GUARD =
+  "If any live animal (a pet, etc.) appears anywhere in the scene, it must have completely normal, anatomically correct proportions for its species — the exact right number of legs and paws, no extra, missing, fused, or duplicated limbs or feet. This applies just as much as human anatomy: an extra paw or leg is just as broken as an extra hand. If the animal cannot be rendered with correct anatomy, pose or crop it so the ambiguous area is naturally hidden (tucked under itself, behind the person or product, partly out of frame) rather than showing a malformed limb.";
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -112,6 +115,7 @@ serve(async (req: Request) => {
 ${styleDirections[style]}
 ${GENERIC_SCENE_BAN}
 ${NO_THIRD_PARTY_BRANDS}
+${ANIMAL_ANATOMY_GUARD}
 ${productContextNote}
 ${sourceNoteBlock}
 
