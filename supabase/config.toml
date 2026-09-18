@@ -12,6 +12,15 @@ verify_jwt = false
 [functions.generate-product-mockup]
 verify_jwt = false
 
+[functions.check-google-feed]
+verify_jwt = false
+
+[functions.fix-google-feed-color]
+verify_jwt = false
+
+[functions.generate-card-copy]
+verify_jwt = false
+
 [functions.apply-theme-fixes]
 verify_jwt = false
 

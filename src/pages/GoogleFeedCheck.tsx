@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ShoppingCart, AlertTriangle, CheckCircle2, XCircle,
-  ChevronDown, ChevronRight, Loader2, RefreshCw,
+  ChevronDown, ChevronRight, Loader2, RefreshCw, Check,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -16,14 +19,22 @@ interface VariantIssue {
   sku: string;
   issue: string;
   severity: "critical" | "warning";
+  fixable: boolean;
+  currentValue: string | null;
 }
 
 interface ProductResult {
   productId: number;
   title: string;
-  status: "pass" | "warn" | "fail";
-  issues: string[];
-  variantIssues: VariantIssue[];
+  productType: string;
+  status: string;
+  image: string | null;
+  colorOptionIndex: number | null;
+  colorOptionName: string | null;
+  issues: VariantIssue[];
+  passCount: number;
+  failCount: number;
+  overallStatus: "pass" | "warning" | "fail";
 }
 
 interface FeedSummary {
@@ -40,15 +51,21 @@ interface FeedCheckResult {
 
 type Filter = "all" | "fail" | "warn" | "pass";
 
+interface StoreOption {
+  id: string;
+  shop_domain: string | null;
+  shop_name: string | null;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: ProductResult["status"] }) {
+function StatusBadge({ status }: { status: ProductResult["overallStatus"] }) {
   if (status === "pass") return (
     <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 gap-1">
       <CheckCircle2 className="w-3 h-3" /> Pass
     </Badge>
   );
-  if (status === "warn") return (
+  if (status === "warning") return (
     <Badge className="bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20 gap-1">
       <AlertTriangle className="w-3 h-3" /> Warning
     </Badge>
@@ -65,11 +82,78 @@ function SeverityIcon({ severity }: { severity: VariantIssue["severity"] }) {
   return <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 shrink-0 mt-0.5" />;
 }
 
+// ─── Inline color fix ───────────────────────────────────────────────────────
+
+function ColorFixRow({
+  connectionId, productId, colorOptionIndex, issue, onFixed,
+}: {
+  connectionId: string;
+  productId: number;
+  colorOptionIndex: number;
+  issue: VariantIssue;
+  onFixed: (productId: number, variantId: number) => void;
+}) {
+  const { toast } = useToast();
+  // Start blank rather than pre-filled with the vague/empty value being replaced —
+  // that value is exactly what's wrong, so re-saving it by accident should take a
+  // deliberate retype, not an easy no-op Enter press.
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!value.trim()) {
+      toast({ title: "Enter a color first", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fix-google-feed-color", {
+        body: { connectionId, variantId: issue.variantId, colorOptionIndex, color: value.trim() },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Save failed");
+      toast({ title: "Color saved", description: `${issue.variantTitle} → ${value.trim()}` });
+      onFixed(productId, issue.variantId);
+    } catch (err) {
+      toast({
+        title: "Couldn't save",
+        description: err instanceof Error ? err.message : "Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="e.g. Navy"
+        className="h-7 text-xs w-28"
+        disabled={saving}
+        onKeyDown={(e) => { if (e.key === "Enter") void save(); }}
+      />
+      <Button size="sm" variant="outline" className="h-7 px-2" disabled={saving} onClick={() => void save()}>
+        {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+      </Button>
+    </div>
+  );
+}
+
 // ─── Product row ──────────────────────────────────────────────────────────────
 
-function ProductRow({ product }: { product: ProductResult }) {
-  const [open, setOpen] = useState(product.status !== "pass");
-  const hasDetails = product.issues.length > 0 || product.variantIssues.length > 0;
+function ProductRow({
+  product, connectionId, onFixed,
+}: {
+  product: ProductResult;
+  connectionId: string;
+  onFixed: (productId: number, variantId: number) => void;
+}) {
+  const [open, setOpen] = useState(product.overallStatus !== "pass");
+  const hasDetails = product.issues.length > 0;
+  const variantIssues = product.issues.filter((i) => i.variantId !== 0);
+  const productIssues = product.issues.filter((i) => i.variantId === 0);
 
   return (
     <div className="border border-border/40 rounded-lg overflow-hidden">
@@ -77,37 +161,37 @@ function ProductRow({ product }: { product: ProductResult }) {
         onClick={() => hasDetails && setOpen(v => !v)}
         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
           ${hasDetails ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}
-          ${product.status === "fail" ? "bg-red-500/5" : product.status === "warn" ? "bg-yellow-500/5" : "bg-green-500/5"}`}>
+          ${product.overallStatus === "fail" ? "bg-red-500/5" : product.overallStatus === "warning" ? "bg-yellow-500/5" : "bg-green-500/5"}`}>
         {hasDetails ? (
           open ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
                : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
         ) : <span className="w-4 h-4 shrink-0" />}
         <span className="flex-1 font-medium text-sm truncate">{product.title}</span>
-        {product.variantIssues.length > 0 && (
+        {variantIssues.length > 0 && (
           <span className="text-xs text-muted-foreground mr-2">
-            {product.variantIssues.length} variant{product.variantIssues.length !== 1 ? "s" : ""} flagged
+            {variantIssues.length} variant{variantIssues.length !== 1 ? "s" : ""} flagged
           </span>
         )}
-        <StatusBadge status={product.status} />
+        <StatusBadge status={product.overallStatus} />
       </button>
 
       {open && hasDetails && (
         <div className="border-t border-border/40 px-4 py-3 space-y-3 bg-card">
           {/* Product-level issues */}
-          {product.issues.length > 0 && (
+          {productIssues.length > 0 && (
             <div className="space-y-1">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Product Issues</p>
-              {product.issues.map((issue, i) => (
+              {productIssues.map((issue, i) => (
                 <div key={i} className="flex items-start gap-2 text-sm">
                   <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
-                  <span className="text-foreground/80">{issue}</span>
+                  <span className="text-foreground/80">{issue.issue}</span>
                 </div>
               ))}
             </div>
           )}
 
           {/* Variant-level issues */}
-          {product.variantIssues.length > 0 && (
+          {variantIssues.length > 0 && (
             <div className="space-y-1">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Variant Issues</p>
               <div className="overflow-x-auto">
@@ -116,20 +200,36 @@ function ProductRow({ product }: { product: ProductResult }) {
                     <tr className="text-muted-foreground text-left border-b border-border/30">
                       <th className="pb-1.5 pr-4 font-medium">Variant</th>
                       <th className="pb-1.5 pr-4 font-medium">SKU</th>
-                      <th className="pb-1.5 font-medium">Issue</th>
+                      <th className="pb-1.5 pr-4 font-medium">Issue</th>
+                      {product.colorOptionIndex !== null && <th className="pb-1.5 font-medium">Fix</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {product.variantIssues.map((vi) => (
+                    {variantIssues.map((vi) => (
                       <tr key={vi.variantId} className="border-b border-border/20 last:border-0">
-                        <td className="py-1.5 pr-4 font-medium">{vi.variantTitle}</td>
-                        <td className="py-1.5 pr-4 text-muted-foreground">{vi.sku || "—"}</td>
-                        <td className="py-1.5">
+                        <td className="py-1.5 pr-4 font-medium align-top">{vi.variantTitle}</td>
+                        <td className="py-1.5 pr-4 text-muted-foreground align-top">{vi.sku || "—"}</td>
+                        <td className="py-1.5 pr-4 align-top">
                           <div className="flex items-start gap-1.5">
                             <SeverityIcon severity={vi.severity} />
                             <span className="text-foreground/80">{vi.issue}</span>
                           </div>
                         </td>
+                        {product.colorOptionIndex !== null && (
+                          <td className="py-1.5 align-top">
+                            {vi.fixable ? (
+                              <ColorFixRow
+                                connectionId={connectionId}
+                                productId={product.productId}
+                                colorOptionIndex={product.colorOptionIndex}
+                                issue={vi}
+                                onFixed={onFixed}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -146,19 +246,42 @@ function ProductRow({ product }: { product: ProductResult }) {
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 export default function GoogleFeedCheck() {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [stores, setStores] = useState<StoreOption[]>([]);
+  const [connectionId, setConnectionId] = useState("");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<FeedCheckResult | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
 
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data: rows } = await supabase
+        .from("store_connections")
+        .select("id, shop_domain, shop_name")
+        .eq("user_id", user.id)
+        .eq("platform", "shopify")
+        .order("created_at", { ascending: false });
+      const list = rows || [];
+      setStores(list);
+      if (list.length === 1) setConnectionId(list[0].id);
+    })();
+  }, [user]);
+
   const runCheck = async () => {
+    if (!connectionId) {
+      toast({ title: "Pick a store first", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     setData(null);
     try {
       const { data: result, error } = await supabase.functions.invoke("check-google-feed", {
-        body: {},
+        body: { connectionId },
       });
       if (error) throw new Error(error.message);
+      if (result?.error) throw new Error(result.error);
       setData(result as FeedCheckResult);
       toast({ title: "Scan complete", description: `${result.summary.total} products checked.` });
     } catch (err) {
@@ -172,11 +295,35 @@ export default function GoogleFeedCheck() {
     }
   };
 
+  // Optimistically drop a fixed variant's issue from local state so the row updates
+  // without needing a full re-scan.
+  const handleFixed = (productId: number, variantId: number) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const results = prev.results.map((p) => {
+        if (p.productId !== productId) return p;
+        const issues = p.issues.filter((i) => i.variantId !== variantId);
+        const criticalCount = issues.filter((i) => i.severity === "critical").length;
+        const warningCount = issues.filter((i) => i.severity === "warning").length;
+        const overallStatus: ProductResult["overallStatus"] =
+          criticalCount > 0 ? "fail" : warningCount > 0 ? "warning" : "pass";
+        return { ...p, issues, overallStatus };
+      });
+      const summary = {
+        total: results.length,
+        pass: results.filter((r) => r.overallStatus === "pass").length,
+        warn: results.filter((r) => r.overallStatus === "warning").length,
+        fail: results.filter((r) => r.overallStatus === "fail").length,
+      };
+      return { results, summary };
+    });
+  };
+
   const filtered = data?.results.filter(p => {
     if (filter === "all") return true;
-    if (filter === "fail") return p.status === "fail";
-    if (filter === "warn") return p.status === "warn";
-    return p.status === "pass";
+    if (filter === "fail") return p.overallStatus === "fail";
+    if (filter === "warn") return p.overallStatus === "warning";
+    return p.overallStatus === "pass";
   }) ?? [];
 
   return (
@@ -199,12 +346,24 @@ export default function GoogleFeedCheck() {
         <p className="font-semibold text-yellow-700 dark:text-yellow-400 flex items-center gap-1.5">
           <AlertTriangle className="w-4 h-4" /> What Google requires
         </p>
-        <p>Every variant needs a <strong>Color</strong> attribute (named exactly that, not "Colour"). The value must be specific — "Blue" not "Default" or blank. If only one size has a color set (e.g. only Small has "Navy" while Medium–XL are blank), Google flags the whole product.</p>
+        <p>Every variant needs a <strong>Color</strong> attribute (named exactly that, not "Colour"). The value must be specific — "Blue" not "Default" or blank. Color mentioned in the product title or description doesn't count — Google only reads the structured Color option on each variant. If only one size has a color set (e.g. only Small has "Navy" while Medium–XL are blank), Google flags the whole product.</p>
       </div>
 
-      {/* Run button */}
-      <div className="flex items-center gap-3">
-        <Button onClick={runCheck} disabled={loading} className="gap-2">
+      {/* Store picker + run button */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={connectionId} onValueChange={setConnectionId}>
+          <SelectTrigger className="w-64 bg-background/50">
+            <SelectValue placeholder={stores.length ? "Pick a connected Shopify store" : "No Shopify store connected"} />
+          </SelectTrigger>
+          <SelectContent>
+            {stores.map((store) => (
+              <SelectItem key={store.id} value={store.id}>
+                {store.shop_name || store.shop_domain || store.id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button onClick={runCheck} disabled={loading || !connectionId} className="gap-2">
           {loading
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Scanning…</>
             : <><RefreshCw className="w-4 h-4" /> Run Feed Scan</>}
@@ -261,7 +420,9 @@ export default function GoogleFeedCheck() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filtered.map(p => <ProductRow key={p.productId} product={p} />)}
+              {filtered.map(p => (
+                <ProductRow key={p.productId} product={p} connectionId={connectionId} onFixed={handleFixed} />
+              ))}
             </div>
           )}
         </div>
@@ -271,8 +432,8 @@ export default function GoogleFeedCheck() {
       {!data && !loading && (
         <div className="text-center py-16 text-muted-foreground text-sm border border-dashed border-border/40 rounded-xl">
           <ShoppingCart className="w-8 h-8 mx-auto mb-3 opacity-30" />
-          <p>Click <strong>Run Feed Scan</strong> to check your products.</p>
-          <p className="mt-1 text-xs opacity-70">Reads product + variant data directly from Shopify — no changes are made.</p>
+          <p>Pick a store, then click <strong>Run Feed Scan</strong> to check your products.</p>
+          <p className="mt-1 text-xs opacity-70">Reads product + variant data directly from Shopify. Nothing is changed unless you use a "Fix" field above.</p>
         </div>
       )}
     </div>

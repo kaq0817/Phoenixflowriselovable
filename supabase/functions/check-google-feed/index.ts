@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 import { getShopifyApiVersion } from "../_shared/shopify.ts";
+import { VAGUE_COLOR_VALUES } from "../_shared/googleFeedColors.ts";
 
 const SHOPIFY_API_VERSION = getShopifyApiVersion();
 
@@ -11,13 +12,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Max-Age": "86400",
 };
-
-// Values Google will reject or warn on
-const VAGUE_COLOR_VALUES = new Set([
-  "default", "default title", "n/a", "na", "none", "no color", "other",
-  "os", "one size", "standard", "regular", "mixed", "assorted", "various",
-  "multicolor", "multi", "color", "colour", "", ".", "-", "–", "—",
-]);
 
 interface ShopifyOption {
   id: number;
@@ -50,8 +44,16 @@ interface ShopifyProduct {
 interface VariantIssue {
   variantId: number;
   variantTitle: string;
+  sku: string;
   issue: string;
   severity: "critical" | "warning";
+  // Whether this specific issue can be fixed inline (a Color option already exists,
+  // it just needs a real value written to this one variant). Issues that require
+  // adding a new option dimension or renaming an existing option are surfaced but
+  // not inline-fixable — those touch every variant on the product and are safer
+  // done by hand in Shopify.
+  fixable: boolean;
+  currentValue: string | null;
 }
 
 interface ProductResult {
@@ -71,10 +73,14 @@ interface ProductResult {
 function checkProduct(product: ShopifyProduct): ProductResult {
   const issues: VariantIssue[] = [];
 
-  // Find the color option (case-insensitive)
-  const colorOptIdx = product.options.findIndex(
-    (o) => o.name.toLowerCase() === "color" || o.name.toLowerCase() === "colour"
-  );
+  // Find the color option. Trim before comparing — POD supplier syncs (Printify,
+  // Printful, etc.) sometimes push option names with stray leading/trailing
+  // whitespace, which a strict === would silently miss and produce a false
+  // "no Color option" flag even though every variant clearly has one.
+  const colorOptIdx = product.options.findIndex((o) => {
+    const name = o.name.trim().toLowerCase();
+    return name === "color" || name === "colour" || name === "colors" || name === "colours";
+  });
 
   const colorOptionName = colorOptIdx >= 0 ? product.options[colorOptIdx].name : null;
   const colorOptionKey = colorOptIdx >= 0 ? (`option${colorOptIdx + 1}` as keyof ShopifyVariant) : null;
@@ -87,8 +93,11 @@ function checkProduct(product: ShopifyProduct): ProductResult {
     issues.push({
       variantId: 0,
       variantTitle: "(product level)",
+      sku: "",
       issue: `No "Color" option defined. Google requires a color attribute for all products in Shopping feeds. Add a "Color" option in Shopify.`,
       severity,
+      fixable: false,
+      currentValue: null,
     });
   } else {
     // Color option exists — check each variant's color value
@@ -100,33 +109,45 @@ function checkProduct(product: ShopifyProduct): ProductResult {
         issues.push({
           variantId: variant.id,
           variantTitle: variant.title,
+          sku: variant.sku || "",
           issue: `Variant has an empty color value. Google will reject this product from Shopping.`,
           severity: "critical",
+          fixable: true,
+          currentValue: colorVal || null,
         });
       } else if (VAGUE_COLOR_VALUES.has(normalized)) {
         issues.push({
           variantId: variant.id,
           variantTitle: variant.title,
+          sku: variant.sku || "",
           issue: `Color value "${colorVal}" is too vague for Google Shopping. Use a real color name (e.g. "Black", "White", "Navy").`,
           severity: "warning",
+          fixable: true,
+          currentValue: colorVal,
         });
       } else if (colorVal.length > 100) {
         issues.push({
           variantId: variant.id,
           variantTitle: variant.title,
+          sku: variant.sku || "",
           issue: `Color value is over 100 characters. Google will truncate or reject it.`,
           severity: "warning",
+          fixable: true,
+          currentValue: colorVal,
         });
       }
     }
 
     // Check option name casing — Google prefers exactly "Color" not "Colour"
-    if (colorOptionName && colorOptionName.toLowerCase() === "colour") {
+    if (colorOptionName && colorOptionName.trim().toLowerCase() === "colour") {
       issues.push({
         variantId: 0,
         variantTitle: "(option name)",
+        sku: "",
         issue: `Option is named "Colour" — rename it to "Color" for best GMC compatibility.`,
         severity: "warning",
+        fixable: false,
+        currentValue: null,
       });
     }
   }
