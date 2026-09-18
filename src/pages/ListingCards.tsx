@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,8 +132,8 @@ const THEMES: Record<ThemePreset, Theme> = {
 // ─── Niche theme groupings ────────────────────────────────────────────────────
 
 const NICHE_THEMES: Record<Niche, { label: string; themes: ThemePreset[] }> = {
-  wellness: { label: "Wellness / Etsy", themes: ["warm", "rose", "sage", "ocean"] },
-  gaming:   { label: "Gaming / Work",   themes: ["dark", "iron", "void"] },
+  wellness: { label: "Warm & Soft",  themes: ["warm", "rose", "sage", "ocean"] },
+  gaming:   { label: "Bold & Dark",  themes: ["dark", "iron", "void"] },
 };
 
 // ─── Card type metadata ────────────────────────────────────────────────────────
@@ -188,7 +187,7 @@ const DEFAULTS: Record<CardType, Record<string, string>> = {
 
 // ─── Card size ─────────────────────────────────────────────────────────────────
 // Preview renders at 540px wide × 420px tall (landscape, like the slide)
-// Exported at 3× = 1620×1260 (wide landscape Etsy listing image)
+// Exported at 3× = 1620×1260 (wide landscape listing image)
 const W = 540;
 const H = 420;
 
@@ -544,7 +543,7 @@ function VariationsForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:st
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
-export default function EtsyListingCards() {
+export default function ListingCards() {
   const { session } = useAuth();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -610,7 +609,7 @@ export default function EtsyListingCards() {
       a.download = `listing-card-${cardType}-${theme}.png`;
       a.href = dataUrl;
       a.click();
-      toast({ title: "Downloaded!", description: "Ready for your Etsy listing." });
+      toast({ title: "Downloaded!", description: "Ready to add to your listing." });
     } catch {
       toast({ title: "Export failed — try again.", variant: "destructive" });
     } finally {
@@ -647,10 +646,9 @@ export default function EtsyListingCards() {
         <div className="flex items-center gap-2 mb-1">
           <Layers className="w-5 h-5 text-primary" />
           <h1 className="text-2xl font-bold">Listing Card Generator</h1>
-          <Badge className="bg-primary/10 text-primary border-0 text-xs">Etsy</Badge>
         </div>
         <p className="text-muted-foreground text-sm">
-          Build the info cards top Etsy sellers use — features, reviews, shipping, promise, and variations. Upload your product photo, pick a theme, and download.
+          Build the info cards top sellers use on Etsy and Shopify alike — features, reviews, shipping, promise, and variations. Upload your product photo, pick a theme, and download.
         </p>
       </div>
 
@@ -764,7 +762,7 @@ export default function EtsyListingCards() {
           </div>
 
           <div className="bg-muted/40 border border-border/30 rounded-lg p-4 text-xs text-muted-foreground leading-relaxed max-w-xl mx-auto">
-            <strong className="text-foreground">How to use this for a full listing set:</strong> Use Media Tools to generate your hero + lifestyle mockups, then create all 5 info cards here. That gives you a complete 7–9 image listing that looks like a top Etsy shop — not just pretty photos.
+            <strong className="text-foreground">How to use this for a full listing set:</strong> Use Media Tools to generate your hero + lifestyle mockups, then create all 5 info cards here. That gives you a complete 7–9 image listing that looks like a top shop — not just pretty photos.
           </div>
         </div>
       </div>

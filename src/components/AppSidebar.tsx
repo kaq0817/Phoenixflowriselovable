@@ -40,6 +40,7 @@ const shopifyItems: SidebarItem[] = [
   { title: "Templanator", url: "/templanator", icon: Cpu, requiresShopify: true },
   { title: "Theme Compliance", url: "/theme-audit", icon: Palette, requiresShopify: true },
   { title: "Feed Checker", url: "/google-feed", icon: ShoppingCart, requiresShopify: true },
+  { title: "Listing Cards", url: "/listing-cards", icon: LayoutGrid, requiresShopify: true },
   { title: "Ad Generator", url: "/ads", icon: Bot, requiresShopify: true },
   { title: "History", url: "/history", icon: History, requiresShopify: true },
 ];
@@ -47,7 +48,7 @@ const shopifyItems: SidebarItem[] = [
 const etsyItems: SidebarItem[] = [
   { title: "Listing Optimizer", url: "/etsy-optimizer", icon: Flower2 },
   { title: "Listing Scanner", url: "/listing-scan", icon: Scan },
-  { title: "Listing Cards", url: "/etsy-listing-cards", icon: LayoutGrid },
+  { title: "Listing Cards", url: "/listing-cards", icon: LayoutGrid },
   { title: "Ad Generator", url: "/ads", icon: Bot },
   { title: "History", url: "/history", icon: History },
 ];
