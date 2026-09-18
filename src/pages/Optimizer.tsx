@@ -933,6 +933,25 @@ export default function OptimizerPage() {
                         <p className="text-[10px] text-muted-foreground">Creates one 1024px WebP draft per click. OpenAI charges usage separately.</p>
                       </div>
 
+                      <div className="space-y-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="w-full gap-1.5"
+                          onClick={() => navigate("/listing-cards", {
+                            state: {
+                              productName: cleanProductTitle(selectedProduct.title),
+                              photo: mockupDrafts[0] ? `data:${mockupDrafts[0].mimeType};base64,${mockupDrafts[0].data}` : undefined,
+                            },
+                          })}
+                        >
+                          <Layers className="h-3.5 w-3.5" />
+                          Build Listing Cards for This Product
+                        </Button>
+                        <p className="text-[10px] text-muted-foreground">Opens the info-card generator (features, reviews, shipping, promise, variations) pre-filled with this product{mockupDrafts[0] ? " and your latest mockup" : ""}.</p>
+                      </div>
+
                       {mockupDrafts.length > 0 && (
                         <div className="space-y-3">
                           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">4. Review before Shopify</p>

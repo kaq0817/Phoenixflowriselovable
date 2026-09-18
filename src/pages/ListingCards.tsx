@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { toPng } from "html-to-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -546,14 +547,16 @@ function VariationsForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:st
 export default function ListingCards() {
   const { session } = useAuth();
   const { toast } = useToast();
+  const location = useLocation();
+  const incoming = (location.state || {}) as { productName?: string; photo?: string };
   const previewRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [cardType, setCardType]   = useState<CardType>("features");
   const [niche, setNiche]         = useState<Niche>("wellness");
   const [theme, setTheme]         = useState<ThemePreset>("warm");
-  const [productName, setProductName] = useState("");
-  const [photo, setPhoto]         = useState<string | null>(null);
+  const [productName, setProductName] = useState(incoming.productName || "");
+  const [photo, setPhoto]         = useState<string | null>(incoming.photo || null);
   const [content, setContent]     = useState<Record<CardType, Record<string, string>>>(
     Object.fromEntries(
       (Object.keys(DEFAULTS) as CardType[]).map(k => [k, { ...DEFAULTS[k] }])
