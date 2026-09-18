@@ -41,6 +41,7 @@ const shopifyItems: SidebarItem[] = [
   { title: "Theme Compliance", url: "/theme-audit", icon: Palette, requiresShopify: true },
   { title: "Feed Checker", url: "/google-feed", icon: ShoppingCart, requiresShopify: true },
   { title: "Listing Cards", url: "/listing-cards", icon: LayoutGrid, requiresShopify: true },
+  { title: "Bulk Listing Cards", url: "/bulk-listing-cards", icon: Zap, requiresShopify: true },
   { title: "Ad Generator", url: "/ads", icon: Bot, requiresShopify: true },
   { title: "History", url: "/history", icon: History, requiresShopify: true },
 ];

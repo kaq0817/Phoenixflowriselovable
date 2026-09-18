@@ -31,6 +31,7 @@ import Terms from "./pages/Terms";
 import PrivacyPolicy from "./pages/privacy_policy";
 import EtsyOAuthReturn from "./pages/EtsyOAuthReturn";
 import ListingCards from "./pages/ListingCards";
+import BulkListingCards from "./pages/BulkListingCards";
 import GoogleFeedCheck from "./pages/GoogleFeedCheck";
 import NotFound from "./pages/NotFound";
 
@@ -68,6 +69,7 @@ const App = () => (
               <Route path="/theme-audit" element={<SubscribedRoute><ThemeAudit /></SubscribedRoute>} />
               <Route path="/listing-scan" element={<SubscribedRoute><ListingScan /></SubscribedRoute>} />
               <Route path="/listing-cards" element={<SubscribedRoute><ListingCards /></SubscribedRoute>} />
+              <Route path="/bulk-listing-cards" element={<SubscribedRoute><BulkListingCards /></SubscribedRoute>} />
               <Route path="/google-feed" element={<SubscribedRoute><GoogleFeedCheck /></SubscribedRoute>} />
               <Route path="/bot" element={<SubscribedRoute><BotBuilder /></SubscribedRoute>} />
               <Route path="/ads" element={<SubscribedRoute><BotBuilder /></SubscribedRoute>} />
