@@ -16,15 +16,26 @@ const corsHeaders = {
 
 const styleDirections: Record<string, string> = {
   lifestyle:
-    "Place the exact product in a realistic, inviting lifestyle scene styled to feel gift-worthy and desirable — the kind of shot that makes a shopper want to buy it for themselves or give it as a present. Where it fits the product naturally, include tasteful gift-giving staging around the product — loose ribbon, tissue paper, wrapping paper, or a gift bag arranged as if a shopper is about to wrap or present it themselves — without hiding or overwhelming the product. This is staging only: never show the product already sealed inside a box, sleeve, or wrapped parcel, and never imply any box, wrapping, or packaging ships with or is included in the purchase — the product itself must remain fully visible and unpackaged. Use warm, flattering, editorial-style lighting and a setting that feels curated and intentional for this specific product, not a generic backdrop. Avoid a blank white catalog background.",
-  human:
-    "Show one believable adult naturally wearing, holding, or using the exact product. Keep the product fully visible and make the scene feel like a premium ecommerce photograph. The person must have completely normal, anatomically correct proportions — exactly two arms and two legs, correctly jointed hands with five fingers each, no fused, missing, extra, or malformed limbs. Frame the shot (e.g. cropped at the waist or thigh, or focused on the hands and torso) so that any limb shown is fully and cleanly visible rather than awkwardly cut off. If you cannot render the person with correct anatomy, favor a tighter crop over showing more of the body.",
+    "Place the exact product in a realistic, inviting lifestyle scene, shown in the setting where it would actually be used, that feels aspirational and desirable — the kind of shot that makes a shopper want to buy it. Use flattering, editorial-style lighting and a setting that feels curated and intentional for this specific product, not a generic backdrop. Avoid a blank white catalog background. Keep any warm, amber, or golden-hour lighting subtle and directional (highlights/shadows only) — it must never tint or color-cast the product itself. The product's actual color must read true to life exactly as in the source image: true black must stay black, not shift olive/green/brown; true blue must stay blue, not shift teal/green. If a warm-lit scene would noticeably shift the product's color, favor neutral/cooler white light instead. Do NOT add gift wrap, ribbon, tissue paper, gift bags, or gift boxes — by default the scene has none of these at all. The one exception: if the product is itself explicitly gift-oriented (e.g. its title, type, or tags mention it being a gift, present, or holiday item), a small, understated ribbon or wrapping accent may appear, still never implying it ships with the product.",
   styled:
-    "Create a styled close-up ecommerce scene with useful environmental context, natural depth, and room around the product, framed to feel premium and gift-ready — like a boutique product photo shot to sell, not a plain product-on-a-surface shot. Where it fits the product naturally, a hint of gift-giving staging (loose ribbon, tissue paper, wrapping paper in frame) is welcome as long as it stays secondary and the product stays fully visible and unpackaged — this is mood staging only, never a sealed box or parcel, and never implies packaging is included in the purchase. The exact product remains the hero.",
+    "Create a styled close-up ecommerce scene with useful environmental context, natural depth, and room around the product, framed to feel premium — like a boutique product photo shot to sell, not a plain product-on-a-surface shot. The exact product remains the hero. Do NOT add gift wrap, ribbon, tissue paper, gift bags, or gift boxes — by default the scene has none of these at all. The one exception: if the product is itself explicitly gift-oriented (e.g. its title, type, or tags mention it being a gift, present, or holiday item), a small, understated ribbon or wrapping accent may appear, still never implying it ships with the product.",
 };
 
 const GENERIC_SCENE_BAN =
-  "Do not default to the generic AI-staged-apartment look (rattan/wicker planter with a leafy houseplant, jute or sisal rug, beige linen couch corner, bare white wall). Choose props, surface, and background color that are specific and intentional for this exact product instead of a templated interior corner.";
+  "Do not fall back on a generic go-to AI scene template — most commonly either the staged-apartment corner (rattan/wicker planter, jute or sisal rug, beige linen couch, bare white wall) or the cozy warm-lit reading nook (table lamp, bookshelf, throw blanket, couch, dark wood furniture). Every product should get a scene chosen specifically for it, not a recycled backdrop: consider the room, location, time of day, light color, surface material, and color palette that actually fit this exact product's use case, style, and any print/graphic theme on it, and vary these choices meaningfully from one product to the next rather than defaulting to the same warm indoor living-room look every time.";
+
+const NO_THIRD_PARTY_BRANDS =
+  "Do not include any other company's branded, logoed, or trademark-recognizable products or packaging anywhere in the scene — no visible sneaker/shoe brand logos (e.g. Nike, Adidas), no branded electronics, no branded packaging or labels, no other apparel with a visible brand mark. Any incidental props (shoes, bags, mugs, books, etc.) must be plain and unbranded so nothing in the shot implies a partnership with, or endorsement by, another company.";
+
+const ANIMAL_ANATOMY_GUARD =
+  "If any live animal (a pet, etc.) appears anywhere in the scene, it must have completely normal, anatomically correct proportions for its species — the exact right number of legs and paws, no extra, missing, fused, or duplicated limbs or feet. This applies just as much as human anatomy: an extra paw or leg is just as broken as an extra hand. If the animal cannot be rendered with correct anatomy, pose or crop it so the ambiguous area is naturally hidden (tucked under itself, behind the person or product, partly out of frame) rather than showing a malformed limb.";
+
+// Not tied to any one style: the source photo itself often already shows a person
+// wearing/using the product (common for print-on-demand base mockups), so a human
+// can end up in a Lifestyle or Styled scene even though there's no dedicated
+// "person" style anymore. Anatomy correctness for that person still has to hold.
+const HUMAN_ANATOMY_GUARD =
+  "If any person appears anywhere in the scene (including because the source image already shows someone wearing or using the product), they must have completely normal, anatomically correct proportions — exactly two arms and two legs, no extra, missing, fused, or duplicated limbs or feet, and correctly jointed hands with five fingers each. Hands are the single most common failure point: avoid close-ups of a hand lying flat and splayed on a surface with individual fingers in sharp detail — keep hands relaxed and naturally posed instead. If a body part cannot be rendered correctly, keep it out of frame, behind the body or product, or naturally tucked away rather than showing a malformed limb or extra foot.";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -79,7 +90,13 @@ serve(async (req: Request) => {
     const sourceImage = (product.images || []).find((image: { id: number }) => Number(image.id) === Number(imageId));
     if (!sourceImage?.src) throw new Error("The selected Shopify image was not found");
 
-    const sourceResponse = await fetch(sourceImage.src);
+    // gpt-image-2 always processes the reference image at high fidelity and bills
+    // input image tokens by resolution, but the output is only ever 1024x1024 —
+    // so anything beyond a modest reference size is pure wasted cost. Shopify's CDN
+    // can downscale for us via a `width` query param before the bytes ever leave Shopify.
+    const resizedSourceUrl = new URL(sourceImage.src);
+    resizedSourceUrl.searchParams.set("width", "1600");
+    const sourceResponse = await fetch(resizedSourceUrl.toString());
     if (!sourceResponse.ok) throw new Error("Phoenix Flow could not read the selected product image");
     const sourceBytes = new Uint8Array(await sourceResponse.arrayBuffer());
     if (sourceBytes.byteLength > MAX_SOURCE_BYTES) throw new Error("The selected image is too large for mockup generation");
@@ -103,13 +120,17 @@ serve(async (req: Request) => {
     const prompt = `Create one square, photorealistic Shopify lifestyle mockup for "${product.title}".
 
 ${styleDirections[style]}
-${style === "human" ? "" : GENERIC_SCENE_BAN}
+${GENERIC_SCENE_BAN}
+${NO_THIRD_PARTY_BRANDS}
+${HUMAN_ANATOMY_GUARD}
+${ANIMAL_ANATOMY_GUARD}
 ${productContextNote}
 ${sourceNoteBlock}
 
 PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
 - Use the supplied image as the exact product reference, not loose inspiration.
 - Do not redraw, rewrite, paraphrase, replace, mirror, crop away, or invent any artwork, lettering, logo, pattern, product color, shape, or construction.
+- The product's exact color from the source image must be preserved with true, accurate color — do not let scene lighting or color grading tint, warm, cool, or shift the product's color even slightly. A shopper comparing the mockup to the real product must see the identical color.
 - Any visible printed words must remain letter-for-letter identical and face the correct direction.
 - Do not add sale text, badges, borders, watermarks, captions, or unrelated products.
 - If the reference is a flat supplier mockup, improve the surrounding scene while keeping the sellable product recognizable and accurate.
@@ -121,7 +142,7 @@ PRODUCT PRESERVATION IS THE HIGHEST PRIORITY:
     generationForm.append("prompt", prompt);
     generationForm.append("image[]", new Blob([sourceBytes], { type: sourceMime }), `source-${imageId}`);
     generationForm.append("size", "1024x1024");
-    generationForm.append("quality", style === "human" ? "high" : "medium");
+    generationForm.append("quality", "medium");
     generationForm.append("output_format", "webp");
     generationForm.append("output_compression", "84");
 
