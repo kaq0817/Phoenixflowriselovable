@@ -498,6 +498,58 @@ export function buildProductDetailsSummary(product: { product_type?: string; tag
   return parts.join(" | ").slice(0, 1500);
 }
 
+// ─── Optimizer → Listing Cards handoff ───────────────────────────────────────
+
+// Listing Cards opens in a new tab so the Optimizer (selected product, mockup
+// drafts that cost real OpenAI money to generate) stays exactly as it was —
+// navigating away in the same tab unmounted it and threw all of that away.
+// Router state can't cross tabs, so the handoff goes through localStorage with a
+// short freshness window and is cleared as soon as the new tab has read it.
+const HANDOFF_KEY = "listingCardsHandoff";
+const HANDOFF_MAX_AGE_MS = 10 * 60 * 1000;
+
+export interface ListingCardsHandoff {
+  productName?: string;
+  productDetails?: string;
+  photo?: string;
+  fromOptimizer?: boolean;
+}
+
+export function stashListingCardsHandoff(payload: ListingCardsHandoff): void {
+  const record = { ...payload, savedAt: Date.now() };
+  try {
+    localStorage.setItem(HANDOFF_KEY, JSON.stringify(record));
+  } catch {
+    // Quota exceeded (large mockup data URL) — retry without the photo so the
+    // name and details still carry over.
+    try {
+      localStorage.setItem(HANDOFF_KEY, JSON.stringify({ ...record, photo: undefined }));
+    } catch {
+      // Storage unavailable entirely — the new tab just opens blank.
+    }
+  }
+}
+
+export function readListingCardsHandoff(): ListingCardsHandoff | null {
+  try {
+    const raw = localStorage.getItem(HANDOFF_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ListingCardsHandoff & { savedAt?: number };
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > HANDOFF_MAX_AGE_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearListingCardsHandoff(): void {
+  try {
+    localStorage.removeItem(HANDOFF_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 // ─── Export helper ──────────────────────────────────────────────────────────────
 
 // Renders a mounted DOM node to a WebP data URL. Used for both the single-card

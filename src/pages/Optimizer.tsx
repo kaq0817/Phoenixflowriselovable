@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { isShopifyPlatform } from "@/lib/storePlatforms";
 import { getFunctionErrorMessage } from "@/lib/functionsError";
-import { buildProductDetailsSummary } from "@/lib/listingCardKit";
+import { buildProductDetailsSummary, stashListingCardsHandoff } from "@/lib/listingCardKit";
 
 interface ShopifyProduct {
   id: number;
@@ -940,18 +940,20 @@ export default function OptimizerPage() {
                           size="sm"
                           variant="outline"
                           className="w-full gap-1.5"
-                          onClick={() => navigate("/listing-cards", {
-                            state: {
+                          onClick={() => {
+                            stashListingCardsHandoff({
                               productName: cleanProductTitle(selectedProduct.title),
                               productDetails: buildProductDetailsSummary(selectedProduct),
                               photo: mockupDrafts[0] ? `data:${mockupDrafts[0].mimeType};base64,${mockupDrafts[0].data}` : undefined,
-                            },
-                          })}
+                              fromOptimizer: true,
+                            });
+                            window.open("/listing-cards", "_blank");
+                          }}
                         >
                           <Layers className="h-3.5 w-3.5" />
                           Build Listing Cards for This Product
                         </Button>
-                        <p className="text-[10px] text-muted-foreground">Opens the info-card generator (features, reviews, shipping, promise, variations) pre-filled with this product{mockupDrafts[0] ? " and your latest mockup" : ""}.</p>
+                        <p className="text-[10px] text-muted-foreground">Opens the info-card generator in a new tab, pre-filled with this product{mockupDrafts[0] ? " and your latest mockup" : ""} — this editor and your mockups stay exactly as they are.</p>
                       </div>
 
                       {mockupDrafts.length > 0 && (

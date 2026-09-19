@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from "react";
-import { useLocation, Link } from "react-router-dom";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,11 +8,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Download, Sparkles, Loader2, ChevronRight, Palette,
-  ImagePlus, X, Layers, Zap,
+  ImagePlus, X, Layers, Zap, ArrowLeft,
 } from "lucide-react";
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, DEFAULTS,
   CardRenderer, renderElementToWebpDataUrl,
+  ListingCardsHandoff, readListingCardsHandoff, clearListingCardsHandoff,
 } from "@/lib/listingCardKit";
 
 // ─── Form helpers ──────────────────────────────────────────────────────────────
@@ -77,8 +78,23 @@ function VariationsForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:st
 
 export default function ListingCards() {
   const { toast } = useToast();
-  const location = useLocation();
-  const incoming = (location.state || {}) as { productName?: string; photo?: string; productDetails?: string };
+  const navigate = useNavigate();
+  // Read once (state initializer), cleared after mount — the Optimizer opens this
+  // page in a new tab and hands the product over via localStorage.
+  const [incoming] = useState<ListingCardsHandoff>(() => readListingCardsHandoff() ?? {});
+  useEffect(() => { clearListingCardsHandoff(); }, []);
+
+  // Opened from the Optimizer in a new tab: closing it returns to the untouched
+  // editor. If the browser won't close it (or it wasn't opened that way), fall
+  // back to navigating to the Optimizer in this tab.
+  const backToEditor = () => {
+    if (window.opener && !window.opener.closed) {
+      window.close();
+      setTimeout(() => navigate("/optimizer"), 150);
+      return;
+    }
+    navigate("/optimizer");
+  };
   const previewRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -166,16 +182,23 @@ export default function ListingCards() {
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-primary" />
             <h1 className="text-2xl font-bold">Listing Card Generator</h1>
           </div>
-          <Button asChild variant="outline" size="sm" className="gap-1.5 shrink-0">
-            <Link to="/bulk-listing-cards">
-              <Zap className="w-3.5 h-3.5" /> Bulk generate for whole catalog
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {incoming.fromOptimizer && (
+              <Button variant="outline" size="sm" onClick={backToEditor} className="gap-1.5">
+                <ArrowLeft className="w-3.5 h-3.5" /> Back to product editor
+              </Button>
+            )}
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link to="/bulk-listing-cards">
+                <Zap className="w-3.5 h-3.5" /> Bulk generate for whole catalog
+              </Link>
+            </Button>
+          </div>
         </div>
         <p className="text-muted-foreground text-sm">
           Build the info cards top sellers use on Etsy and Shopify alike — features, reviews, shipping, promise, and variations. Upload your product photo, pick a theme, and download.
