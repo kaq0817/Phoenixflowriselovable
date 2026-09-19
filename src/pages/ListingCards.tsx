@@ -241,12 +241,22 @@ export default function ListingCards() {
     }
     setAiLoading(true);
     try {
+      // One call fills all five cards (was one call per card, each re-sending the
+      // product details and only filling the card on screen).
       const { data, error } = await supabase.functions.invoke("generate-card-copy", {
-        body: { cardType, productName, productDetails, currentContent: c },
+        body: { cardType: "all", productName, productDetails },
       });
-      if (error || !data?.content) throw new Error(error?.message || "No suggestions returned");
-      setContent(prev => ({ ...prev, [cardType]: { ...prev[cardType], ...data.content } }));
-      toast({ title: "AI suggestions applied" });
+      if (error) throw new Error(await getFunctionErrorMessage(error, "AI suggestion failed"));
+      const contents = data?.contents as Record<string, Record<string, string>> | undefined;
+      if (!contents) throw new Error("No suggestions returned");
+      setContent(prev => {
+        const next = { ...prev };
+        for (const type of Object.keys(contents) as CardType[]) {
+          if (next[type]) next[type] = { ...next[type], ...contents[type] };
+        }
+        return next;
+      });
+      toast({ title: "Filled all 5 cards", description: "Click through each card to review or edit." });
     } catch (err) {
       toast({ title: "AI suggestion failed", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
     } finally {
@@ -407,7 +417,7 @@ export default function ListingCards() {
           />
           <Button variant="outline" size="sm" onClick={suggestWithAI} disabled={aiLoading} className="gap-2 shrink-0">
             {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            AI Suggest
+            AI Suggest (all 5 cards)
           </Button>
         </div>
       </div>

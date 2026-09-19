@@ -40,6 +40,8 @@ interface ProductResult {
   status: ProductStatus;
   cardsUploaded: number;
   error?: string;
+  // True when the AI copy call failed and every card fell back to the generic default text.
+  usedDefaults?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -184,20 +186,24 @@ export default function BulkListingCards() {
         const photoDataUrl = photoUrl ? await imageUrlToDataUrl(photoUrl) : null;
         const productDetails = buildProductDetailsSummary(product);
 
+        // One AI call per product for all five cards (was five calls per product, so
+        // a 600-product run made 3,000 calls instead of 600).
+        let generated: Record<string, Record<string, string>> = {};
+        try {
+          const { data } = await supabase.functions.invoke("generate-card-copy", {
+            body: { cardType: "all", productName: product.title, productDetails },
+          });
+          if (data?.contents) generated = data.contents;
+        } catch {
+          // AI copy is a nice-to-have here — fall back to the default template
+          // text for every card rather than failing the whole product.
+        }
+
         let uploaded = 0;
         for (const cardType of CARD_TYPES) {
           if (cancelRef.current) break;
 
-          let cardContent: Record<string, string> = { ...DEFAULTS[cardType] };
-          try {
-            const { data } = await supabase.functions.invoke("generate-card-copy", {
-              body: { cardType, productName: product.title, productDetails, currentContent: cardContent },
-            });
-            if (data?.content) cardContent = { ...cardContent, ...data.content };
-          } catch {
-            // AI copy is a nice-to-have here — fall back to the default template
-            // text for this card type rather than failing the whole product.
-          }
+          const cardContent: Record<string, string> = { ...DEFAULTS[cardType], ...(generated[cardType] ?? {}) };
 
           const dataUrl = await captureCard(cardType, cardContent, photoDataUrl);
           const base64 = dataUrl.split(",")[1];
@@ -219,6 +225,7 @@ export default function BulkListingCards() {
         setResults((prev) => new Map(prev).set(product.id, {
           status: uploaded === CARD_TYPES.length ? "success" : "partial",
           cardsUploaded: uploaded,
+          usedDefaults: Object.keys(generated).length === 0,
         }));
       } catch (err) {
         setResults((prev) => new Map(prev).set(product.id, {
@@ -327,6 +334,7 @@ export default function BulkListingCards() {
                   <span className="flex-1 text-sm truncate">{p.title}</span>
                   {result && <ResultBadge status={result.status} />}
                   {result?.error && <span className="text-[10px] text-red-500 max-w-[200px] truncate">{result.error}</span>}
+                  {result?.usedDefaults && <span className="text-[10px] text-yellow-600">default text (AI copy failed)</span>}
                 </div>
               );
             })}

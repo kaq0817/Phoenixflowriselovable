@@ -27,6 +27,27 @@ const CARD_PROMPTS: Record<string, string> = {
   variations: `You are a copywriter for ecommerce product listings (Etsy or Shopify). Given a product name and details, suggest 4 realistic product variation labels for a "Design Options" listing card. Keep each label under 25 characters.${GROUNDING_RULE} Return ONLY valid JSON: {"heading":"Design Options","varA":"...","varB":"...","varC":"...","varD":"...","note":"See all listing photos for full details"}`,
 };
 
+// Which fields each card type is allowed to carry back. The all-cards response is
+// trimmed to exactly these so a stray or misspelled key from the model can't leak
+// into a card.
+const ALLOWED_KEYS: Record<string, string[]> = {
+  features: ["heading", "b1", "b2", "b3", "b4", "b5"],
+  social: ["heading", "quote"],
+  promise: ["heading", "body", "sub"],
+  shipping: ["heading", "production", "transit", "note"],
+  variations: ["heading", "varA", "varB", "varC", "varD", "note"],
+};
+
+// One call that writes all five cards. Sending the product details once instead of
+// five times is cheaper and faster, and because the model sees the whole set it can
+// keep the cards from repeating each other.
+const ALL_CARDS_PROMPT = `You are a copywriter for ecommerce product listings (Etsy or Shopify). Given a product name and details, write the copy for a set of FIVE listing cards in one pass so they work together and never repeat each other.
+- features ("Made With Care"): 5 short, compelling feature bullets, each under 60 characters. Focus on quality, personalization, packaging, speed, and satisfaction.
+- social ("Why You'll Love It"): one short, genuinely enthusiastic 1-2 sentence line in the SELLER'S OWN VOICE about why this specific item is worth loving. Not a fabricated customer quote, not attributed to any reviewer, no star rating.
+- promise ("Our Promise To You"): a warm 2-3 sentence satisfaction guarantee that sounds personal and reassuring.
+- shipping ("When Will It Arrive?"): a note under 80 characters explaining made-to-order production. Keep production and transit exactly as in the template below.
+- variations ("Design Options"): 4 realistic product variation labels, each under 25 characters.${GROUNDING_RULE} Return ONLY valid JSON in exactly this shape: {"features":{"heading":"Made With Care","b1":"...","b2":"...","b3":"...","b4":"...","b5":"..."},"social":{"heading":"Why You'll Love It","quote":"..."},"promise":{"heading":"Our Promise To You","body":"...","sub":"Your satisfaction is our priority — always."},"shipping":{"heading":"When Will It Arrive?","production":"2–3","transit":"3–7","note":"..."},"variations":{"heading":"Design Options","varA":"...","varB":"...","varC":"...","varD":"...","note":"See all listing photos for full details"}}`;
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -59,7 +80,8 @@ serve(async (req: Request) => {
       });
     }
 
-    const systemPrompt = CARD_PROMPTS[cardType];
+    const isAll = cardType === "all";
+    const systemPrompt = isAll ? ALL_CARDS_PROMPT : CARD_PROMPTS[cardType];
     if (!systemPrompt) {
       return new Response(JSON.stringify({ error: "Unknown card type" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -77,7 +99,9 @@ serve(async (req: Request) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: "user", parts: [{ text: `Product name: ${productName.slice(0, 200)}\nProduct details: ${typeof productDetails === "string" && productDetails.trim() ? productDetails.trim().slice(0, 1500) : "none provided — stay honestly generic, do not invent specifics"}` }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
+          generationConfig: isAll
+            ? { temperature: 0.7, maxOutputTokens: 1400, responseMimeType: "application/json" }
+            : { temperature: 0.7, maxOutputTokens: 512 },
         }),
       }
     );
@@ -92,6 +116,30 @@ serve(async (req: Request) => {
 
     // Strip markdown fences if present
     const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
+
+    if (isAll) {
+      let parsed: Record<string, Record<string, unknown>>;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        throw new Error("Gemini returned invalid JSON — please try again");
+      }
+      const contents: Record<string, Record<string, string>> = {};
+      for (const [type, keys] of Object.entries(ALLOWED_KEYS)) {
+        const card = parsed?.[type];
+        if (!card || typeof card !== "object") continue;
+        const clean: Record<string, string> = {};
+        for (const key of keys) {
+          const value = card[key];
+          if (typeof value === "string" && value.trim()) clean[key] = value.trim();
+        }
+        if (Object.keys(clean).length) contents[type] = clean;
+      }
+      if (!Object.keys(contents).length) throw new Error("Gemini returned no usable card copy — please try again");
+      return new Response(JSON.stringify({ contents }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let content: Record<string, string>;
     try {
