@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { isShopifyPlatform } from "@/lib/storePlatforms";
 import { getFunctionErrorMessage } from "@/lib/functionsError";
+import { buildProductDetailsSummary } from "@/lib/listingCardKit";
 
 interface ShopifyProduct {
   id: number;
@@ -942,6 +943,7 @@ export default function OptimizerPage() {
                           onClick={() => navigate("/listing-cards", {
                             state: {
                               productName: cleanProductTitle(selectedProduct.title),
+                              productDetails: buildProductDetailsSummary(selectedProduct),
                               photo: mockupDrafts[0] ? `data:${mockupDrafts[0].mimeType};base64,${mockupDrafts[0].data}` : undefined,
                             },
                           })}

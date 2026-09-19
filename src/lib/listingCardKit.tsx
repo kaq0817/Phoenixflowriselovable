@@ -143,7 +143,7 @@ export function pickNicheForStore(storeLabel: string | undefined): Niche {
 
 export const CARD_META: Record<CardType, { label: string; icon: React.ReactNode; hint: string }> = {
   features:   { label: "Made With Care",  icon: <CheckCircle className="w-4 h-4" />, hint: "Features & quality bullets" },
-  social:     { label: "Customer Love",   icon: <Star className="w-4 h-4" />,        hint: "Stars & review quote" },
+  social:     { label: "Why You'll Love It", icon: <Star className="w-4 h-4" />,     hint: "Seller-voice hype line" },
   promise:    { label: "Our Promise",     icon: <Shield className="w-4 h-4" />,      hint: "Guarantee & satisfaction" },
   shipping:   { label: "Shipping Info",   icon: <Truck className="w-4 h-4" />,       hint: "Production & delivery times" },
   variations: { label: "Design Options",  icon: <Layers className="w-4 h-4" />,      hint: "A / B / C / D variations" },
@@ -160,13 +160,13 @@ export const DEFAULTS: Record<CardType, Record<string, string>> = {
     b2: "Fast Shipping",
     b3: "Personalized Design",
     b4: "Premium Print Quality",
-    b5: "Circle & Heart Shapes",
+    b5: "Built to Last",
   },
+  // Not a fabricated customer review — this is openly seller-voice enthusiasm, no
+  // star rating or reviewer attribution pretending to be someone else's words.
   social: {
-    heading: "Customer Love",
-    stars: "5",
-    quote: "Beautiful quality and the perfect keepsake for our family. It came so carefully packaged and made a lovely gift.",
-    reviewer: "",
+    heading: "Why You'll Love It",
+    quote: "We put real care into every piece — from the design to the packaging it arrives in.",
   },
   promise: {
     heading: "Our Promise To You",
@@ -182,10 +182,10 @@ export const DEFAULTS: Record<CardType, Record<string, string>> = {
   },
   variations: {
     heading: "Design Variations",
-    varA: "Classic Round",
-    varB: "Heart Shape",
-    varC: "Rectangle",
-    varD: "Custom Size",
+    varA: "Option A",
+    varB: "Option B",
+    varC: "Option C",
+    varD: "Option D",
     note: "See all photos for design details",
   },
 };
@@ -239,10 +239,10 @@ function CardShell({
 
       {/* Content layer */}
       <div style={{ position: "relative", zIndex: 1, display: "flex", width: "100%", height: "100%" }}>
-        {/* Left text column */}
+        {/* Left text column — narrower now that the photo is the centerpiece, not a thumbnail */}
         <div style={{
-          flex: "0 0 58%",
-          padding: "28px 24px 24px 30px",
+          flex: "0 0 47%",
+          padding: "26px 18px 22px 26px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -250,29 +250,30 @@ function CardShell({
           {children}
         </div>
 
-        {/* Right photo column */}
+        {/* Right photo column — a real hero image filling most of the card height,
+            not a small inset thumbnail, so the actual product is unmistakably front and center. */}
         <div style={{
-          flex: "0 0 42%",
+          flex: "0 0 53%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "20px 20px 20px 0",
+          padding: "16px 16px 16px 0",
         }}>
           {photo ? (
             <div style={{
-              width: "170px",
-              height: "170px",
-              borderRadius: "12px",
+              width: "100%",
+              height: "100%",
+              borderRadius: "14px",
               overflow: "hidden",
               border: `3px solid ${theme.photoBorder}`,
-              boxShadow: "0 4px 20px rgba(0,0,0,0.18)",
+              boxShadow: "0 6px 26px rgba(0,0,0,0.22)",
             }}>
               <img src={photo} alt="product" style={{ width: "100%", height: "100%", objectFit: "cover" }} crossOrigin="anonymous" />
             </div>
           ) : (
             <div style={{
-              width: "170px", height: "170px",
-              borderRadius: "12px",
+              width: "100%", height: "100%",
+              borderRadius: "14px",
               border: `2px dashed ${theme.divider}`,
               display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center",
@@ -353,25 +354,16 @@ function FeaturesCard({ theme, content, photo }: CardProps) {
 }
 
 function SocialCard({ theme, content, photo }: CardProps) {
-  const stars = Math.min(5, Math.max(1, parseInt(content.stars || "5", 10)));
   return (
     <CardShell theme={theme} photo={photo}>
-      <Hdg theme={theme} text={content.heading || "Customer Love"} />
+      <Hdg theme={theme} text={content.heading || "Why You'll Love It"} />
       <Rule theme={theme} />
-      <div style={{ marginBottom: "10px" }}>
-        {Array.from({ length: stars }).map((_, i) => (
-          <span key={i} style={{ color: "#e8a020", fontSize: "18px" }}>★</span>
-        ))}
-      </div>
+      {/* Seller-voice enthusiasm, not a fabricated customer review — no star
+          rating or reviewer attribution implying this is someone else's words. */}
       <p style={{
-        fontSize: "12.5px", color: theme.text, lineHeight: 1.6,
-        fontStyle: "italic", margin: 0,
-      }}>"{content.quote}"</p>
-      {content.reviewer && (
-        <p style={{ fontSize: "11px", color: theme.subtext, marginTop: "8px", fontWeight: 600 }}>
-          — {content.reviewer}
-        </p>
-      )}
+        fontSize: "13.5px", color: theme.text, lineHeight: 1.65,
+        fontStyle: "italic", margin: 0, fontWeight: 600,
+      }}>{content.quote}</p>
     </CardShell>
   );
 }
@@ -488,6 +480,22 @@ export function CardRenderer({ cardType, theme, content, photo }: { cardType: Ca
     case "shipping":   return <ShippingCard   theme={theme} content={content} photo={photo} />;
     case "variations": return <VariationsCard theme={theme} content={content} photo={photo} />;
   }
+}
+
+// ─── Product details summary ─────────────────────────────────────────────────
+
+// Real product facts for AI Suggest to ground copy in — without this, the AI
+// only ever sees a bare product name and writes generic boilerplate that could
+// describe any product in the category (the bug that shipped ornament-flavored
+// defaults on unrelated products).
+export function buildProductDetailsSummary(product: { product_type?: string; tags?: string; body_html?: string }): string {
+  const plainDescription = (product.body_html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const parts = [
+    product.product_type ? `Type: ${product.product_type}` : "",
+    product.tags ? `Tags: ${product.tags}` : "",
+    plainDescription ? `Description: ${plainDescription}` : "",
+  ].filter(Boolean);
+  return parts.join(" | ").slice(0, 1500);
 }
 
 // ─── Export helper ──────────────────────────────────────────────────────────────

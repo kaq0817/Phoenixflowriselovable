@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, CARD_TYPES, DEFAULTS,
-  CardRenderer, renderElementToWebpDataUrl, pickNicheForStore,
+  CardRenderer, renderElementToWebpDataUrl, pickNicheForStore, buildProductDetailsSummary,
 } from "@/lib/listingCardKit";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,6 +20,9 @@ import {
 interface ShopifyProductLite {
   id: number;
   title: string;
+  body_html?: string;
+  product_type?: string;
+  tags?: string;
   images: { src: string }[];
 }
 
@@ -193,6 +196,7 @@ export default function BulkListingCards() {
       try {
         const photoUrl = product.images?.[0]?.src;
         const photoDataUrl = photoUrl ? await imageUrlToDataUrl(photoUrl) : null;
+        const productDetails = buildProductDetailsSummary(product);
 
         let uploaded = 0;
         for (const cardType of CARD_TYPES) {
@@ -201,7 +205,7 @@ export default function BulkListingCards() {
           let cardContent: Record<string, string> = { ...DEFAULTS[cardType] };
           try {
             const { data } = await supabase.functions.invoke("generate-card-copy", {
-              body: { cardType, productName: product.title, currentContent: cardContent },
+              body: { cardType, productName: product.title, productDetails, currentContent: cardContent },
             });
             if (data?.content) cardContent = { ...cardContent, ...data.content };
           } catch {

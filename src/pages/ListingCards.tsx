@@ -42,17 +42,7 @@ function FeaturesForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:stri
 function SocialForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:string)=>void }) {
   return <div className="space-y-3">
     <FF label="Heading" value={c.heading} onChange={v=>oc("heading",v)} />
-    <div>
-      <Label className="text-xs text-muted-foreground mb-1 block">Stars</Label>
-      <div className="flex gap-2">
-        {[1,2,3,4,5].map(n=>(
-          <button key={n} onClick={()=>oc("stars",String(n))}
-            className={`text-2xl transition-opacity ${parseInt(c.stars||"5")>=n?"opacity-100":"opacity-30"}`}>⭐</button>
-        ))}
-      </div>
-    </div>
-    <FF label="Review quote" value={c.quote} onChange={v=>oc("quote",v)} multiline />
-    <FF label="Reviewer name (optional)" value={c.reviewer} onChange={v=>oc("reviewer",v)} />
+    <FF label="Hype line (your own voice, not a fake review)" value={c.quote} onChange={v=>oc("quote",v)} multiline />
   </div>;
 }
 function PromiseForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:string)=>void }) {
@@ -88,7 +78,7 @@ function VariationsForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:st
 export default function ListingCards() {
   const { toast } = useToast();
   const location = useLocation();
-  const incoming = (location.state || {}) as { productName?: string; photo?: string };
+  const incoming = (location.state || {}) as { productName?: string; photo?: string; productDetails?: string };
   const previewRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,6 +86,7 @@ export default function ListingCards() {
   const [niche, setNiche]         = useState<Niche>("wellness");
   const [theme, setTheme]         = useState<ThemePreset>("warm");
   const [productName, setProductName] = useState(incoming.productName || "");
+  const [productDetails, setProductDetails] = useState(incoming.productDetails || "");
   const [photo, setPhoto]         = useState<string | null>(incoming.photo || null);
   const [content, setContent]     = useState<Record<CardType, Record<string, string>>>(
     Object.fromEntries(
@@ -130,7 +121,7 @@ export default function ListingCards() {
     setAiLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-card-copy", {
-        body: { cardType, productName, currentContent: c },
+        body: { cardType, productName, productDetails, currentContent: c },
       });
       if (error || !data?.content) throw new Error(error?.message || "No suggestions returned");
       setContent(prev => ({ ...prev, [cardType]: { ...prev[cardType], ...data.content } }));
@@ -191,7 +182,7 @@ export default function ListingCards() {
         </p>
       </div>
 
-      {/* Top bar: product name + photo upload + AI */}
+      {/* Top bar: product name + photo upload */}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-48">
           <Label className="text-xs text-muted-foreground mb-1 block">Product name</Label>
@@ -215,11 +206,26 @@ export default function ListingCards() {
             <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
           </div>
         </div>
+      </div>
 
-        <Button variant="outline" size="sm" onClick={suggestWithAI} disabled={aiLoading} className="gap-2 shrink-0">
-          {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          AI Suggest
-        </Button>
+      {/* Real product details — what actually grounds AI Suggest in this specific
+          item instead of generic boilerplate. Optional, but AI Suggest is only as
+          good as what's given here. */}
+      <div>
+        <Label className="text-xs text-muted-foreground mb-1 block">Product details (materials, features, use case — feeds AI Suggest)</Label>
+        <div className="flex gap-2 items-start">
+          <Textarea
+            placeholder="e.g. Ceramic mug, 11oz, dishwasher safe, double-sided print, ships in a padded box"
+            value={productDetails}
+            onChange={e => setProductDetails(e.target.value)}
+            className="text-sm resize-none flex-1"
+            rows={2}
+          />
+          <Button variant="outline" size="sm" onClick={suggestWithAI} disabled={aiLoading} className="gap-2 shrink-0">
+            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            AI Suggest
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
