@@ -946,6 +946,8 @@ export default function OptimizerPage() {
                               productDetails: buildProductDetailsSummary(selectedProduct),
                               photo: mockupDrafts[0] ? `data:${mockupDrafts[0].mimeType};base64,${mockupDrafts[0].data}` : undefined,
                               fromOptimizer: true,
+                              productId: selectedProduct.id,
+                              connectionId: selectedShopifyConnectionId,
                             });
                             window.open("/listing-cards", "_blank");
                           }}

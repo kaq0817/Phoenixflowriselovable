@@ -513,6 +513,10 @@ export interface ListingCardsHandoff {
   productDetails?: string;
   photo?: string;
   fromOptimizer?: boolean;
+  // Which Shopify product/store this came from, so "Add to Shopify" knows where
+  // the finished card goes without having to pick the product a second time.
+  productId?: number;
+  connectionId?: string;
 }
 
 export function stashListingCardsHandoff(payload: ListingCardsHandoff): void {
@@ -548,6 +552,26 @@ export function clearListingCardsHandoff(): void {
   } catch {
     // ignore
   }
+}
+
+// ─── Small shared helpers ─────────────────────────────────────────────────────
+
+export function slugify(value: string): string {
+  return (value || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "product";
+}
+
+// Fetches a remote (Shopify CDN) image and returns it as a data: URL so it can be
+// drawn into a card and exported without cross-origin canvas restrictions.
+export async function imageUrlToDataUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Could not load product image");
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Could not read product image"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 // ─── Export helper ──────────────────────────────────────────────────────────────

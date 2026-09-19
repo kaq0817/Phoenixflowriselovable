@@ -4,17 +4,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Download, Sparkles, Loader2, ChevronRight, Palette,
-  ImagePlus, X, Layers, Zap, ArrowLeft,
+  ImagePlus, X, Layers, Zap, ArrowLeft, Store, CheckCircle2, Search,
 } from "lucide-react";
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, DEFAULTS,
-  CardRenderer, renderElementToWebpDataUrl,
+  CardRenderer, renderElementToWebpDataUrl, buildProductDetailsSummary, slugify, imageUrlToDataUrl,
   ListingCardsHandoff, readListingCardsHandoff, clearListingCardsHandoff,
 } from "@/lib/listingCardKit";
+import { getFunctionErrorMessage } from "@/lib/functionsError";
+
+interface StoreOption { id: string; shop_domain: string | null; shop_name: string | null; }
+interface ProductOption {
+  id: number;
+  title: string;
+  body_html?: string;
+  product_type?: string;
+  tags?: string;
+  images: { src: string }[];
+}
 
 // ─── Form helpers ──────────────────────────────────────────────────────────────
 
@@ -112,6 +126,97 @@ export default function ListingCards() {
   const [aiLoading, setAiLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // ── Shopify link: which product a finished card gets added to ──
+  const { user } = useAuth();
+  const [stores, setStores] = useState<StoreOption[]>([]);
+  const [connectionId, setConnectionId] = useState(incoming.connectionId || "");
+  const [linkedProduct, setLinkedProduct] = useState<{ id: number; title: string } | null>(
+    incoming.productId ? { id: incoming.productId, title: incoming.productName || "this product" } : null,
+  );
+  const [productSearch, setProductSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<ProductOption[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [addedTypes, setAddedTypes] = useState<Set<CardType>>(new Set());
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data: rows } = await supabase
+        .from("store_connections")
+        .select("id, shop_domain, shop_name")
+        .eq("user_id", user.id)
+        .eq("platform", "shopify")
+        .order("created_at", { ascending: false });
+      const list = rows || [];
+      setStores(list);
+      setConnectionId((prev) => prev || (list.length === 1 ? list[0].id : ""));
+    })();
+  }, [user]);
+
+  const searchProducts = async () => {
+    if (!connectionId) { toast({ title: "Pick a store first", variant: "destructive" }); return; }
+    setSearching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-shopify-products", {
+        body: { limit: 20, connectionId, search: productSearch.trim(), excludeProductIds: [] },
+      });
+      if (error) throw new Error(await getFunctionErrorMessage(error, "Couldn't load products"));
+      const found: ProductOption[] = data?.products || [];
+      setSearchResults(found);
+      if (!found.length) toast({ title: "No matching products" });
+    } catch (err) {
+      toast({ title: "Product search failed", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Linking a product also fills in everything the card needs from it: name, real
+  // details for AI Suggest, and its main photo — so nothing is retyped or re-uploaded.
+  const linkProduct = async (id: string) => {
+    const p = searchResults.find((r) => String(r.id) === id);
+    if (!p) return;
+    setLinkedProduct({ id: p.id, title: p.title });
+    setProductName(p.title);
+    setProductDetails(buildProductDetailsSummary(p));
+    setAddedTypes(new Set());
+    const src = p.images?.[0]?.src;
+    if (src) {
+      try { setPhoto(await imageUrlToDataUrl(src)); }
+      catch { toast({ title: "Couldn't load the product photo", description: "Upload one manually.", variant: "destructive" }); }
+    }
+  };
+
+  const unlinkProduct = () => { setLinkedProduct(null); setAddedTypes(new Set()); };
+
+  const addToShopify = async () => {
+    if (!previewRef.current || !linkedProduct || !connectionId) return;
+    setUploading(true);
+    try {
+      const dataUrl = await renderElementToWebpDataUrl(previewRef.current);
+      const attachment = dataUrl.split(",")[1];
+      const label = productName.trim() || linkedProduct.title;
+      const { data, error } = await supabase.functions.invoke("upload-shopify-webp", {
+        body: {
+          connectionId,
+          productId: linkedProduct.id,
+          attachment,
+          filename: `${slugify(label)}-${cardType}`,
+          alt: `${label} - ${CARD_META[cardType].label}`.slice(0, 125),
+        },
+      });
+      if (error) throw new Error(await getFunctionErrorMessage(error, "Shopify upload failed"));
+      if (data?.error) throw new Error(data.error);
+      setAddedTypes((prev) => new Set(prev).add(cardType));
+      toast({ title: "Added to Shopify", description: `"${CARD_META[cardType].label}" is now on ${linkedProduct.title}.` });
+    } catch (err) {
+      toast({ title: "Couldn't add to Shopify", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const t = THEMES[theme];
   const c = content[cardType];
 
@@ -201,8 +306,64 @@ export default function ListingCards() {
           </div>
         </div>
         <p className="text-muted-foreground text-sm">
-          Build the info cards top sellers use on Etsy and Shopify alike — features, reviews, shipping, promise, and variations. Upload your product photo, pick a theme, and download.
+          Build the info cards top sellers use on Etsy and Shopify alike — features, reviews, shipping, promise, and variations. Link your Shopify product, pick a theme, and add each card straight to its images.
         </p>
+      </div>
+
+      {/* Shopify product this card gets added to. Arriving from the Optimizer links
+          it automatically; otherwise pick a store and search for the product. */}
+      <div className="bg-card border border-border/40 rounded-lg p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Store className="w-4 h-4 text-primary" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Shopify product</span>
+          {linkedProduct ? (
+            <>
+              <Badge className="bg-primary/10 text-primary border-0 max-w-[26rem] truncate">{linkedProduct.title}</Badge>
+              <button onClick={unlinkProduct} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+                Change
+              </button>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">Not linked — pick one to enable Add to Shopify</span>
+          )}
+        </div>
+        {!linkedProduct && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={connectionId} onValueChange={setConnectionId}>
+              <SelectTrigger className="w-56 bg-background/50 h-9">
+                <SelectValue placeholder={stores.length ? "Pick a store" : "No Shopify store connected"} />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.shop_name || s.shop_domain || s.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void searchProducts(); }}
+              placeholder="Search your products"
+              className="h-9 w-56 text-sm"
+            />
+            <Button variant="outline" size="sm" onClick={searchProducts} disabled={searching || !connectionId} className="gap-1.5 h-9">
+              {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+              Search
+            </Button>
+            {searchResults.length > 0 && (
+              <Select onValueChange={linkProduct}>
+                <SelectTrigger className="w-72 bg-background/50 h-9">
+                  <SelectValue placeholder={`Choose from ${searchResults.length} results`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {searchResults.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Top bar: product name + photo upload */}
@@ -269,7 +430,10 @@ export default function ListingCards() {
                     <div className="font-medium leading-none">{meta.label}</div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">{meta.hint}</div>
                   </div>
-                  {cardType === type && <ChevronRight className="w-4 h-4 ml-auto text-primary" />}
+                  <span className="ml-auto flex items-center gap-1">
+                    {addedTypes.has(type) && <CheckCircle2 className="w-4 h-4 text-green-600" />}
+                    {cardType === type && <ChevronRight className="w-4 h-4 text-primary" />}
+                  </span>
                 </button>
               ))}
             </div>
@@ -322,12 +486,22 @@ export default function ListingCards() {
             </div>
           </div>
 
-          <div className="flex justify-center gap-3">
-            <Button onClick={downloadWebp} disabled={exporting} size="lg" className="gap-2 px-8">
+          <div className="flex justify-center gap-3 flex-wrap">
+            <Button onClick={addToShopify} disabled={!linkedProduct || !connectionId || uploading || exporting} size="lg" className="gap-2 px-8">
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Store className="w-4 h-4" />}
+              {uploading ? "Adding…" : addedTypes.has(cardType) ? "Add again to Shopify" : "Add to Shopify"}
+            </Button>
+            <Button onClick={downloadWebp} disabled={exporting || uploading} variant="outline" size="lg" className="gap-2 px-6">
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               {exporting ? "Exporting…" : "Download WebP"}
             </Button>
           </div>
+          {!linkedProduct && (
+            <p className="text-center text-xs text-muted-foreground">Link a Shopify product above to add this card straight to its images.</p>
+          )}
+          {addedTypes.has(cardType) && (
+            <p className="text-center text-xs text-muted-foreground">This card is already on the product — adding again creates a duplicate image.</p>
+          )}
 
           <div className="bg-muted/40 border border-border/30 rounded-lg p-4 text-xs text-muted-foreground leading-relaxed max-w-xl mx-auto">
             <strong className="text-foreground">How to use this for a full listing set:</strong> Use Media Tools to generate your hero + lifestyle mockups, then create all 5 info cards here. That gives you a complete 7–9 image listing that looks like a top shop — not just pretty photos. Doing this across your whole catalog by hand? Use <Link to="/bulk-listing-cards" className="text-primary underline underline-offset-2">Bulk generate</Link> instead.

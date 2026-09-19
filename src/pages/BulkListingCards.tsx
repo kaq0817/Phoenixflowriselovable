@@ -13,7 +13,9 @@ import {
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, CARD_TYPES, DEFAULTS,
   CardRenderer, renderElementToWebpDataUrl, pickNicheForStore, buildProductDetailsSummary,
+  slugify, imageUrlToDataUrl,
 } from "@/lib/listingCardKit";
+import { getFunctionErrorMessage } from "@/lib/functionsError";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,22 +43,6 @@ interface ProductResult {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function slugify(value: string): string {
-  return (value || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "product";
-}
-
-async function imageUrlToDataUrl(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Could not load product image");
-  const blob = await res.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Could not read product image"));
-    reader.readAsDataURL(blob);
-  });
-}
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -225,7 +211,7 @@ export default function BulkListingCards() {
               alt: `${product.title} — ${CARD_META[cardType].label}`,
             },
           });
-          if (uploadError) throw new Error(uploadError.message);
+          if (uploadError) throw new Error(await getFunctionErrorMessage(uploadError, "Shopify upload failed"));
           uploaded += 1;
           await delay(300); // stay comfortably under Shopify's write rate limit
         }
