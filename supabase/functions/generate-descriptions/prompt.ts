@@ -16,23 +16,42 @@ export interface GeneratedCopy {
   materialDetails: string;
 }
 
+// Signals read from the product itself. Deliberately conservative: a false positive
+// here flips the whole tone, so "baby" only counts in baby-product phrases (not the
+// color "baby blue") and "console" is left out (console tables).
+const KIDS_PRODUCT_RE = /\b(kids?|toddlers?|children'?s?|child'?s?|nursery|blossom\s*fields|baby\s+(girl|boy|onesie|bodysuit|clothing|clothes|shower))\b/i;
+const GAMING_PRODUCT_RE = /\b(gamers?|gaming|gamepad|esports|video\s*game|level\s*up|respawn|npc)\b/i;
+
 function pickBrandVoice(storeLabel: string | undefined, title: string, features: string): string {
-  const label = (storeLabel || "").toLowerCase();
+  const label = (storeLabel || "").trim().toLowerCase();
   const haystack = `${title} ${features}`.toLowerCase();
 
-  if (label.includes("ironphoenix") || label.includes("iron-phoenix") || label.includes("gohardgaming")) {
+  // Explicit opt-in only: these are the exact values the Descriptions page's Brand
+  // Voice dropdown sends when someone deliberately picks one. Matching on the store's
+  // name or domain is what used to force one niche's voice onto every product in it.
+  if (label === "ironphoenix") {
     return `You are an expert e-commerce copywriter for Iron Phoenix GHG — a brand built around the gamer community and the people who support them. Vibe: high-contrast, moody, deeply independent, authentic over mass-market. Core principle: authenticity, personal sovereignty, unhurried presence over trends.`;
   }
 
-  if (label.includes("ourphoenixrise") || label.includes("phoenixrise")) {
-    const isKids = /\b(kid|kids|toddler|youth|child|children|baby|blossom\s*fields)\b/i.test(haystack);
-    if (isKids) {
+  if (label === "ourphoenixrise") {
+    if (KIDS_PRODUCT_RE.test(haystack)) {
       return `You are an expert e-commerce copywriter for Our Phoenix Rise's Blossom Fields kids' line — warm, wholesome, playful. Speak to the parent who's buying it, but keep the sense of wonder a kid would feel. Cozy and gentle, never edgy or ironic.`;
     }
     return `You are an expert e-commerce copywriter for Our Phoenix Rise — American front-porch, homespun comfort. Think a well-loved quilt, a good pillow, a porch swing at golden hour. Warm and neighborly, not narrowly patriotic (not just red/white/blue) — cozy Americana across styles and seasons. Core principle: comfort you can feel, not hype.`;
   }
 
-  return `You are an expert e-commerce copywriter. Make the shopper physically feel the product before they buy it — a blanket should feel soft and warm just from reading about it, a shirt should feel like it's worth way more than it costs. Match the sensory language to what the product actually is, and match the tone to who would actually want THIS specific item — don't force one fixed subculture voice onto every product.`;
+  // Default: the voice comes from the product, never from the store. Any store can sell
+  // a kids' item next to a gaming item next to a quilt, and each one is written for its
+  // own buyer.
+  if (KIDS_PRODUCT_RE.test(haystack)) {
+    return `You are an expert e-commerce copywriter. This is a children's product, so speak to the parent who's buying it while keeping the sense of wonder a kid would feel — warm, wholesome, playful. Cozy and gentle, never edgy or ironic.`;
+  }
+
+  if (GAMING_PRODUCT_RE.test(haystack)) {
+    return `You are an expert e-commerce copywriter. This product is gaming-themed, so it can speak the buyer's language — high-contrast, a little wry, authentic over mass-market — without forcing gamer slang the product doesn't actually earn.`;
+  }
+
+  return `You are an expert e-commerce copywriter. Make the shopper physically feel the product before they buy it — a blanket should feel soft and warm just from reading about it, a shirt should feel like it's worth way more than it costs. Match the sensory language to what the product actually is, and match the tone to who would actually want THIS specific item. Never assume the buyer is a gamer, a parent, or any other group unless the product itself says so, and don't force one fixed subculture voice onto every product.`;
 }
 
 export function buildDescriptionPrompt({
