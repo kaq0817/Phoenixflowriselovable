@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, DEFAULTS,
-  CardRenderer, renderElementToWebpDataUrl, buildProductDetailsSummary, slugify, imageUrlToDataUrl, cardHasRealContent,
+  CardRenderer, renderElementToWebpDataUrl, buildProductDetailsSummary, slugify, imageUrlToDataUrl, cardHasRealContent, SHOPIFY_SKIPPED_CARDS,
   ListingCardsHandoff, readListingCardsHandoff, clearListingCardsHandoff,
 } from "@/lib/listingCardKit";
 import { getFunctionErrorMessage } from "@/lib/functionsError";
@@ -221,6 +221,7 @@ export default function ListingCards() {
   const t = THEMES[theme];
   const c = content[cardType];
   const hasContent = cardHasRealContent(cardType, c);
+  const shopifyBlocked = SHOPIFY_SKIPPED_CARDS.includes(cardType);
 
   const oc = useCallback((key: string, value: string) => {
     setContent(prev => ({ ...prev, [cardType]: { ...prev[cardType], [key]: value } }));
@@ -499,7 +500,7 @@ export default function ListingCards() {
           </div>
 
           <div className="flex justify-center gap-3 flex-wrap">
-            <Button onClick={addToShopify} disabled={!linkedProduct || !connectionId || !hasContent || uploading || exporting} size="lg" className="gap-2 px-8">
+            <Button onClick={addToShopify} disabled={!linkedProduct || !connectionId || !hasContent || shopifyBlocked || uploading || exporting} size="lg" className="gap-2 px-8">
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Store className="w-4 h-4" />}
               {uploading ? "Adding…" : addedTypes.has(cardType) ? "Add again to Shopify" : "Add to Shopify"}
             </Button>
@@ -508,10 +509,15 @@ export default function ListingCards() {
               {exporting ? "Exporting…" : "Download WebP"}
             </Button>
           </div>
-          {!linkedProduct && (
+          {shopifyBlocked && (
+            <p className="text-center text-xs text-muted-foreground">
+              Your Shopify store already shows delivery and shipping details, so this card is for Etsy listings. Use Download WebP.
+            </p>
+          )}
+          {!linkedProduct && !shopifyBlocked && (
             <p className="text-center text-xs text-muted-foreground">Link a Shopify product above to add this card straight to its images.</p>
           )}
-          {!hasContent && (
+          {!hasContent && !shopifyBlocked && (
             <p className="text-center text-xs text-muted-foreground">
               This card is empty, so it can't be added yet. Fill it in or use AI Suggest.
               {cardType === "variations" ? " If this product has no real options (like colors), skip this card." : ""}

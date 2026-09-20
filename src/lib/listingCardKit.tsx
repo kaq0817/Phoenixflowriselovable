@@ -145,11 +145,17 @@ export const CARD_META: Record<CardType, { label: string; icon: React.ReactNode;
   features:   { label: "Made With Care",  icon: <CheckCircle className="w-4 h-4" />, hint: "Features & quality bullets" },
   social:     { label: "Why You'll Love It", icon: <Star className="w-4 h-4" />,     hint: "Seller-voice hype line" },
   promise:    { label: "Our Promise",     icon: <Shield className="w-4 h-4" />,      hint: "Guarantee & satisfaction" },
-  shipping:   { label: "Shipping Info",   icon: <Truck className="w-4 h-4" />,       hint: "Production & delivery times" },
+  shipping:   { label: "Shipping Info",   icon: <Truck className="w-4 h-4" />,       hint: "Etsy only: delivery times" },
   variations: { label: "Design Options",  icon: <Layers className="w-4 h-4" />,      hint: "A / B / C / D variations" },
 };
 
 export const CARD_TYPES: CardType[] = ["features", "social", "promise", "shipping", "variations"];
+
+// Cards that are not added to Shopify products. Shipping Info is left for Etsy: the
+// Shopify store already shows delivery and shipping details on the product page, so the
+// card would just repeat it (and Google's advice was to skip it there). It stays fully
+// available to preview and download for Etsy listings.
+export const SHOPIFY_SKIPPED_CARDS: CardType[] = ["shipping"];
 
 // ─── Default content ───────────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@ import {
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, CARD_TYPES, DEFAULTS,
   CardRenderer, renderElementToWebpDataUrl, pickNicheForStore, buildProductDetailsSummary,
-  slugify, imageUrlToDataUrl, cardHasRealContent,
+  slugify, imageUrlToDataUrl, cardHasRealContent, SHOPIFY_SKIPPED_CARDS,
 } from "@/lib/listingCardKit";
 import { getFunctionErrorMessage } from "@/lib/functionsError";
 
@@ -214,6 +214,8 @@ export default function BulkListingCards() {
         const plan: CardType[] = [];
         const skippedLabels: string[] = [];
         for (const type of CARD_TYPES) {
+          // Shipping Info is Etsy-only (the Shopify store already shows delivery details).
+          if (SHOPIFY_SKIPPED_CARDS.includes(type)) continue;
           if (cardHasRealContent(type, contentFor(type))) plan.push(type);
           else skippedLabels.push(CARD_META[type].label);
         }
@@ -289,7 +291,7 @@ export default function BulkListingCards() {
           <Badge className="bg-primary/10 text-primary border-0 text-xs">Shopify</Badge>
         </div>
         <p className="text-muted-foreground text-sm">
-          Generates all 5 Listing Cards (Made With Care, Customer Love, Our Promise, Shipping Info, Design Variations) for every product you select, and uploads them straight to that product's Shopify images — no manual downloading/re-uploading.
+          Generates the Listing Cards (features, Why You'll Love It, Our Promise, Design Options) for every product you select, and uploads them straight to that product's Shopify images — no manual downloading/re-uploading.
         </p>
       </div>
 
