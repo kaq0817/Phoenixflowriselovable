@@ -13,7 +13,7 @@ import {
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, CARD_TYPES, DEFAULTS,
   CardRenderer, renderElementToWebpDataUrl, pickNicheForStore, buildProductDetailsSummary,
-  slugify, imageUrlToDataUrl,
+  slugify, imageUrlToDataUrl, cardHasRealContent,
 } from "@/lib/listingCardKit";
 import { getFunctionErrorMessage } from "@/lib/functionsError";
 
@@ -25,6 +25,7 @@ interface ShopifyProductLite {
   body_html?: string;
   product_type?: string;
   tags?: string;
+  options?: { name: string; values: string[] }[];
   images: { src: string }[];
 }
 
@@ -40,8 +41,8 @@ interface ProductResult {
   status: ProductStatus;
   cardsUploaded: number;
   error?: string;
-  // True when the AI copy call failed and every card fell back to the generic default text.
-  usedDefaults?: boolean;
+  // Cards left off because the product had nothing real to put on them (e.g. no variations).
+  skippedLabels?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,15 +165,19 @@ export default function BulkListingCards() {
 
   const stop = () => { cancelRef.current = true; };
 
-  const run = async () => {
+  // `onlyIds` is used by "Retry failed" to re-run just those products.
+  const run = async (onlyIds?: number[]) => {
     if (!connectionId) { toast({ title: "Pick a store first", variant: "destructive" }); return; }
-    const targets = products.filter((p) => selected.has(p.id));
+    const targets = onlyIds
+      ? products.filter((p) => onlyIds.includes(p.id))
+      : products.filter((p) => selected.has(p.id));
     if (!targets.length) { toast({ title: "Select at least one product first", variant: "destructive" }); return; }
 
     cancelRef.current = false;
     setRunning(true);
-    setResults(new Map());
+    if (!onlyIds) setResults(new Map());
     setProgress({ current: 0, total: targets.length });
+    let fullyDone = 0;
 
     for (let i = 0; i < targets.length; i++) {
       if (cancelRef.current) break;
@@ -181,6 +186,7 @@ export default function BulkListingCards() {
       setCurrentTitle(product.title);
       setResults((prev) => new Map(prev).set(product.id, { status: "running", cardsUploaded: 0 }));
 
+      let uploaded = 0;
       try {
         const photoUrl = product.images?.[0]?.src;
         const photoDataUrl = photoUrl ? await imageUrlToDataUrl(photoUrl) : null;
@@ -195,17 +201,27 @@ export default function BulkListingCards() {
           });
           if (data?.contents) generated = data.contents;
         } catch {
-          // AI copy is a nice-to-have here — fall back to the default template
-          // text for every card rather than failing the whole product.
+          // Handled just below: no copy means nothing gets uploaded for this product.
         }
 
-        let uploaded = 0;
-        for (const cardType of CARD_TYPES) {
+        // No AI copy means there is nothing true to put on the cards. Upload nothing
+        // rather than generic filler that a shopper would see on a live listing.
+        if (Object.keys(generated).length === 0) {
+          throw new Error("AI copy failed, so nothing was uploaded for this product. Use Retry failed.");
+        }
+
+        const contentFor = (type: CardType): Record<string, string> => ({ ...DEFAULTS[type], ...(generated[type] ?? {}) });
+        const plan: CardType[] = [];
+        const skippedLabels: string[] = [];
+        for (const type of CARD_TYPES) {
+          if (cardHasRealContent(type, contentFor(type))) plan.push(type);
+          else skippedLabels.push(CARD_META[type].label);
+        }
+
+        for (const cardType of plan) {
           if (cancelRef.current) break;
 
-          const cardContent: Record<string, string> = { ...DEFAULTS[cardType], ...(generated[cardType] ?? {}) };
-
-          const dataUrl = await captureCard(cardType, cardContent, photoDataUrl);
+          const dataUrl = await captureCard(cardType, contentFor(cardType), photoDataUrl);
           const base64 = dataUrl.split(",")[1];
 
           const { error: uploadError } = await supabase.functions.invoke("upload-shopify-webp", {
@@ -222,15 +238,17 @@ export default function BulkListingCards() {
           await delay(300); // stay comfortably under Shopify's write rate limit
         }
 
+        const finished = uploaded === plan.length && !cancelRef.current;
+        if (finished) fullyDone += 1;
         setResults((prev) => new Map(prev).set(product.id, {
-          status: uploaded === CARD_TYPES.length ? "success" : "partial",
+          status: finished ? "success" : "partial",
           cardsUploaded: uploaded,
-          usedDefaults: Object.keys(generated).length === 0,
+          skippedLabels,
         }));
       } catch (err) {
         setResults((prev) => new Map(prev).set(product.id, {
           status: "error",
-          cardsUploaded: 0,
+          cardsUploaded: uploaded,
           error: err instanceof Error ? err.message : "Failed",
         }));
       }
@@ -241,9 +259,16 @@ export default function BulkListingCards() {
     setRunning(false);
     toast({
       title: cancelRef.current ? "Stopped" : "Bulk run complete",
-      description: `${Array.from(results.values()).filter((r) => r.status === "success").length}/${targets.length} products fully done.`,
+      description: `${fullyDone}/${targets.length} products fully done.`,
     });
   };
+
+  // Products where nothing was uploaded and it failed (e.g. AI copy was down) are safe to
+  // retry. Ones that failed partway already have some cards on Shopify, and re-running
+  // them would add duplicates, so they are left out.
+  const retryableIds = Array.from(results.entries())
+    .filter(([, r]) => r.status === "error" && r.cardsUploaded === 0)
+    .map(([id]) => id);
 
   const t = THEMES[theme];
   const renderT = renderTarget && (
@@ -334,7 +359,7 @@ export default function BulkListingCards() {
                   <span className="flex-1 text-sm truncate">{p.title}</span>
                   {result && <ResultBadge status={result.status} />}
                   {result?.error && <span className="text-[10px] text-red-500 max-w-[200px] truncate">{result.error}</span>}
-                  {result?.usedDefaults && <span className="text-[10px] text-yellow-600">default text (AI copy failed)</span>}
+                  {result?.skippedLabels?.length ? <span className="text-[10px] text-muted-foreground">skipped: {result.skippedLabels.join(", ")} (nothing real to show)</span> : null}
                 </div>
               );
             })}
@@ -354,12 +379,17 @@ export default function BulkListingCards() {
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             {!running ? (
-              <Button onClick={run} disabled={selected.size === 0} size="lg" className="gap-2">
+              <Button onClick={() => run()} disabled={selected.size === 0} size="lg" className="gap-2">
                 <Zap className="w-4 h-4" /> Generate & Upload for {selected.size || ""} Selected
               </Button>
             ) : (
               <Button onClick={stop} variant="destructive" size="lg" className="gap-2">
                 <StopCircle className="w-4 h-4" /> Stop
+              </Button>
+            )}
+            {!running && retryableIds.length > 0 && (
+              <Button onClick={() => run(retryableIds)} variant="outline" size="lg" className="gap-2">
+                <RefreshCw className="w-4 h-4" /> Retry {retryableIds.length} failed (nothing uploaded yet)
               </Button>
             )}
           </div>

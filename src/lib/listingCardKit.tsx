@@ -156,36 +156,40 @@ export const CARD_TYPES: CardType[] = ["features", "social", "promise", "shippin
 export const DEFAULTS: Record<CardType, Record<string, string>> = {
   features: {
     heading: "Made With Care",
-    b1: "Free Gift Box",
-    b2: "Fast Shipping",
-    b3: "Personalized Design",
-    b4: "Premium Print Quality",
-    b5: "Built to Last",
+    // Intentionally blank. Sample bullets like "Free Gift Box" or "Personalized
+    // Design" were getting published on products they weren't true for; a card with
+    // no real content can't be added to Shopify until it's filled in.
+    b1: "",
+    b2: "",
+    b3: "",
+    b4: "",
+    b5: "",
   },
   // Not a fabricated customer review — this is openly seller-voice enthusiasm, no
   // star rating or reviewer attribution pretending to be someone else's words.
   social: {
     heading: "Why You'll Love It",
-    quote: "We put real care into every piece — from the design to the packaging it arrives in.",
+    quote: "",
   },
   promise: {
     heading: "Our Promise To You",
-    body: "We are 100% committed to making you happy. If for any reason you are not happy with your order, just let us know and we'll make it right.",
-    sub: "Your satisfaction is our priority — always.",
+    body: "We want you to love your order. If you don't, just tell us and we'll make it right.",
+    sub: "We want you to be happy.",
   },
   shipping: {
     heading: "When Will It Arrive?",
     production: "2–3",
     transit: "3–7",
-    note: "Custom & personalized items are made to order just for you.",
-    holiday: "After Nov 15 we will do our best to get your order to you quickly, but holiday delays may occur.",
+    note: "Made just for you after you order.",
+    // Seasonal, so off by default instead of showing on every product all year.
+    holiday: "",
   },
   variations: {
     heading: "Design Variations",
-    varA: "Option A",
-    varB: "Option B",
-    varC: "Option C",
-    varD: "Option D",
+    varA: "",
+    varB: "",
+    varC: "",
+    varD: "",
     note: "See all photos for design details",
   },
 };
@@ -488,14 +492,39 @@ export function CardRenderer({ cardType, theme, content, photo }: { cardType: Ca
 // only ever sees a bare product name and writes generic boilerplate that could
 // describe any product in the category (the bug that shipped ornament-flavored
 // defaults on unrelated products).
-export function buildProductDetailsSummary(product: { product_type?: string; tags?: string; body_html?: string }): string {
+export function buildProductDetailsSummary(product: {
+  product_type?: string;
+  tags?: string;
+  body_html?: string;
+  options?: { name: string; values: string[] }[];
+}): string {
   const plainDescription = (product.body_html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  // The real variant options (Color, Size, ...). The Design Options card is built
+  // only from these, so it never lists variations the product doesn't have.
+  const optionsLine = (product.options || [])
+    .filter((o) => o.name && o.values?.length)
+    .map((o) => `${o.name}: ${o.values.join(", ")}`)
+    .join("; ");
   const parts = [
     product.product_type ? `Type: ${product.product_type}` : "",
+    optionsLine ? `Options: ${optionsLine}` : "Options: none listed",
     product.tags ? `Tags: ${product.tags}` : "",
     plainDescription ? `Description: ${plainDescription}` : "",
   ].filter(Boolean);
   return parts.join(" | ").slice(0, 1500);
+}
+
+// A card is only worth publishing if it says something. The bullets, hype line and
+// design options start blank and stay blank when there's nothing true to put there.
+// (Promise and shipping carry standard store wording, so they always count.)
+export function cardHasRealContent(cardType: CardType, content: Record<string, string>): boolean {
+  const filled = (keys: string[]) => keys.some((k) => (content[k] || "").trim().length > 0);
+  switch (cardType) {
+    case "features":   return filled(["b1", "b2", "b3", "b4", "b5"]);
+    case "social":     return filled(["quote"]);
+    case "variations": return filled(["varA", "varB", "varC", "varD"]);
+    default:           return true;
+  }
 }
 
 // ─── Optimizer → Listing Cards handoff ───────────────────────────────────────

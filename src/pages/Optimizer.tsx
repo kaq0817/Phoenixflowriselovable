@@ -26,6 +26,7 @@ interface ShopifyProduct {
   tags: string;
   status?: string;
   variants: { id: number; title: string; price: string; inventory_quantity: number; option1?: string; option2?: string; option3?: string }[];
+  options?: { name: string; values: string[] }[];
   images: { id: number; src: string; alt: string | null; position: number }[];
   handle: string;
   metafields_global_title_tag?: string;

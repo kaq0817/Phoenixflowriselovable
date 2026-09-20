@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import {
   CardType, ThemePreset, Niche, THEMES, NICHE_THEMES, CARD_META, DEFAULTS,
-  CardRenderer, renderElementToWebpDataUrl, buildProductDetailsSummary, slugify, imageUrlToDataUrl,
+  CardRenderer, renderElementToWebpDataUrl, buildProductDetailsSummary, slugify, imageUrlToDataUrl, cardHasRealContent,
   ListingCardsHandoff, readListingCardsHandoff, clearListingCardsHandoff,
 } from "@/lib/listingCardKit";
 import { getFunctionErrorMessage } from "@/lib/functionsError";
@@ -27,20 +27,21 @@ interface ProductOption {
   body_html?: string;
   product_type?: string;
   tags?: string;
+  options?: { name: string; values: string[] }[];
   images: { src: string }[];
 }
 
 // ─── Form helpers ──────────────────────────────────────────────────────────────
 
-function FF({ label, value, onChange, multiline = false }: {
-  label: string; value: string; onChange: (v: string) => void; multiline?: boolean;
+function FF({ label, value, onChange, multiline = false, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string;
 }) {
   return (
     <div>
       <Label className="text-xs text-muted-foreground mb-1 block">{label}</Label>
       {multiline
-        ? <Textarea value={value} onChange={e => onChange(e.target.value)} className="text-sm resize-none" rows={3} />
-        : <Input value={value} onChange={e => onChange(e.target.value)} className="text-sm" />
+        ? <Textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm resize-none" rows={3} />
+        : <Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
       }
     </div>
   );
@@ -50,14 +51,14 @@ function FeaturesForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:stri
   return <div className="space-y-3">
     <FF label="Heading" value={c.heading} onChange={v=>oc("heading",v)} />
     {["b1","b2","b3","b4","b5"].map((k,i)=>(
-      <FF key={k} label={`Feature ${i+1}`} value={c[k]} onChange={v=>oc(k,v)} />
+      <FF key={k} label={`Feature ${i+1}`} value={c[k]} onChange={v=>oc(k,v)} placeholder="A true, useful point in plain words (or leave blank)" />
     ))}
   </div>;
 }
 function SocialForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:string)=>void }) {
   return <div className="space-y-3">
     <FF label="Heading" value={c.heading} onChange={v=>oc("heading",v)} />
-    <FF label="Hype line (your own voice, not a fake review)" value={c.quote} onChange={v=>oc("quote",v)} multiline />
+    <FF label="Hype line (your own voice, not a fake review)" value={c.quote} onChange={v=>oc("quote",v)} multiline placeholder="One short, honest sentence about why it is worth having" />
   </div>;
 }
 function PromiseForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:string)=>void }) {
@@ -82,7 +83,7 @@ function VariationsForm({ c, oc }: { c: Record<string,string>; oc:(k:string,v:st
   return <div className="space-y-3">
     <FF label="Heading" value={c.heading} onChange={v=>oc("heading",v)} />
     {["A","B","C","D"].map(k=>(
-      <FF key={k} label={`Option ${k}`} value={c[`var${k}`]||""} onChange={v=>oc(`var${k}`,v)} />
+      <FF key={k} label={`Option ${k}`} value={c[`var${k}`]||""} onChange={v=>oc(`var${k}`,v)} placeholder="A real color or style this product comes in" />
     ))}
     <FF label="Note" value={c.note} onChange={v=>oc("note",v)} />
   </div>;
@@ -219,6 +220,7 @@ export default function ListingCards() {
 
   const t = THEMES[theme];
   const c = content[cardType];
+  const hasContent = cardHasRealContent(cardType, c);
 
   const oc = useCallback((key: string, value: string) => {
     setContent(prev => ({ ...prev, [cardType]: { ...prev[cardType], [key]: value } }));
@@ -497,7 +499,7 @@ export default function ListingCards() {
           </div>
 
           <div className="flex justify-center gap-3 flex-wrap">
-            <Button onClick={addToShopify} disabled={!linkedProduct || !connectionId || uploading || exporting} size="lg" className="gap-2 px-8">
+            <Button onClick={addToShopify} disabled={!linkedProduct || !connectionId || !hasContent || uploading || exporting} size="lg" className="gap-2 px-8">
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Store className="w-4 h-4" />}
               {uploading ? "Adding…" : addedTypes.has(cardType) ? "Add again to Shopify" : "Add to Shopify"}
             </Button>
@@ -508,6 +510,12 @@ export default function ListingCards() {
           </div>
           {!linkedProduct && (
             <p className="text-center text-xs text-muted-foreground">Link a Shopify product above to add this card straight to its images.</p>
+          )}
+          {!hasContent && (
+            <p className="text-center text-xs text-muted-foreground">
+              This card is empty, so it can't be added yet. Fill it in or use AI Suggest.
+              {cardType === "variations" ? " If this product has no real options (like colors), skip this card." : ""}
+            </p>
           )}
           {addedTypes.has(cardType) && (
             <p className="text-center text-xs text-muted-foreground">This card is already on the product — adding again creates a duplicate image.</p>

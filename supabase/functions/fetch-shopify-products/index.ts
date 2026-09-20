@@ -102,7 +102,7 @@ serve(async (req: Request) => {
     const accessToken = connection.access_token;
 
     // Scan ALL pages until Shopify says there are no more
-    const fields = "id,title,body_html,product_type,vendor,tags,variants,images,handle,status,metafields_global_description_tag";
+    const fields = "id,title,body_html,product_type,vendor,tags,variants,options,images,handle,status,metafields_global_description_tag";
     const oldestFirstOrder = "created_at+asc";
     const MAX_PAGES = 20; // Safety cap: 20 × 250 = 5,000 products max
     const mediaMode = mode === "media";
