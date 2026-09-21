@@ -1,6 +1,6 @@
 import {
   Flame, BarChart3, Shield, Layers, FileText, Bot, History, CreditCard, LayoutGrid,
-  Settings, Zap, Image, Flower2, Palette, Scan, Radio, Users, Cpu, Boxes, ShoppingCart,
+  Settings, Zap, Image, Flower2, Palette, Scan, Radio, Users, Cpu, Boxes, ShoppingCart, Video,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -58,6 +58,7 @@ const etsyItems: SidebarItem[] = [
 // Etsy sections keep their own Listing Cards links too.
 const toolsItems: SidebarItem[] = [
   { title: "Listing Cards", url: "/listing-cards", icon: LayoutGrid },
+  { title: "Listing Video", url: "/listing-video", icon: Video },
 ];
 
 const complianceItems: SidebarItem[] = [
