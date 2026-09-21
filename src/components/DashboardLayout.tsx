@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Flame, Zap, BarChart3, Layers, FileText, Image, Boxes, Cpu, Palette, Shield, Bot, History, Radio, Settings, CreditCard, Flower2, Scan, type LucideIcon } from "lucide-react";
+import { Flame, Zap, BarChart3, Layers, FileText, Image, Boxes, Cpu, Palette, Shield, Bot, History, Radio, Settings, CreditCard, Flower2, Scan, ShoppingCart, LayoutGrid, Video, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { supabase } from "@/integrations/supabase/client";
@@ -76,6 +76,7 @@ export default function DashboardLayout() {
     { title: "Inventory", url: "/inventory", icon: Boxes, requiresShopify: true },
     { title: "Templanator", url: "/templanator", icon: Cpu, requiresShopify: true },
     { title: "Theme Compliance", url: "/theme-audit", icon: Palette, requiresShopify: true },
+    { title: "Feed Checker", url: "/google-feed", icon: ShoppingCart, requiresShopify: true },
     { title: "Ad Generator", url: "/ads", icon: Bot, requiresShopify: true },
     { title: "History", url: "/history", icon: History, requiresShopify: true },
   ];
@@ -85,6 +86,12 @@ export default function DashboardLayout() {
     { title: "Listing Scanner", url: "/listing-scan", icon: Scan, requiresEtsy: true },
     { title: "Ad Generator", url: "/ads", icon: Bot, requiresEtsy: true },
     { title: "History", url: "/history", icon: History, requiresEtsy: true },
+  ];
+
+  // Store-independent tools: no Shopify/Etsy connection needed to open them.
+  const toolsItems: NavItem[] = [
+    { title: "Listing Cards", url: "/listing-cards", icon: LayoutGrid },
+    { title: "Listing Video", url: "/listing-video", icon: Video },
   ];
 
   const complianceItems: NavItem[] = [
@@ -109,6 +116,7 @@ export default function DashboardLayout() {
       { label: "Dashboard", items: dashboardItems },
       { label: "Shopify", items: shopifyItems },
       { label: "Etsy", items: etsyItems },
+      { label: "Tools", items: toolsItems },
       { label: "Compliance", items: complianceItems },
       { label: "General", items: generalItems },
       { label: "Account", items: accountItems },
