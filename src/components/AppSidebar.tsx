@@ -54,6 +54,12 @@ const etsyItems: SidebarItem[] = [
   { title: "History", url: "/history", icon: History },
 ];
 
+// Store-independent tools: no Shopify/Etsy connection needed to open them. The Shopify and
+// Etsy sections keep their own Listing Cards links too.
+const toolsItems: SidebarItem[] = [
+  { title: "Listing Cards", url: "/listing-cards", icon: LayoutGrid },
+];
+
 const complianceItems: SidebarItem[] = [
   { title: "Compliance Audit", url: "/audit", icon: Shield },
 ];
@@ -175,6 +181,7 @@ export function AppSidebar() {
         {renderGroup("Dashboard", dashboardItems)}
         {renderGroup("Shopify", shopifyItems)}
         {(isAdmin || subscriptionStatus === "active" || subscriptionStatus === "trialing") && renderGroup("Etsy", etsyItems)}
+        {renderGroup("Tools", toolsItems)}
         {renderGroup("Compliance", complianceItems)}
         {renderGroup("General", generalItems)}
         {renderGroup("Account", settingsItems)}
